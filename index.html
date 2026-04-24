@@ -1162,17 +1162,19 @@ try {
 // A) Hash da URL — enviado pelo bookmarklet ou botão flutuante
 (function(){
   try{
-    var h=decodeURIComponent(location.hash);
+    var h=location.hash; // NAO decodificar — o hash bruto ja tem #dados=BASE64
     if(h.indexOf('#dados=')!==0)return;
-    var b64=h.slice(7);
-    var json=decodeURIComponent(escape(atob(b64)));
+    var b64=h.slice(7); // base64 puro, sem decode adicional
+    // atob precisa de base64 sem encoding — mas se foi encodeURIComponent no envio, decodifica
+    var b64clean = decodeURIComponent(b64);
+    var json=decodeURIComponent(escape(atob(b64clean)));
     var payload=JSON.parse(json);
     if(payload&&payload.mx&&typeof payload.total==='number'){
       localStorage.setItem('orion_coleta',JSON.stringify(payload));
       history.replaceState(null,'',location.pathname);
       window._INBOUND=payload;
     }
-  }catch(e){}
+  }catch(e){ console.error('[OrionEscala] hash reader erro:', e); }
 })();
 
 // B) postMessage — extensão Chrome manda ORION_ESCALA_DATA
@@ -1183,9 +1185,9 @@ window.addEventListener('message',function(ev){
     window._INBOUND=payload;
     // Se já carregou, aplica imediatamente
     if(typeof S!=='undefined'&&typeof montarEscala==='function'){
-      S.matrix=payload.mx;
-      toast('✓ '+payload.total.toLocaleString()+' pedidos recebidos via extensão! Montando...','tok');
-      setTimeout(montarEscala,600);
+      // Chama gerarEscala diretamente — evita loop
+      setTimeout(()=>gerarEscala(payload),600);
+      toast('✓ '+payload.total.toLocaleString()+' pedidos recebidos! Montando...','tok');
     }
   }
 });
@@ -1198,9 +1200,8 @@ try{
       localStorage.setItem('orion_coleta',JSON.stringify(e.data.payload));
       window._INBOUND=e.data.payload;
       if(typeof S!=='undefined'&&typeof montarEscala==='function'){
-        S.matrix=e.data.payload.mx;
+        setTimeout(()=>gerarEscala(e.data.payload),600);
         toast('✓ '+e.data.payload.total.toLocaleString()+' pedidos! Montando...','tok');
-        setTimeout(montarEscala,600);
       }
     }
   };
@@ -1208,16 +1209,13 @@ try{
 
 load();renderCo();
 if(window._INBOUND){
-  // Dados chegaram via hash/extensão — monta escala automaticamente
+  // Dados chegaram via hash/extensão — chama gerarEscala() DIRETAMENTE
+  // (nunca montarEscala(), que relê localStorage e causaria loop infinito)
   const _p=window._INBOUND;
-  S.matrix=_p.mx;
-  const _min=Math.round((Date.now()-_p.ts)/60000);
-  document.getElementById('dDot').style.background='var(--ac)';
-  document.getElementById('dLbl').textContent=`${_p.total?.toLocaleString()} pedidos`;
-  document.getElementById('dSub').textContent=`há ${_min}min`;
+  window._INBOUND=null; // limpa imediatamente para evitar qualquer re-entrada
   setTimeout(()=>{
     toast(`✓ ${_p.total?.toLocaleString()} pedidos recebidos! Montando escala...`,'tok');
-    setTimeout(()=>montarEscala(),800);
+    setTimeout(()=>gerarEscala(_p), 600);
   },300);
 }else{
   if(!S.matrix){
