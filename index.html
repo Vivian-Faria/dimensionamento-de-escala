@@ -262,29 +262,15 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 
   <!-- TURNO FIXO -->
   <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:12px;margin-bottom:10px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-size:12px;font-weight:600">Turno fixo</div>
-        <div style="font-size:10px;color:var(--mu);margin-top:1px">Será alocado automaticamente nesses horários, independente da demanda</div>
+        <div style="font-size:10px;color:var(--mu);margin-top:2px;line-height:1.5">Quando ativo, o colaborador é alocado automaticamente<br>em todos os seus dias e horário cadastrado acima,<br>independente da demanda.</div>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
-        <input type="checkbox" id="fFixo" onchange="toggleFixoUI(this.checked)" style="width:15px;height:15px;cursor:pointer">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0;margin-left:12px">
+        <input type="checkbox" id="fFixo" style="width:16px;height:16px;cursor:pointer;accent-color:var(--ac)">
         Ativar
       </label>
-    </div>
-    <div id="fixoUI" style="display:none">
-      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-        <div style="flex:1;min-width:100px" class="fg"><label>Hora início</label><input id="fFixoHI" type="number" min="0" max="23" value="9" placeholder="9"></div>
-        <div style="flex:1;min-width:100px" class="fg"><label>Hora fim</label><input id="fFixoHO" type="number" min="1" max="30" value="18" placeholder="18"></div>
-      </div>
-      <div class="fg"><label>Dias do turno fixo</label>
-        <div class="dtr" id="fixoDtogs">
-          <span class="dt" data-fd="Seg">Seg</span><span class="dt" data-fd="Ter">Ter</span>
-          <span class="dt" data-fd="Qua">Qua</span><span class="dt" data-fd="Qui">Qui</span>
-          <span class="dt" data-fd="Sex">Sex</span><span class="dt" data-fd="Sab">Sáb</span>
-          <span class="dt" data-fd="Dom">Dom</span>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -801,10 +787,13 @@ function preencher(){
     S.colabs.forEach(c=>hrs[c.id]=0);
 
     // ── FIXOS PRIMEIRO — lê turnosFixos de cada colaborador dinamicamente
-    // Não há mais hardcode de nomes: qualquer colaborador com fixo:true e turnosFixos
-    // será alocado primeiro, nos dias e horários definidos no seu cadastro.
-    S.colabs.filter(c=>c.fixo&&c.turnosFixos&&c.turnosFixos.length).forEach(c=>{
-      c.turnosFixos.forEach(tf=>{
+    // Fallback: se turnosFixos vazio mas fixo=true, usa dias+horaIn/horaOut do cadastro
+    S.colabs.filter(c=>c.fixo).forEach(c=>{
+      // Resolve os blocos de turno: usa turnosFixos se preenchido, senão monta do cadastro
+      const blocos=(c.turnosFixos&&c.turnosFixos.length)
+        ? c.turnosFixos
+        : [{dias:c.dias, horaIn:c.horaIn, horaOut:c.horaOut}];
+      blocos.forEach(tf=>{
         if(!tf.dias.includes(dia))return;
         const ini=tf.horaIn??c.horaIn;
         const fim=tf.horaOut??c.horaOut;
@@ -833,8 +822,11 @@ function preencher(){
         if(hrs[c.id]>=(c.maxH||8))return false;
         // Já alocado nesse slot?
         if(cell.alocados.includes(c.nome))return false;
-        // Pula fixos já alocados nos seus turnos definidos
-        if(c.fixo&&c.turnosFixos&&c.turnosFixos.some(tf=>tf.dias.includes(dia)&&h>=tf.horaIn&&h<tf.horaOut))return false;
+        // Pula fixos já alocados nos seus turnos (com fallback para dados do cadastro)
+        if(c.fixo){
+          const blocos=(c.turnosFixos&&c.turnosFixos.length)?c.turnosFixos:[{dias:c.dias,horaIn:c.horaIn,horaOut:c.horaOut}];
+          if(blocos.some(tf=>tf.dias.includes(dia)&&h>=tf.horaIn&&h<tf.horaOut))return false;
+        }
 
         // ── REGRA PRINCIPAL: verifica se consegue fazer minH horas CONSECUTIVAS
         // a partir de h, dentro dos limites do colaborador e da escala
@@ -1121,11 +1113,12 @@ function renderCo(){
         ${DIAS.map(d=>`<span class="dc ${c.dias.includes(d)?'dc-on':'dc-off'}">${d}</span>`).join('')}
       </div>
       <div class="ct">${fH(c.horaIn)} → ${fH(c.horaOut)} · mín ${c.minH||3}h · máx ${c.maxH||8}h/dia</div>
-      ${c.fixo&&c.turnosFixos?.length
-        ?`<div class="badge-fixo">📌 FIXO · ${c.turnosFixos.map(tf=>
-            tf.dias.join('/') + ' ' + String(tf.horaIn).padStart(2,'0') + 'h–' + String(tf.horaOut).padStart(2,'0') + 'h'
-          ).join(' · ')}</div>`
-        :c.fixo?'<div class="badge-fixo">📌 FIXO</div>':''}
+      ${c.fixo?(()=>{
+        const blocos=(c.turnosFixos&&c.turnosFixos.length)?c.turnosFixos:[{dias:c.dias,horaIn:c.horaIn,horaOut:c.horaOut}];
+        return `<div class="badge-fixo">📌 FIXO · ${blocos.map(tf=>
+          tf.dias.join('/')+' '+String(tf.horaIn).padStart(2,'0')+'h–'+String(tf.horaOut).padStart(2,'0')+'h'
+        ).join(' · ')}</div>`;
+      })():''}
       <div class="c-custo">
         <span>R$/h:</span>
         <input type="number" step="0.01" value="${c.custo||''}" placeholder="0,00" onchange="atualizarCusto('${c.id}',this.value)" title="Custo por hora">
@@ -1162,20 +1155,8 @@ function aM(id){
     document.querySelectorAll('.dt').forEach(t=>t.classList.toggle('on',['Seg','Ter','Qua','Qui','Sex'].includes(t.dataset.d)));
   }
   document.getElementById('mCo').style.display='flex';
-  // Preenche turno fixo se existir
-  const tf=c?c.turnosFixos?.[0]:null;
-  const fixoAtivo=!!(c&&c.fixo&&tf);
-  document.getElementById('fFixo').checked=fixoAtivo;
-  toggleFixoUI(fixoAtivo);
-  if(fixoAtivo&&tf){
-    document.getElementById('fFixoHI').value=tf.horaIn??9;
-    document.getElementById('fFixoHO').value=tf.horaOut??18;
-    document.querySelectorAll('[data-fd]').forEach(t=>{
-      t.classList.toggle('on',tf.dias.includes(t.dataset.fd));
-    });
-  } else {
-    document.querySelectorAll('[data-fd]').forEach(t=>t.classList.remove('on'));
-  }
+  // Preenche checkbox de turno fixo
+  document.getElementById('fFixo').checked=!!(c&&c.fixo);
   setTimeout(()=>document.getElementById('fN').focus(),80);
 }
 function fM(){document.getElementById('mCo').style.display='none';}
@@ -1193,17 +1174,10 @@ function salvarC(){
   const minH=parseInt(document.getElementById('fMinH').value)||3;
   const maxH=parseInt(document.getElementById('fMaxH').value)||8;
   const nota=document.getElementById('fNo').value.trim();
-  // Turno fixo
+  // Turno fixo — usa os dias e horários já cadastrados acima
   const isFixo=document.getElementById('fFixo').checked;
-  let turnosFixos=[];
-  if(isFixo){
-    const fHI=parseInt(document.getElementById('fFixoHI').value);
-    const fHO=parseInt(document.getElementById('fFixoHO').value);
-    const fDias=Array.from(document.querySelectorAll('[data-fd].on')).map(t=>t.dataset.fd);
-    if(fDias.length&&!isNaN(fHI)&&!isNaN(fHO)){
-      turnosFixos=[{dias:fDias,horaIn:fHI,horaOut:fHO}];
-    }
-  }
+  // turnosFixos: um bloco único com todos os dias e horário do cadastro
+  const turnosFixos=isFixo?[{dias,horaIn:hI,horaOut:hO}]:[];
   const obj={id:S.editId||Date.now().toString(),nome,funcao,custo,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,nota};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
@@ -1218,11 +1192,7 @@ function delC(id){
   save();renderCo();toast('Removido.','tok');
 }
 document.querySelectorAll('.dt').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
-document.querySelectorAll('[data-fd]').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
-
-function toggleFixoUI(on){
-  document.getElementById('fixoUI').style.display=on?'block':'none';
-}
+// turno fixo: sem seleção de dias — usa dias/horário do cadastro
 
 // ── Ações na escala
 function rmA(dia,h,nome){
