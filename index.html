@@ -282,6 +282,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div class="sc"><div class="sc-l">Semana projetada</div><div class="sc-v" id="sPi" style="font-size:14px">—</div><div class="sc-s" id="sPiS">—</div></div>
   <div class="sc"><div class="sc-l">Equipe</div><div class="sc-v" id="sCo">0</div><div class="sc-s">colaboradores cadastrados</div></div>
   <div class="sc"><div class="sc-l">Custo total semana</div><div class="sc-v" id="sCusto" style="font-size:14px;color:#d97706">—</div><div class="sc-s" id="sCustoSub">estimado</div></div>
+  <div class="sc"><div class="sc-l">Custo médio / pedido</div><div class="sc-v" id="sCpp" style="font-size:14px;color:#2563eb">—</div><div class="sc-s" id="sCppSub">R$ por pedido na semana</div></div>
 
   <div class="stit">Configurações</div>
   <div class="cfg"><label>Pedidos/pessoa/hora</label><input type="number" id="cPPH" value="30" min="1" max="200"></div>
@@ -326,9 +327,21 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <div><h2>Projeção da próxima semana</h2><p id="esSub">—</p></div>
           <div class="sh-r">
             <button class="btn ba" onclick="preencher()">👥 Preencher automaticamente</button>
-            <button class="btn bs" onclick="exportCSV()">↓ Exportar CSV</button>
+            <button class="btn bs" onclick="abrirPainelTurnos()">📋 Painel de turnos</button>
             <button class="btn bs sm" onclick="limpar()">↺ Limpar alocação</button>
           </div>
+        </div>
+        <!-- FILTRO DE DIA -->
+        <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:10px;color:var(--mu);font-weight:600;margin-right:4px">VER:</span>
+          <button class="btn sm" id="dvbtn-todos" style="background:var(--tx);color:#fff" onclick="filtrarDiaEscala('todos')">Semana toda</button>
+          <button class="btn bs sm" id="dvbtn-Seg" onclick="filtrarDiaEscala('Seg')">Seg</button>
+          <button class="btn bs sm" id="dvbtn-Ter" onclick="filtrarDiaEscala('Ter')">Ter</button>
+          <button class="btn bs sm" id="dvbtn-Qua" onclick="filtrarDiaEscala('Qua')">Qua</button>
+          <button class="btn bs sm" id="dvbtn-Qui" onclick="filtrarDiaEscala('Qui')">Qui</button>
+          <button class="btn bs sm" id="dvbtn-Sex" onclick="filtrarDiaEscala('Sex')">Sex</button>
+          <button class="btn bs sm" id="dvbtn-Sab" onclick="filtrarDiaEscala('Sab')">Sáb</button>
+          <button class="btn bs sm" id="dvbtn-Dom" onclick="filtrarDiaEscala('Dom')">Dom</button>
         </div>
         <div class="sg" id="semG"></div>
 
@@ -870,10 +883,15 @@ function calcularCustos(){
 
 function atualizarCustoTotal(){
   if(!S.escala)return;
-  let total=0;
-  DIAS.forEach(dia=>Object.values(S.escala[dia]||{}).forEach(c=>{if(c)total+=c.custo||0;}));
+  let total=0, totalPed=0;
+  DIAS.forEach(dia=>Object.values(S.escala[dia]||{}).forEach(c=>{
+    if(c){total+=c.custo||0; totalPed+=c.ped||0;}
+  }));
   document.getElementById('sCusto').textContent=total>0?`R$ ${total.toFixed(2).replace('.',',')}`:'-';
   document.getElementById('sCustoSub').textContent=total>0?'custo estimado na semana':'sem custos cadastrados';
+  const cpp = total>0&&totalPed>0 ? total/totalPed : 0;
+  document.getElementById('sCpp').textContent = cpp>0 ? `R$ ${cpp.toFixed(2).replace('.',',')}` : '—';
+  document.getElementById('sCppSub').textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe';
 }
 
 function limpar(){
@@ -1166,26 +1184,200 @@ function addM(dia,h){
 }
 
 // ── Export
-function exportCSV(){
+function filtrarDiaEscala(dia){
+  // Atualiza botões
+  document.querySelectorAll('[id^="dvbtn-"]').forEach(b=>{
+    b.style.background='';b.style.color='';
+    b.className=b.id==='dvbtn-todos'&&dia==='todos'?'btn sm':'btn bs sm';
+  });
+  const btn=document.getElementById('dvbtn-'+dia);
+  if(btn){btn.style.background='var(--tx)';btn.style.color='#fff';}
+
+  // Colunas da tabela: índices 1–7 são Seg–Dom
+  const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const tabela=document.getElementById('qHead')?.closest('table');
+  if(!tabela)return;
+
+  if(dia==='todos'){
+    // Mostra tudo
+    tabela.querySelectorAll('th, td').forEach(el=>{el.style.display='';});
+    // Restaura cards da semana
+    document.querySelectorAll('#semG .sd').forEach(c=>{c.style.display='';});
+    return;
+  }
+
+  // Esconde colunas dos outros dias
+  const idx=diasO.indexOf(dia)+1; // +1 porque col 0 é "Hora"
+  tabela.querySelectorAll('tr').forEach(row=>{
+    const cells=row.querySelectorAll('th,td');
+    cells.forEach((cell,i)=>{
+      // Colunas 1–7 = dias, 8+ = totais (manter visíveis)
+      if(i>=1&&i<=7){
+        cell.style.display=(i===idx)?'':'none';
+      }
+    });
+  });
+
+  // Destaca só o card do dia selecionado
+  document.querySelectorAll('#semG .sd').forEach((c,i)=>{
+    c.style.display=(i===diasO.indexOf(dia))?'':'none';
+  });
+}
+
+function abrirPainelTurnos(){
+  if(!S.escala){toast('Gere e preencha a escala primeiro.','ter');return;}
+  const hI=+document.getElementById('cHI').value||9;
+  const hO=+document.getElementById('cHO').value||25;
+  const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const {seg} = proximaSemana();
+
+  // Monta mapa: colaborador → {dia → [horas]}
+  const turnos={};
+  diasO.forEach((dia,di)=>{
+    for(let h=hI;h<=hO;h++){
+      const cell=S.escala[dia]?.[h];
+      if(!cell||!cell.alocados.length)continue;
+      cell.alocados.forEach(nome=>{
+        if(!turnos[nome])turnos[nome]={};
+        if(!turnos[nome][dia])turnos[nome][dia]=[];
+        turnos[nome][dia].push(h);
+      });
+    }
+  });
+
+  // Para cada dia de cada colaborador, agrupa horas consecutivas em turnos
+  function agruparConsecutivos(horas){
+    if(!horas||!horas.length)return[];
+    const sorted=[...horas].sort((a,b)=>a-b);
+    const grupos=[];let g=[sorted[0]];
+    for(let i=1;i<sorted.length;i++){
+      if(sorted[i]===sorted[i-1]+1)g.push(sorted[i]);
+      else{grupos.push(g);g=[sorted[i]];}
+    }
+    grupos.push(g);
+    return grupos.map(gr=>({ini:gr[0],fim:gr[gr.length-1]+1,horas:gr.length}));
+  }
+
+  // Gera data real de cada dia da semana projetada
+  function dataReal(diaNome){
+    const idx=diasO.indexOf(diaNome);
+    const d=new Date(seg);d.setDate(seg.getDate()+idx);
+    return d.getDate().toString().padStart(2,'0')+'/'+(d.getMonth()+1).toString().padStart(2,'0');
+  }
+
+  // ── Renderiza o modal
+  const nomes=Object.keys(turnos).sort();
+  let html_colab='';
+  nomes.forEach(nome=>{
+    const c=S.colabs.find(x=>x.nome===nome);
+    const diasTurno=diasO.filter(d=>turnos[nome][d]);
+    let totalH=0;
+    let diasHtml=diasTurno.map(dia=>{
+      const grupos=agruparConsecutivos(turnos[nome][dia]);
+      return grupos.map(gr=>{
+        totalH+=gr.horas;
+        const dr=dataReal(dia);
+        return `<div class="pt-slot">
+          <span class="pt-dia">${dia} <span style="opacity:.6;font-size:10px">${dr}</span></span>
+          <span class="pt-hrs">${fH(gr.ini)} – ${fH(gr.fim)}</span>
+          <span class="pt-dur">${gr.horas}h</span>
+        </div>`;
+      }).join('');
+    }).join('');
+
+    const custoH=c&&c.custo>0?c.custo:0;
+    const custoTotal=custoH*totalH;
+    html_colab+=`
+    <div class="pt-card" id="ptc-${nome.replace(/\s/g,'_')}">
+      <div class="pt-header">
+        <span class="pt-nome">${nome}</span>
+        <span class="pt-func">${c?.funcao||'Colaborador'}</span>
+        <span class="pt-info">${totalH}h na semana${custoTotal>0?' · R$ '+custoTotal.toFixed(2).replace('.',','):''}</span>
+        <button class="btn bs sm" onclick="copiarTurno('${nome.replace(/'/g,"\\'")}')">📋 Copiar</button>
+      </div>
+      <div class="pt-slots">${diasHtml||'<span style="color:var(--mu);font-size:11px">Sem alocação</span>'}</div>
+    </div>`;
+  });
+
+  // Modal overlay
+  let overlay=document.getElementById('painelTurnosModal');
+  if(overlay)overlay.remove();
+  overlay=document.createElement('div');
+  overlay.id='painelTurnosModal';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+
+  const {seg:s2,dom}=proximaSemana();
+  overlay.innerHTML=`
+  <div style="background:var(--card);border-radius:14px;width:100%;max-width:780px;box-shadow:var(--shadow2);margin:auto">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:16px;font-weight:700">📋 Painel de Turnos</div>
+        <div style="font-size:11px;color:var(--mu);margin-top:2px">Semana ${fmtBR(s2)} a ${fmtBR(dom)} · ${nomes.length} colaboradores escalados</div>
+      </div>
+      <button class="btn bs sm" onclick="document.getElementById('painelTurnosModal').remove()">✕ Fechar</button>
+    </div>
+    <style>
+      .pt-card{border-bottom:1px solid var(--brd);padding:14px 20px}
+      .pt-card:last-child{border:none}
+      .pt-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+      .pt-nome{font-weight:700;font-size:14px}
+      .pt-func{font-size:10px;background:var(--acd);color:var(--ac);border-radius:5px;padding:2px 7px}
+      .pt-info{font-size:11px;color:var(--mu);margin-left:auto}
+      .pt-slots{display:flex;flex-wrap:wrap;gap:6px}
+      .pt-slot{display:flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--brd);border-radius:7px;padding:5px 10px;font-size:12px}
+      .pt-dia{font-weight:600;min-width:28px}
+      .pt-hrs{font-family:var(--mo);font-size:11px;color:var(--bl)}
+      .pt-dur{font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600}
+    </style>
+    <div id="pt-lista">${html_colab||'<div style="padding:30px;text-align:center;color:var(--mu)">Nenhum colaborador alocado ainda.<br>Clique em 👥 Preencher automaticamente primeiro.</div>'}</div>
+  </div>`;
+
+  document.body.appendChild(overlay);
+}
+
+// Copia o turno de um colaborador formatado para texto (para enviar por WhatsApp/mensagem)
+function copiarTurno(nome){
   if(!S.escala)return;
   const hI=+document.getElementById('cHI').value||9;
   const hO=+document.getElementById('cHO').value||25;
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  let csv='Hora,'+diasO.join(',')+',Volume Total,Custo p/h,Força p/h,V/Força\n';
-  for(let h=hI;h<=hO;h++){
-    let vol=0,custo=0,forca=0;
-    const linha=diasO.map(dia=>{
-      const c=S.escala[dia]?.[h];if(!c)return'';
-      vol+=c.ped;custo+=c.custo||0;forca+=c.alocados.length;
-      return`"${c.ped}ped | ${c.alocados.length?c.alocados.join('+'):'SEM COBERTURA'}"`;
-    }).join(',');
-    const vpf=forca>0?Math.round(vol/forca):'∞';
-    csv+=fH(h)+','+linha+`,${vol},${custo>0?'R$ '+custo.toFixed(2):'—'},${forca},${vpf}\n`;
+  const {seg}=proximaSemana();
+
+  function agruparConsecutivos(horas){
+    if(!horas||!horas.length)return[];
+    const sorted=[...horas].sort((a,b)=>a-b);
+    const grupos=[];let g=[sorted[0]];
+    for(let i=1;i<sorted.length;i++){
+      if(sorted[i]===sorted[i-1]+1)g.push(sorted[i]);
+      else{grupos.push(g);g=[sorted[i]];}
+    }
+    grupos.push(g);
+    return grupos.map(gr=>({ini:gr[0],fim:gr[gr.length-1]+1,horas:gr.length}));
   }
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
-  a.download='escala_orion_'+new Date().toISOString().slice(0,10)+'.csv';
-  a.click();toast('✓ CSV exportado!','tok');
+
+  const linhas=[`📅 Escala da semana — ${nome}`,''];
+  let totalH=0;
+  diasO.forEach((dia,di)=>{
+    const cell_horas=[];
+    for(let h=hI;h<=hO;h++){
+      const cell=S.escala[dia]?.[h];
+      if(cell&&cell.alocados.includes(nome))cell_horas.push(h);
+    }
+    if(!cell_horas.length)return;
+    const grupos=agruparConsecutivos(cell_horas);
+    const d=new Date(seg);d.setDate(seg.getDate()+di);
+    const dr=d.getDate().toString().padStart(2,'0')+'/'+(d.getMonth()+1).toString().padStart(2,'0');
+    grupos.forEach(gr=>{
+      totalH+=gr.horas;
+      linhas.push(`• ${dia} ${dr}: ${fH(gr.ini)} às ${fH(gr.fim)} (${gr.horas}h)`);
+    });
+  });
+  linhas.push('');
+  linhas.push(`Total: ${totalH}h na semana`);
+  const texto=linhas.join('\n');
+  navigator.clipboard.writeText(texto).catch(()=>{});
+  toast(`✓ Turno de ${nome} copiado!`,'tok');
 }
 
 // ── Utils
