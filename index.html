@@ -524,7 +524,22 @@ function fH(h){const r=h<24?h:h-24;return String(r).padStart(2,'0')+':00';}
 function verificarCache(){
   try{
     const s=localStorage.getItem(KCOL);
-    if(s){const p=JSON.parse(s);const min=Math.round((Date.now()-p.ts)/60000);return min<200?{ok:true,p,min}:{ok:false,velho:true,p,min};}
+    if(!s)return{ok:false,velho:false,p:null};
+    const p=JSON.parse(s);
+    const min=Math.round((Date.now()-p.ts)/60000);
+    // Verifica se o período do cache bate com a semana anterior CORRETA
+    const{segAnt,domAnt}=semanaAnterior();
+    const p2=v=>String(v).padStart(2,'0');
+    const fmtISO=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+    const periodoCorreto=fmtISO(segAnt);
+    const periodoCache=p.de||''; // ex: '2026-04-20'
+    const periodoBate=periodoCache===periodoCorreto;
+    if(!periodoBate){
+      // Cache é de outra semana — inválido, mas guardamos pra mostrar aviso
+      return{ok:false,velho:true,p,min,periodoCorreto,periodoCache};
+    }
+    // Período correto — qualquer timestamp serve (foi coletado essa semana)
+    return{ok:true,p,min};
   }catch(e){}
   return{ok:false,velho:false,p:null};
 }
@@ -765,6 +780,9 @@ function preencher(){
     }
 
     // ── PREENCHER RESTANTE
+    // Regra: colaborador só pode entrar num slot se conseguir trabalhar
+    // pelo menos minH horas CONSECUTIVAS a partir dali (sem gap).
+    // Isso evita turnos fragmentados e garante o mínimo obrigatório.
     for(let h=hI;h<=hO;h++){
       const cell=S.escala[dia]?.[h];if(!cell||cell.pessoas===0)continue;
       const faltam=cell.pessoas-cell.alocados.length;
@@ -773,21 +791,49 @@ function preencher(){
       const disp=S.colabs.filter(c=>{
         if(!c.dias.includes(dia))return false;
         if(h<c.horaIn||h>=c.horaOut)return false;
-        if(hrs[c.id]>=(c.maxH||8))return false; // não passar do máximo por dia
-        const horasDisp=Math.min(c.horaOut,hO+1)-h;
-        if(horasDisp<(c.minH||3))return false;
-        // Evitar duplicata
+        if(hrs[c.id]>=(c.maxH||8))return false;
+        // Já alocado nesse slot?
         if(cell.alocados.includes(c.nome))return false;
-        // Kayky, Gabriel, Lucas já tratados acima para seus dias fixos
+        // Fixos já tratados
         if(c.nome==='Kayky'&&['Seg','Ter','Qua','Qui'].includes(dia))return false;
-        if(c.nome==='Gabriel')return false; // já tratado
+        if(c.nome==='Gabriel')return false;
         if(c.nome==='Lucas H.'&&['Seg','Ter','Qua','Qui','Sex'].includes(dia))return false;
+
+        // ── REGRA PRINCIPAL: verifica se consegue fazer minH horas CONSECUTIVAS
+        // a partir de h, dentro dos limites do colaborador e da escala
+        const minH = c.minH||3;
+        const limiteColab = Math.min(c.horaOut, hO+1);
+        const horasRestantes = limiteColab - h;
+        if(horasRestantes < minH) return false; // tempo insuficiente até o fim
+
+        // Conta horas consecutivas disponíveis a partir de h
+        // (colaborador disponível + não ultrapassa maxH)
+        let consecutivas=0;
+        for(let hh=h; hh<limiteColab && hh<=hO; hh++){
+          if(hrs[c.id]+consecutivas >= (c.maxH||8))break;
+          consecutivas++;
+        }
+        if(consecutivas < minH) return false;
+
         return true;
       }).sort((a,b)=>hrs[a.id]-hrs[b.id]);
 
       const qtd=Math.min(faltam,disp.length);
-      const novos=disp.slice(0,qtd).map(c=>{hrs[c.id]++;return c.nome;});
-      cell.alocados=[...cell.alocados,...novos];
+      disp.slice(0,qtd).forEach(c=>{
+        // Aloca o colaborador nas próximas minH horas (ou até maxH/horaOut)
+        const minH=c.minH||3;
+        const limiteColab=Math.min(c.horaOut,hO+1);
+        let alocadas=0;
+        for(let hh=h; hh<limiteColab && hh<=hO && alocadas<(c.maxH||8)-hrs[c.id]; hh++){
+          const cellHH=S.escala[dia]?.[hh];
+          if(!cellHH)break;
+          if(!cellHH.alocados.includes(c.nome)){
+            cellHH.alocados.push(c.nome);
+            alocadas++;
+          }
+        }
+        hrs[c.id]+=alocadas;
+      });
       if(cell.alocados.length<cell.pessoas)av.push(`${dia} ${fH(h)}`);
     }
   });
@@ -804,12 +850,17 @@ function calcularCustos(){
   DIAS.forEach(dia=>{
     Object.values(S.escala[dia]||{}).forEach(cell=>{
       if(!cell)return;
-      let custo=0;
+      // Soma o custo/hora de todos os alocados na célula
+      let custoHora=0;
       cell.alocados.forEach(nome=>{
         const c=S.colabs.find(x=>x.nome===nome);
-        if(c&&c.custo>0)custo+=c.custo;
+        if(c&&c.custo>0)custoHora+=c.custo;
       });
-      cell.custo=custo;
+      cell.custo=custoHora; // custo total dos alocados nessa hora
+      // Custo por pedido = custo total ÷ pedidos (para exibição na coluna)
+      cell.custoPorPedido=(custoHora>0&&cell.ped>0)
+        ? custoHora/cell.ped
+        : 0;
     });
   });
 }
@@ -921,7 +972,7 @@ function renderEscala(){
 
     tr.innerHTML+=`
       <td class="td-volume"><span class="${volHora===0?'vol-0':volHora<140?'vol-1':volHora<400?'vol-2':'vol-3'}">${volHora||'—'}</span></td>
-      <td class="td-custo">${custoHora>0?'R$ '+custoHora.toFixed(2).replace('.',','):'—'}</td>
+      <td class="td-custo" title="Custo total: R$ ${custoHora.toFixed(2)}">${custoHora>0?(()=>{const cpp=forcaHora>0&&volHora>0?custoHora/volHora:0;return 'R$ '+custoHora.toFixed(2).replace('.',',')+(cpp>0?'<br><span style="font-size:9px;color:var(--mu)">'+cpp.toFixed(2).replace('.',',')+'\/ped</span>':'');})():'—'}</td>
       <td class="td-forca"><span class="${forcaClass}">${forcaHora||'0'}</span></td>
       <td class="td-vpf"><span class="${vpfClass}">${forcaHora>0?vpf:volHora>0?'∞':'—'}</span></td>`;
 
@@ -1221,7 +1272,28 @@ if(window._INBOUND){
   if(!S.matrix){
     try{
       const s=localStorage.getItem(KCOL);
-      if(s){const p=JSON.parse(s);if(p?.mx){S.matrix=p.mx;const min=Math.round((Date.now()-p.ts)/60000);document.getElementById('dDot').style.background='var(--or)';document.getElementById('dLbl').textContent=`Cache: ${p.total?.toLocaleString()} ped`;document.getElementById('dSub').textContent=`há ${min}min`;}}
+      if(s){
+        const p=JSON.parse(s);
+        if(p?.mx){
+          // Só usa cache se for da semana correta
+          const{segAnt}=semanaAnterior();
+          const p2=v=>String(v).padStart(2,'0');
+          const fmtISO=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+          const periodoCorreto=fmtISO(segAnt);
+          if(p.de===periodoCorreto){
+            S.matrix=p.mx;
+            const min=Math.round((Date.now()-p.ts)/60000);
+            document.getElementById('dDot').style.background='var(--or)';
+            document.getElementById('dLbl').textContent=`Cache: ${p.total?.toLocaleString()} ped`;
+            document.getElementById('dSub').textContent=`há ${min}min`;
+          } else {
+            // Cache desatualizado — ignora silenciosamente
+            document.getElementById('dDot').style.background='var(--er,#ef4444)';
+            document.getElementById('dLbl').textContent='Dados desatualizados';
+            document.getElementById('dSub').textContent=`Cache: ${p.deBR||p.de} — use o botão 📊`;
+          }
+        }
+      }
     }catch(e){}
   }
   if(S.matrix&&S.escala){
