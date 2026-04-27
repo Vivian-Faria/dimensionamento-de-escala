@@ -1544,7 +1544,7 @@ function abrirPainelTurnos(){
             :'<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:600">⏳ Aguardando confirmação</span>';
           const nomeEsc=nome.replace(/'/g,"\'");
           const abatInput=st==='faltou'?'<input type="number" min="0" max="20" value="'+ha+'" placeholder="h" style="width:52px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:11px" onchange="setPtHorasAbat(\''+nomeEsc+'\',\''+segISO+'\',this.value)" title="Horas a abater"> <span style="font-size:10px;color:var(--mu)">h a abater</span>':'';
-          return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--brd);margin-top:6px">'
+          return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 0 4px;border-top:1px solid var(--brd);margin-top:6px;min-width:0">'
             +'<span style="font-size:10px;color:var(--mu);font-weight:600">Confirmação:</span>'
             +badge
             +'<button class="conf-btn'+(st==='confirmado'?' ok':'')+'" onclick="setPtConf(\''+nomeEsc+'\',\''+segISO+'\',\'confirmado\')" title="Confirmou">✅ Confirmou</button>'
@@ -1562,12 +1562,12 @@ function abrirPainelTurnos(){
   if(overlay)overlay.remove();
   overlay=document.createElement('div');
   overlay.id='painelTurnosModal';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;box-sizing:border-box';
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
 
   const {seg:s2,dom}=proximaSemana();
   overlay.innerHTML=`
-  <div style="background:var(--card);border-radius:14px;width:100%;max-width:780px;box-shadow:var(--shadow2);margin:auto">
+  <div style="background:var(--card);border-radius:14px;width:100%;max-width:780px;min-width:0;box-shadow:var(--shadow2);margin:auto;flex-shrink:0;box-sizing:border-box">
     <div style="padding:18px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-size:16px;font-weight:700">📋 Painel de Turnos</div>
@@ -1578,12 +1578,12 @@ function abrirPainelTurnos(){
     <style>
       .pt-card{border-bottom:1px solid var(--brd);padding:14px 20px}
       .pt-card:last-child{border:none}
-      .pt-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+      .pt-header{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;min-width:0}
       .pt-nome{font-weight:700;font-size:14px}
       .pt-func{font-size:10px;background:var(--acd);color:var(--ac);border-radius:5px;padding:2px 7px}
       .pt-info{font-size:11px;color:var(--mu);margin-left:auto}
-      .pt-slots{display:flex;flex-wrap:wrap;gap:6px}
-      .pt-slot{display:flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--brd);border-radius:7px;padding:5px 10px;font-size:12px}
+      .pt-slots{display:flex;flex-wrap:wrap;gap:6px;min-height:32px}
+      .pt-slot{display:flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--brd);border-radius:7px;padding:5px 10px;font-size:12px;cursor:grab;user-select:none}
       .pt-dia{font-weight:600;min-width:28px}
       .pt-hrs{font-family:var(--mo);font-size:11px;color:var(--bl)}
       .pt-dur{font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600}
