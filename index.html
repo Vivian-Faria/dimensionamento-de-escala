@@ -1030,6 +1030,10 @@ function renderEscala(){
     <td class="td-vpf" style="background:#1f2937"><span class="${vpfT}" style="font-size:12px">${vpfTotal||'—'}</span></td>
   </tr>`;
 
+  // Aplica filtro de dia se houver um ativo
+  if(typeof _diaFiltro!=='undefined'&&_diaFiltro!=='todos'){
+    renderEscalaFiltrada(_diaFiltro);
+  }
   atualizarCustoTotal();
 }
 
@@ -1184,44 +1188,126 @@ function addM(dia,h){
 }
 
 // ── Export
+// Armazena qual dia está filtrado (para renderEscala respeitar)
+let _diaFiltro='todos';
+
 function filtrarDiaEscala(dia){
+  _diaFiltro=dia;
+
   // Atualiza botões
   document.querySelectorAll('[id^="dvbtn-"]').forEach(b=>{
-    b.style.background='';b.style.color='';
-    b.className=b.id==='dvbtn-todos'&&dia==='todos'?'btn sm':'btn bs sm';
+    const isAtivo=(b.id==='dvbtn-'+dia)||(dia==='todos'&&b.id==='dvbtn-todos');
+    b.style.background=isAtivo?'var(--tx)':'';
+    b.style.color=isAtivo?'#fff':'';
+    b.className=isAtivo?'btn sm':'btn bs sm';
   });
-  const btn=document.getElementById('dvbtn-'+dia);
-  if(btn){btn.style.background='var(--tx)';btn.style.color='#fff';}
 
-  // Colunas da tabela: índices 1–7 são Seg–Dom
+  // Re-renderiza a tabela com os dados filtrados
+  renderEscalaFiltrada(dia);
+
+  // Cards da semana — mostra só o dia selecionado (ou todos)
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const tabela=document.getElementById('qHead')?.closest('table');
-  if(!tabela)return;
+  document.querySelectorAll('#semG .sd').forEach((c,i)=>{
+    c.style.display=(dia==='todos'||i===diasO.indexOf(dia))?'':'none';
+  });
+}
 
-  if(dia==='todos'){
-    // Mostra tudo
-    tabela.querySelectorAll('th, td').forEach(el=>{el.style.display='';});
-    // Restaura cards da semana
-    document.querySelectorAll('#semG .sd').forEach(c=>{c.style.display='';});
-    return;
+function renderEscalaFiltrada(dia){
+  if(!S.escala)return;
+  const hI=+document.getElementById('cHI').value||9;
+  const hO=+document.getElementById('cHO').value||25;
+  const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  // No modo dia único exibe só aquele dia; no modo semana exibe todos
+  const diasVis=dia==='todos'?diasO:[dia];
+
+  // ── CABEÇALHO
+  const head=document.getElementById('qHead');
+  head.innerHTML=`<tr class="q-head">
+    <th class="h-hora" rowspan="2">Hora</th>
+    ${diasVis.map(d=>`<th colspan="1">${d}</th>`).join('')}
+    <th class="h-sep" rowspan="2">Volume<br>${dia==='todos'?'Total':'Dia'}</th>
+    <th class="h-sep" rowspan="2">Custo/h<br>e /ped</th>
+    <th class="h-sep" rowspan="2">Força<br>p/h</th>
+    <th class="h-sep" rowspan="2">V/Força</th>
+  </tr>`;
+
+  // ── CORPO
+  const body=document.getElementById('qBody');
+  body.innerHTML='';
+  let totVol=0,totCusto=0,totForca=0;
+
+  for(let h=hI;h<=hO;h++){
+    const tr=document.createElement('tr');
+    const isAb=(h===hI);
+    const isFech=(h>=21);
+    if(isAb)tr.className='ab-row';
+    else if(isFech)tr.className='fech-row';
+    tr.innerHTML=`<td class="td-hora">${fH(h)}${isAb?' 🔑':''}${isFech&&!isAb?' 🌙':''}</td>`;
+
+    let volHora=0,custoHora=0,forcaHora=0;
+
+    diasVis.forEach(d=>{
+      const cell=S.escala[d]?.[h];
+      if(!cell){tr.innerHTML+='<td class="td-dia" style="color:var(--m2);font-size:10px;text-align:center">—</td>';return;}
+      const dc=cell.ped===0?'vol-0':cell.ped<20?'vol-1':cell.ped<60?'vol-2':'vol-3';
+      const falta=cell.alocados.length<cell.pessoas&&cell.pessoas>0;
+      const semPessoa=cell.alocados.length===0;
+      const pills=cell.alocados.map(n=>{
+        const isK=n==='Kayky';
+        return`<span class="wp ${isK?'wp-kayky':falta?'wp-warn':'wp-normal'}" onclick="rmA('${d}',${h},'${n.replace(/'/g,"\'")}')">
+          ${isK?'★ ':''}${n.split(' ')[0]}<span style="opacity:.5;font-size:9px;margin-left:3px">×</span></span>`;
+      }).join('');
+      tr.innerHTML+=`<td class="td-dia">
+        <div class="dem-info">
+          <span class="dm ${dc}" style="font-family:var(--mo);font-size:10px;font-weight:600">${cell.ped}</span>
+          <span style="font-family:var(--mo);font-size:10px;background:${semPessoa?'#fee2e2':cell.alocados.length>=cell.pessoas?'#dcfce7':'#fef3c7'};color:${semPessoa?'#dc2626':cell.alocados.length>=cell.pessoas?'#166534':'#92400e'};padding:1px 5px;border-radius:4px;font-weight:700">${cell.alocados.length}</span>
+          ${falta&&cell.alocados.length>0?'<span style="font-size:9px;color:#d97706">⚠</span>':''}
+          ${semPessoa?'<span style="font-size:9px;color:#dc2626;font-weight:700">SEM COBERTURA</span>':''}
+        </div>
+        <div class="slot">${pills}<span class="add-b" onclick="addM('${d}',${h})">+</span></div>
+      </td>`;
+      volHora+=cell.ped;
+      custoHora+=cell.custo||0;
+      forcaHora+=cell.alocados.length;
+    });
+
+    // Métricas recalculadas só com os dias visíveis
+    const vpf=forcaHora>0?Math.round(volHora/forcaHora):volHora;
+    const vpfClass=forcaHora===0?'vpf-empty':vpf<=30?'vpf-ok':vpf<=50?'vpf-warn':'vpf-crit';
+    const forcaClass=forcaHora===0?'forca-vazio':forcaHora<=2?'forca-warn':'forca-ok';
+    const cpp=custoHora>0&&volHora>0?custoHora/volHora:0;
+    const custoCell=custoHora>0
+      ?`<span style="font-size:11px;font-weight:700;color:#fbbf24">R$ ${custoHora.toFixed(2).replace('.',',')}</span><br><span style="font-size:10px;color:#9ca3af">${cpp.toFixed(2).replace('.',',')}/ped</span>`
+      :'<span style="color:var(--mu)">—</span>';
+
+    tr.innerHTML+=`
+      <td class="td-volume"><span class="${volHora===0?'vol-0':volHora<140?'vol-1':volHora<400?'vol-2':'vol-3'}">${volHora||'—'}</span></td>
+      <td class="td-custo" style="text-align:center;line-height:1.6">${custoCell}</td>
+      <td class="td-forca"><span class="${forcaClass}">${forcaHora||'0'}</span></td>
+      <td class="td-vpf"><span class="${vpfClass}">${forcaHora>0?vpf:volHora>0?'∞':'—'}</span></td>`;
+
+    body.appendChild(tr);
+    totVol+=volHora;totCusto+=custoHora;totForca+=forcaHora;
   }
 
-  // Esconde colunas dos outros dias
-  const idx=diasO.indexOf(dia)+1; // +1 porque col 0 é "Hora"
-  tabela.querySelectorAll('tr').forEach(row=>{
-    const cells=row.querySelectorAll('th,td');
-    cells.forEach((cell,i)=>{
-      // Colunas 1–7 = dias, 8+ = totais (manter visíveis)
-      if(i>=1&&i<=7){
-        cell.style.display=(i===idx)?'':'none';
-      }
-    });
-  });
-
-  // Destaca só o card do dia selecionado
-  document.querySelectorAll('#semG .sd').forEach((c,i)=>{
-    c.style.display=(i===diasO.indexOf(dia))?'':'none';
-  });
+  // ── RODAPÉ recalculado
+  const foot=document.getElementById('qFoot');
+  const horasAtivas=hO-hI+1;
+  const vpfTotal=totForca>0?Math.round(totVol/totForca):0;
+  const vpfT=vpfTotal<=30?'vpf-ok':vpfTotal<=50?'vpf-warn':'vpf-crit';
+  const cppTotal=totCusto>0&&totVol>0?totCusto/totVol:0;
+  foot.innerHTML=`<tr class="tot-row">
+    <td><strong>${dia==='todos'?'TOTAL':dia.toUpperCase()}</strong></td>
+    ${Array(diasVis.length).fill('<td></td>').join('')}
+    <td class="td-volume" style="background:#1f2937;color:#fff;font-weight:700">${totVol.toLocaleString()}</td>
+    <td class="td-custo" style="background:#1f2937;text-align:center;line-height:1.8">
+      ${totCusto>0
+        ?`<span style="font-size:11px;font-weight:700;color:#fbbf24">R$ ${totCusto.toFixed(2).replace('.',',')}</span><br><span style="font-size:10px;color:#9ca3af">méd: ${cppTotal.toFixed(2).replace('.',',')}/ped</span>`
+        :'<span style="color:#6b7280">—</span>'}
+    </td>
+    <td class="td-forca" style="background:#1f2937;color:#86efac;font-weight:700">${Math.round(totForca/horasAtivas*10)/10}<span style="font-size:9px;opacity:.6"> méd/h</span></td>
+    <td class="td-vpf" style="background:#1f2937"><span class="${vpfT}" style="font-size:12px">${vpfTotal||'—'}</span></td>
+  </tr>`;
 }
 
 function abrirPainelTurnos(){
