@@ -239,7 +239,39 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 .hist-dias{padding:14px 18px;display:flex;gap:8px;flex-wrap:wrap}
 .hist-dia-chip{background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer;transition:.15s}
 .hist-dia-chip:hover{border-color:var(--ac);color:var(--ac)}
-.hist-actions{padding:10px 18px;display:flex;gap:8px;border-top:1px solid var(--brd)}
+.hist-actions{padding:10px 18px;display:flex;gap:8px;border-top:1px solid var(--brd);flex-wrap:wrap}
+
+/* Drag & drop no painel de turnos */
+.pt-slot{cursor:grab;transition:.15s}
+.pt-slot:active{cursor:grabbing}
+.pt-slot.dragging{opacity:.4;transform:scale(.95)}
+.pt-slot.drag-over{border-color:var(--ac)!important;background:#f0fdf4!important}
+.pt-card.drop-target{border:2px dashed var(--ac);background:rgba(var(--ac-rgb,.5,.8,.2),.06)}
+.pt-card.drop-target .pt-slots{min-height:40px}
+
+/* Confirmação e faltas */
+.conf-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--brd)}
+.conf-row:last-child{border:none}
+.conf-nome{font-size:12px;font-weight:600}
+.conf-status{display:flex;gap:6px;align-items:center}
+.conf-btn{font-size:10px;padding:3px 9px;border-radius:5px;border:1px solid var(--brd);cursor:pointer;font-family:var(--fn);font-weight:600;transition:.15s;background:var(--card)}
+.conf-btn:hover{filter:brightness(.95)}
+.conf-btn.ok{background:#dcfce7;color:#166534;border-color:#86efac}
+.conf-btn.faltou{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
+.conf-btn.pendente{background:#fef3c7;color:#92400e;border-color:#fde68a}
+
+/* Filtro histórico */
+.hist-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:14px 0 10px}
+.hist-filter-btn{font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid var(--brd);background:var(--card);cursor:pointer;font-family:var(--fn);font-weight:600;transition:.15s}
+.hist-filter-btn.on{background:var(--tx);color:#fff;border-color:var(--tx)}
+.hist-filter-btn:hover:not(.on){border-color:var(--ac)}
+
+/* Badge confirmação no histórico */
+.conf-badge{font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:4px}
+.cb-ok{background:#dcfce7;color:#166534}
+.cb-faltou{background:#fee2e2;color:#991b1b}
+.cb-pendente{background:#fef3c7;color:#92400e}
+.cb-abatido{background:#f3f4f6;color:#6b7280}
 </style>
 </head>
 <body>
@@ -1463,7 +1495,12 @@ function abrirPainelTurnos(){
       return grupos.map(gr=>{
         totalH+=gr.horas;
         const dr=dataReal(dia);
-        return `<div class="pt-slot">
+        const slotId=`slot_${nome.replace(/\s/g,'_')}_${dia}_${gr.ini}`;
+        return `<div class="pt-slot" id="${slotId}"
+          draggable="true"
+          data-nome="${nome}" data-dia="${dia}" data-ini="${gr.ini}" data-fim="${gr.fim}" data-dur="${gr.horas}"
+          ondragstart="ptDragStart(event,this)"
+          ondragend="ptDragEnd(event,this)">
           <span class="pt-dia">${dia} <span style="opacity:.6;font-size:10px">${dr}</span></span>
           <span class="pt-hrs">${fH(gr.ini)} – ${fH(gr.fim)}</span>
           <span class="pt-dur">${gr.horas}h</span>
@@ -1481,7 +1518,12 @@ function abrirPainelTurnos(){
         <span class="pt-info">${totalH}h na semana${custoTotal>0?' · R$ '+custoTotal.toFixed(2).replace('.',','):''}</span>
         <button class="btn bs sm" onclick="copiarTurno('${nome.replace(/'/g,"\\'")}')">📋 Copiar</button>
       </div>
-      <div class="pt-slots">${diasHtml||'<span style="color:var(--mu);font-size:11px">Sem alocação</span>'}</div>
+      <div class="pt-slots"
+        data-colab-nome="${nome}"
+        ondragover="ptDragOver(event,this)"
+        ondragleave="ptDragLeave(event,this)"
+        ondrop="ptDrop(event,this)"
+      >${diasHtml||'<span style="color:var(--mu);font-size:11px">Sem alocação</span>'}</div>
     </div>`;
   });
 
@@ -1520,6 +1562,82 @@ function abrirPainelTurnos(){
   </div>`;
 
   document.body.appendChild(overlay);
+}
+
+// ── Drag & drop no Painel de Turnos
+// Quando o usuário arrastar um turno de A para o card de B:
+//   - Todas as horas daquele turno são removidas de A na escala
+//   - As mesmas horas são atribuídas a B
+//   - O painel é re-renderizado
+
+let _ptDragData=null;
+
+function ptDragStart(e, el){
+  _ptDragData={
+    nome:    el.dataset.nome,
+    dia:     el.dataset.dia,
+    ini:     parseInt(el.dataset.ini),
+    fim:     parseInt(el.dataset.fim),
+  };
+  el.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain', JSON.stringify(_ptDragData));
+}
+
+function ptDragEnd(e, el){
+  el.classList.remove('dragging');
+  document.querySelectorAll('.pt-card.drop-target').forEach(c=>c.classList.remove('drop-target'));
+  document.querySelectorAll('.pt-slot.drag-over').forEach(s=>s.classList.remove('drag-over'));
+}
+
+function ptDragOver(e, el){
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  el.closest('.pt-card')?.classList.add('drop-target');
+}
+
+function ptDragLeave(e, el){
+  // Só remove se realmente saiu do card
+  if(!el.contains(e.relatedTarget)){
+    el.closest('.pt-card')?.classList.remove('drop-target');
+  }
+}
+
+function ptDrop(e, el){
+  e.preventDefault();
+  el.closest('.pt-card')?.classList.remove('drop-target');
+  if(!_ptDragData)return;
+
+  const destNome=el.dataset.colabNome;
+  const {nome:oriNome, dia, ini, fim}=_ptDragData;
+
+  if(destNome===oriNome){toast('O colaborador já está neste turno.','ter');return;}
+  if(!S.escala){toast('Escala não encontrada.','ter');return;}
+
+  // Troca na escala: remove oriNome e adiciona destNome em cada hora do turno
+  let trocados=0;
+  for(let h=ini;h<fim;h++){
+    const cell=S.escala[dia]?.[h];
+    if(!cell)continue;
+    // Remove origem
+    cell.alocados=cell.alocados.filter(n=>n!==oriNome);
+    // Adiciona destino se não estiver já
+    if(!cell.alocados.includes(destNome)){
+      cell.alocados.push(destNome);
+      trocados++;
+    }
+  }
+
+  if(trocados>0){
+    calcularCustos();
+    save();
+    toast(`✅ Turno de ${oriNome} transferido para ${destNome} (${dia} ${fH(ini)}–${fH(fim)}).`,'tok');
+    // Re-abre o painel já atualizado
+    setTimeout(()=>abrirPainelTurnos(),300);
+  } else {
+    toast(`${destNome} já está nesse turno.`,'ter');
+  }
+  _ptDragData=null;
 }
 
 // Copia o turno de um colaborador formatado para texto (para enviar por WhatsApp/mensagem)
@@ -1609,6 +1727,10 @@ function publicarEscala(){
     forcaPorDia[dia]=[...fDia];
   });
 
+  // Monta mapa de confirmações: colaborador → {status:'pendente'|'confirmado'|'faltou', horasAbatidas:0}
+  const confirmacoes={};
+  Object.values(forcaPorDia).flat().forEach(nome=>{if(!confirmacoes[nome])confirmacoes[nome]={status:'pendente',horasAbatidas:0};});
+
   const entrada={
     id: Date.now().toString(),
     semana: fmt(seg)+' – '+fmt(dom),
@@ -1618,7 +1740,8 @@ function publicarEscala(){
     status: 'publicado',
     resumo:{totalPed,totalCusto,slots,mediaForca:totalForca>0?Math.round(totalForca/slots*10)/10:0},
     forcaPorDia,
-    escala: JSON.parse(JSON.stringify(S.escala)), // cópia profunda
+    confirmacoes,
+    escala: JSON.parse(JSON.stringify(S.escala)),
     colabs: JSON.parse(JSON.stringify(S.colabs)),
   };
 
@@ -1638,25 +1761,84 @@ function publicarEscala(){
   setTimeout(()=>{goT('hi');renderHistorico();},600);
 }
 
-function renderHistorico(){
+// Filtro de período ativo no histórico (padrão: 2 meses)
+let _histFiltro=60;
+
+function renderHistorico(filtro){
+  if(filtro!==undefined)_histFiltro=filtro;
   const con=document.getElementById('hiCon');
   if(!con)return;
   let hist=[];
   try{hist=JSON.parse(localStorage.getItem(KH)||'[]');}catch(e){}
 
-  if(!hist.length){
-    con.innerHTML='<div class="hist-empty"><div style="font-size:44px;margin-bottom:12px">📭</div><h3 style="color:var(--tx);font-size:16px;font-weight:600;margin-bottom:6px">Nenhuma escala publicada</h3><p style="font-size:12px;line-height:1.7">Preencha a escala da semana e clique em <strong>✅ Publicar escala</strong><br>para arquivá-la aqui.</p></div>';
+  // Aplica filtro de data
+  const agora=Date.now();
+  const filtrado=hist.filter(h=>{
+    const diff=(agora-new Date(h.segISO).getTime())/(1000*60*60*24);
+    return diff<=_histFiltro;
+  });
+
+  // Barra de filtro
+  const filtros=[{v:14,l:'14 dias'},{v:30,l:'1 mês'},{v:60,l:'2 meses'},{v:9999,l:'Tudo'}];
+  const filterBar=`<div class="hist-filter">
+    <span style="font-size:11px;color:var(--mu);font-weight:600">Período:</span>
+    ${filtros.map(f=>`<button class="hist-filter-btn${_histFiltro===f.v?' on':''}" onclick="renderHistorico(${f.v})">${f.l}</button>`).join('')}
+    <span style="font-size:11px;color:var(--mu);margin-left:auto">${filtrado.length} escala${filtrado.length!==1?'s':''} encontrada${filtrado.length!==1?'s':''}</span>
+  </div>`;
+
+  if(!filtrado.length){
+    con.innerHTML=filterBar+'<div class="hist-empty"><div style="font-size:44px;margin-bottom:12px">📭</div><h3 style="color:var(--tx);font-size:16px;font-weight:600;margin-bottom:6px">'+(!hist.length?'Nenhuma escala publicada':'Nenhuma escala neste período')+'</h3><p style="font-size:12px;line-height:1.7">'+(!hist.length?'Preencha a escala da semana e clique em <strong>✅ Publicar escala</strong><br>para arquivá-la aqui.':'Tente ampliar o filtro de período.')+'</p></div>';
     return;
   }
+  // Usa filtrado no lugar de hist para o render
+  hist=filtrado;
+  // (continua abaixo com hist já filtrado)
+  const _renderBody=(hist)=>{
 
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  con.innerHTML=hist.map(h=>{
+  const cards=hist.map(h=>{
     const cpp=h.resumo.totalCusto>0&&h.resumo.totalPed>0?(h.resumo.totalCusto/h.resumo.totalPed).toFixed(2).replace('.',','):null;
+    const confs=h.confirmacoes||{};
+    const totalColab=Object.keys(confs).length;
+    const confirmados=Object.values(confs).filter(c=>c.status==='confirmado').length;
+    const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
+    const pendentes=totalColab-confirmados-faltaram;
+    const horasAbatidas=Object.values(confs).reduce((s,c)=>s+(c.horasAbatidas||0),0);
+    const custoAbatido=horasAbatidas>0?(()=>{
+      let tot=0;
+      Object.entries(confs).forEach(([nome,c])=>{
+        if((c.horasAbatidas||0)>0){
+          const colab=h.colabs?.find(x=>x.nome===nome);
+          if(colab&&colab.custo>0)tot+=colab.custo*(c.horasAbatidas||0);
+        }
+      });
+      return tot;
+    })():0;
+
     const diaChips=diasO.map(d=>{
       const nomes=h.forcaPorDia?.[d]||[];
       if(!nomes.length)return'';
-      return`<span class="hist-dia-chip" onclick="verDiaHistorico('${h.id}','${d}')" title="Ver ${d} em detalhe">${d} · <strong>${nomes.length}</strong> pessoa${nomes.length!==1?'s':''}</span>`;
+      return`<span class="hist-dia-chip" onclick="verDiaHistorico('${h.id}','${d}')" title="Ver ${d} em detalhe">${d} · <strong>${nomes.length}</strong></span>`;
     }).join('');
+
+    // Mini painel de confirmações
+    const confRows=Object.entries(confs).map(([nome,c])=>{
+      const st=c.status||'pendente';
+      const ha=c.horasAbatidas||0;
+      const colab=h.colabs?.find(x=>x.nome===nome);
+      const custoH=colab?.custo||0;
+      return`<div class="conf-row">
+        <span class="conf-nome">${nome}${ha>0?`<span class="conf-badge cb-abatido">-${ha}h abatida${ha!==1?'s':''}</span>`:''}</span>
+        <div class="conf-status">
+          ${st==='pendente'?`<span style="font-size:10px;color:#92400e">⏳ Pendente</span>`:''}
+          <button class="conf-btn${st==='confirmado'?' ok':''}" onclick="setConfirmacao('${h.id}','${nome}','confirmado')" title="Confirmou">✅</button>
+          <button class="conf-btn${st==='faltou'?' faltou':''}" onclick="setConfirmacao('${h.id}','${nome}','faltou')" title="Faltou">❌</button>
+          ${st==='faltou'?`<input type="number" min="0" max="20" value="${ha}" placeholder="h" style="width:40px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)" onchange="setHorasAbatidas('${h.id}','${nome}',this.value)" title="Horas a abater">`:''}
+          ${ha>0&&custoH>0?`<span style="font-size:10px;color:#dc2626">-R$ ${(custoH*ha).toFixed(2).replace('.',',')}</span>`:''}
+        </div>
+      </div>`;
+    }).join('');
+
     return`<div class="hist-card">
       <div class="hist-head">
         <span style="font-size:20px">📅</span>
@@ -1665,23 +1847,36 @@ function renderHistorico(){
           <div style="font-size:10px;color:var(--mu);margin-top:1px">Publicado em ${h.publicadoEm}</div>
         </div>
         <span class="hist-badge hb-pub">✅ Publicada</span>
-        <div class="hist-meta"></div>
+        ${confirmados>0?`<span class="hist-badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac">${confirmados}/${totalColab} ✅</span>`:''}
+        ${faltaram>0?`<span class="hist-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">${faltaram} faltou</span>`:''}
+        ${horasAbatidas>0?`<span class="hist-badge" style="background:#f3f4f6;color:#6b7280">-${horasAbatidas}h / ${custoAbatido>0?'-R$'+custoAbatido.toFixed(2).replace('.',','):''}</span>`:''}
       </div>
       <div class="hist-resumo">
         <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
         <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
         <div class="hist-stat"><div class="hist-stat-v">${h.resumo.mediaForca||'—'}</div><div class="hist-stat-l">média força/h</div></div>
-        <div class="hist-stat"><div class="hist-stat-v">${h.resumo.totalCusto>0?'R$'+(h.resumo.totalCusto).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,'.'):'—'}</div><div class="hist-stat-l">custo total</div></div>
+        <div class="hist-stat"><div class="hist-stat-v">${h.resumo.totalCusto>0?'R$ '+(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo${custoAbatido>0?' (líq.)':''}</div></div>
         ${cpp?`<div class="hist-stat"><div class="hist-stat-v">R$ ${cpp}</div><div class="hist-stat-l">custo/pedido</div></div>`:''}
       </div>
       ${diaChips?`<div class="hist-dias">${diaChips}</div>`:''}
+      <!-- Confirmações -->
+      <details style="border-top:1px solid var(--brd)">
+        <summary style="padding:10px 18px;cursor:pointer;font-size:12px;font-weight:600;list-style:none;display:flex;align-items:center;gap:6px">
+          <span>👥 Confirmações</span>
+          <span style="font-size:10px;color:var(--mu);font-weight:400">${pendentes>0?`${pendentes} pendente${pendentes!==1?'s':''}`:confirmados===totalColab&&totalColab>0?'Todos confirmados ✅':'—'}</span>
+        </summary>
+        <div style="padding:0 18px 12px">${confRows}</div>
+      </details>
       <div class="hist-actions">
         <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">🔍 Ver escala completa</button>
-        <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar como atual</button>
+        <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
         <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
       </div>
     </div>`;
   }).join('');
+  con.innerHTML=filterBar+cards;
+  };
+  _renderBody(hist);
 }
 
 function verDiaHistorico(id,dia){
@@ -1806,6 +2001,29 @@ function excluirHistorico(id){
   localStorage.setItem(KH,JSON.stringify(hist));
   renderHistorico();
   toast('Removido do histórico.','tok');
+}
+
+function setConfirmacao(histId, nome, status){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h)return;
+  if(!h.confirmacoes)h.confirmacoes={};
+  if(!h.confirmacoes[nome])h.confirmacoes[nome]={status:'pendente',horasAbatidas:0};
+  h.confirmacoes[nome].status=status;
+  // Se voltou a confirmado, zera horas abatidas
+  if(status==='confirmado')h.confirmacoes[nome].horasAbatidas=0;
+  localStorage.setItem(KH,JSON.stringify(hist));
+  renderHistorico();
+}
+
+function setHorasAbatidas(histId, nome, horas){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome])return;
+  h.confirmacoes[nome].horasAbatidas=parseFloat(horas)||0;
+  localStorage.setItem(KH,JSON.stringify(hist));
+  // Re-renderiza silenciosamente (sem recriar tudo) — apenas atualiza badges
+  renderHistorico();
 }
 
 function limparHistorico(){
