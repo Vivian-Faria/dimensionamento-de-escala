@@ -1758,9 +1758,36 @@ function publicarEscala(){
     forcaPorDia[dia]=[...fDia];
   });
 
-  // Monta mapa de confirmações: colaborador → {status:'pendente'|'confirmado'|'faltou', horasAbatidas:0}
+  // Monta mapa de confirmações detalhadas: por colaborador, por dia, por turno
+  // Estrutura: confirmacoes[nome] = { status, turnos: [{dia, ini, fim, horas, faltou, horasAbatidas}] }
+  const hIp=+document.getElementById('cHI').value||9;
+  const hOp=+document.getElementById('cHO').value||25;
   const confirmacoes={};
-  Object.values(forcaPorDia).flat().forEach(nome=>{if(!confirmacoes[nome])confirmacoes[nome]={status:'pendente',horasAbatidas:0};});
+  // Para cada colaborador escalado, monta seus turnos
+  const allNomes=new Set(Object.values(forcaPorDia).flat());
+  allNomes.forEach(nome=>{
+    const turnosDoColab=[];
+    diasO.forEach(dia=>{
+      const horasDia=[];
+      for(let h=hIp;h<=hOp;h++){
+        const cell=S.escala[dia]?.[h];
+        if(cell&&cell.alocados.includes(nome))horasDia.push(h);
+      }
+      if(!horasDia.length)return;
+      // Agrupa consecutivos
+      const sorted=[...horasDia].sort((a,b)=>a-b);
+      let g=[sorted[0]];
+      for(let i=1;i<sorted.length;i++){
+        if(sorted[i]===sorted[i-1]+1)g.push(sorted[i]);
+        else{
+          turnosDoColab.push({dia,ini:g[0],fim:g[g.length-1]+1,horas:g.length,faltou:false,horasAbatidas:0});
+          g=[sorted[i]];
+        }
+      }
+      turnosDoColab.push({dia,ini:g[0],fim:g[g.length-1]+1,horas:g.length,faltou:false,horasAbatidas:0});
+    });
+    confirmacoes[nome]={status:'pendente',turnos:turnosDoColab};
+  });
 
   const entrada={
     id: Date.now().toString(),
@@ -1852,21 +1879,46 @@ function renderHistorico(filtro){
       return`<span class="hist-dia-chip" onclick="verDiaHistorico('${h.id}','${d}')" title="Ver ${d} em detalhe">${d} · <strong>${nomes.length}</strong></span>`;
     }).join('');
 
-    // Mini painel de confirmações
+    // Painel de confirmações com faltas por turno individual
     const confRows=Object.entries(confs).map(([nome,c])=>{
       const st=c.status||'pendente';
-      const ha=c.horasAbatidas||0;
       const colab=h.colabs?.find(x=>x.nome===nome);
       const custoH=colab?.custo||0;
-      return`<div class="conf-row">
-        <span class="conf-nome">${nome}${ha>0?`<span class="conf-badge cb-abatido">-${ha}h abatida${ha!==1?'s':''}</span>`:''}</span>
-        <div class="conf-status">
-          ${st==='pendente'?`<span style="font-size:10px;color:#92400e">⏳ Pendente</span>`:''}
-          <button class="conf-btn${st==='confirmado'?' ok':''}" onclick="setConfirmacao('${h.id}','${nome}','confirmado')" title="Confirmou">✅</button>
-          <button class="conf-btn${st==='faltou'?' faltou':''}" onclick="setConfirmacao('${h.id}','${nome}','faltou')" title="Faltou">❌</button>
-          ${st==='faltou'?`<input type="number" min="0" max="20" value="${ha}" placeholder="h" style="width:40px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)" onchange="setHorasAbatidas('${h.id}','${nome}',this.value)" title="Horas a abater">`:''}
-          ${ha>0&&custoH>0?`<span style="font-size:10px;color:#dc2626">-R$ ${(custoH*ha).toFixed(2).replace('.',',')}</span>`:''}
+      const turnos=c.turnos||[];
+      const totalAbat=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
+      const custoAbat=custoH*totalAbat;
+
+      // Linhas por turno individual
+      const turnoRows=turnos.map(t=>{
+        const tid=`${h.id}_${nome.replace(/\s/g,'_')}_${t.dia}_${t.ini}`;
+        return`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap">
+          <span style="font-size:11px;min-width:26px;color:var(--mu);font-weight:600">${t.dia}</span>
+          <span style="font-family:var(--mo);font-size:11px">${fH(t.ini)}–${fH(t.fim)}</span>
+          <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600">${t.horas}h</span>
+          <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px">
+            <input type="checkbox" ${t.faltou?'checked':''}
+              onchange="toggleFaltaTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.checked)"
+              style="cursor:pointer;accent-color:#dc2626">
+            Faltou
+          </label>
+          ${t.faltou?`<input type="number" min="0" max="${t.horas}" value="${t.horasAbatidas||t.horas}" placeholder="h"
+            style="width:44px;padding:2px 5px;border:1px solid #fca5a5;border-radius:5px;font-size:11px;font-family:var(--fn);color:#dc2626"
+            onchange="setHorasAbatadasTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.value)"
+            title="Horas abatidas por falta">
+          <span style="font-size:10px;color:#dc2626">${custoH>0?'-R$ '+(custoH*(t.horasAbatidas||t.horas)).toFixed(2).replace('.',','):''}</span>`:''}
+        </div>`;
+      }).join('');
+
+      return`<div class="conf-row" style="flex-direction:column;align-items:stretch;gap:4px;padding:10px 0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="conf-nome">${nome}</span>
+          <span class="conf-btn${st==='confirmado'?' ok':st==='faltou'?' faltou':' pendente'}" style="font-size:10px">
+            ${st==='confirmado'?'✅ Confirmado':st==='faltou'?'⚠ Tem falta':'⏳ Pendente'}
+          </span>
+          ${totalAbat>0?'<span style="font-size:10px;color:#dc2626;margin-left:auto">-'+totalAbat+'h'+(custoAbat>0?' · -R$ '+custoAbat.toFixed(2).replace('.',','):'')+'</span>':''}
+          <button class="conf-btn ok" style="font-size:10px;margin-left:${totalAbat>0?'0':'auto'}" onclick="setConfirmacao('${h.id}','${nome.replace(/'/g,"\'")}','confirmado')">✅ Confirmou tudo</button>
         </div>
+        ${turnoRows}
       </div>`;
     }).join('');
 
@@ -2056,6 +2108,36 @@ function setPtHorasAbat(nome, segISO, horas){
   h.confirmacoes[nome].horasAbatidas=parseFloat(horas)||0;
   localStorage.setItem(KH,JSON.stringify(hist));
   toast(`⚠ ${horas}h abatidas para ${nome}.`,'tok');
+}
+
+function toggleFaltaTurno(histId, nome, ini, dia, faltou){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome])return;
+  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===ini);
+  if(!t)return;
+  t.faltou=faltou;
+  if(faltou&&t.horasAbatidas===0)t.horasAbatidas=t.horas; // padrão: abate tudo
+  if(!faltou)t.horasAbatidas=0;
+  // Atualiza status geral do colaborador
+  const temFalta=h.confirmacoes[nome].turnos.some(x=>x.faltou);
+  h.confirmacoes[nome].status=temFalta?'faltou':'pendente';
+  // Recalcula total abatido
+  h.confirmacoes[nome].horasAbatidas=h.confirmacoes[nome].turnos.reduce((s,x)=>s+(x.horasAbatidas||0),0);
+  localStorage.setItem(KH,JSON.stringify(hist));
+  renderHistorico();
+}
+
+function setHorasAbatadasTurno(histId, nome, ini, dia, horas){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome])return;
+  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===ini);
+  if(!t)return;
+  t.horasAbatidas=Math.min(parseFloat(horas)||0, t.horas);
+  h.confirmacoes[nome].horasAbatidas=h.confirmacoes[nome].turnos.reduce((s,x)=>s+(x.horasAbatidas||0),0);
+  localStorage.setItem(KH,JSON.stringify(hist));
+  renderHistorico();
 }
 
 function setConfirmacao(histId, nome, status){
