@@ -212,6 +212,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 .leg{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
 .leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mu)}
 .leg-s{width:12px;height:12px;border-radius:3px}
+.badge-fixo{display:inline-flex;align-items:center;gap:3px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:600}
 </style>
 </head>
 <body>
@@ -258,6 +259,35 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div class="fg"><label>Máx. horas por dia</label><input id="fMaxH" type="number" min="1" max="16" value="8"></div>
   </div>
   <div class="fg"><label>Observações / regras específicas</label><textarea id="fNo" placeholder="Ex: Fixo no fechamento, só dias pares..."></textarea></div>
+
+  <!-- TURNO FIXO -->
+  <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div>
+        <div style="font-size:12px;font-weight:600">Turno fixo</div>
+        <div style="font-size:10px;color:var(--mu);margin-top:1px">Será alocado automaticamente nesses horários, independente da demanda</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+        <input type="checkbox" id="fFixo" onchange="toggleFixoUI(this.checked)" style="width:15px;height:15px;cursor:pointer">
+        Ativar
+      </label>
+    </div>
+    <div id="fixoUI" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:100px" class="fg"><label>Hora início</label><input id="fFixoHI" type="number" min="0" max="23" value="9" placeholder="9"></div>
+        <div style="flex:1;min-width:100px" class="fg"><label>Hora fim</label><input id="fFixoHO" type="number" min="1" max="30" value="18" placeholder="18"></div>
+      </div>
+      <div class="fg"><label>Dias do turno fixo</label>
+        <div class="dtr" id="fixoDtogs">
+          <span class="dt" data-fd="Seg">Seg</span><span class="dt" data-fd="Ter">Ter</span>
+          <span class="dt" data-fd="Qua">Qua</span><span class="dt" data-fd="Qui">Qui</span>
+          <span class="dt" data-fd="Sex">Sex</span><span class="dt" data-fd="Sab">Sáb</span>
+          <span class="dt" data-fd="Dom">Dom</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="mf">
     <button class="btn bd" onclick="fM()">Cancelar</button>
     <button class="btn ba" onclick="salvarC()">Salvar colaborador</button>
@@ -457,14 +487,14 @@ const BM_SCRIPT=`(async()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 // ── Colaboradores padrão com regras detalhadas
 const COLAB_DEF=[
   {id:'1', nome:'Rafael',       funcao:'Colaborador', custo:0, dias:['Dom','Seg','Ter','Qua','Qui','Sex','Sab'], horaIn:9,  horaOut:24, minH:3, maxH:12, fixo:false, nota:'Disponível todos os dias a partir das 09h. Pode exceder 8h em casos pontuais.'},
-  {id:'2', nome:'Kayky',        funcao:'Fechamento',  custo:0, dias:['Seg','Ter','Qua','Qui'],                  horaIn:21, horaOut:26, minH:4, maxH:5,  fixo:true,  nota:'FIXO: Seg–Qui 21:00–01:20. Não pode alterar.'},
-  {id:'3', nome:'Kayky (FDS)',  funcao:'Colaborador', custo:0, dias:['Sab','Dom'],                              horaIn:9,  horaOut:17, minH:3, maxH:8,  fixo:true,  nota:'FIXO: Sáb e Dom 09:00–17:00.'},
-  {id:'4', nome:'Gabriel',      funcao:'Colaborador', custo:0, dias:['Qua','Sex','Sab'],                        horaIn:18, horaOut:25, minH:3, maxH:8,  fixo:true,  nota:'FIXO: Qua e Sex noite a partir de 18h. Sáb só de dia (09–18h).'},
+  {id:'2', nome:'Kayky',        funcao:'Fechamento',  custo:0, dias:['Seg','Ter','Qua','Qui'],                  horaIn:21, horaOut:26, minH:4, maxH:5,  fixo:true,  turnosFixos:[{dias:['Seg','Ter','Qua','Qui'],horaIn:21,horaOut:26}], nota:'FIXO: Seg–Qui 21:00–01:20. Não pode alterar.'},
+  {id:'3', nome:'Kayky (FDS)',  funcao:'Colaborador', custo:0, dias:['Sab','Dom'],                              horaIn:9,  horaOut:17, minH:3, maxH:8,  fixo:true,  turnosFixos:[{dias:['Sab','Dom'],horaIn:9,horaOut:17}], nota:'FIXO: Sáb e Dom 09:00–17:00.'},
+  {id:'4', nome:'Gabriel',      funcao:'Colaborador', custo:0, dias:['Qua','Sex','Sab'],                        horaIn:18, horaOut:25, minH:3, maxH:8,  fixo:true,  turnosFixos:[{dias:['Qua','Sex'],horaIn:18,horaOut:25},{dias:['Sab'],horaIn:9,horaOut:18}], nota:'FIXO: Qua e Sex noite a partir de 18h. Sáb só de dia (09–18h).'},
   {id:'5', nome:'Julia',        funcao:'Colaborador', custo:0, dias:['Sex'],                                    horaIn:18, horaOut:24, minH:3, maxH:6,  fixo:false, nota:'Só sexta à noite a partir das 18h. Não é fixo — só escalar se precisar.'},
-  {id:'6', nome:'Elias',        funcao:'Colaborador', custo:0, dias:['Sab','Dom'],                              horaIn:9,  horaOut:17, minH:3, maxH:8,  fixo:true,  nota:'FIXO: Sáb e Dom 09:00–17:00.'},
+  {id:'6', nome:'Elias',        funcao:'Colaborador', custo:0, dias:['Sab','Dom'],                              horaIn:9,  horaOut:17, minH:3, maxH:8,  fixo:true,  turnosFixos:[{dias:['Sab','Dom'],horaIn:9,horaOut:17}], nota:'FIXO: Sáb e Dom 09:00–17:00.'},
   {id:'7', nome:'Caio',         funcao:'Colaborador', custo:0, dias:['Seg','Qua'],                              horaIn:18, horaOut:26, minH:3, maxH:8,  fixo:false, nota:'Só dias pares (Seg, Qua). Noturno a partir das 18h.'},
   {id:'8', nome:'Ana Irias',    funcao:'Colaborador', custo:0, dias:['Seg','Qua','Sex','Sab','Dom'],            horaIn:9,  horaOut:23, minH:3, maxH:8,  fixo:false, nota:'Seg 18h–23h · Qua 11h–14h · Sex 14h–22h (mín 3h) · Sáb 09h–12h · Dom 09h–19h (mín 3h).'},
-  {id:'9', nome:'Lucas H.',     funcao:'Colaborador', custo:0, dias:['Seg','Ter','Qua','Qui','Sex','Sab','Dom'],horaIn:18, horaOut:24, minH:3, maxH:8,  fixo:true,  nota:'FIXO Seg–Sex 18h–00h. Pode trabalhar 1 dia no FDS.'},
+  {id:'9', nome:'Lucas H.',     funcao:'Colaborador', custo:0, dias:['Seg','Ter','Qua','Qui','Sex','Sab','Dom'],horaIn:18, horaOut:24, minH:3, maxH:8,  fixo:true,  turnosFixos:[{dias:['Seg','Ter','Qua','Qui','Sex'],horaIn:18,horaOut:24}], nota:'FIXO Seg–Sex 18h–00h. Pode trabalhar 1 dia no FDS.'},
   {id:'10',nome:'Amanda',       funcao:'Colaborador', custo:0, dias:['Seg','Qua','Qui','Sex','Sab'],            horaIn:12, horaOut:18, minH:3, maxH:6,  fixo:false, nota:'Seg, Qua, Qui, Sex e Sáb. 12h–18h, mín 3h.'},
   {id:'11',nome:'Eduardo',      funcao:'Colaborador', custo:0, dias:['Ter','Qua','Qui','Sex','Sab','Dom'],      horaIn:18, horaOut:26, minH:3, maxH:8,  fixo:false, nota:'Ter–Sex 18h–01:20, mín 3h. FDS livre com mín 3h.'},
   {id:'12',nome:'Bia',          funcao:'Colaborador', custo:0, dias:['Sex','Sab','Dom'],                        horaIn:18, horaOut:27, minH:4, maxH:8,  fixo:false, nota:'Sex–Dom, mínimo 4h.'},
@@ -770,30 +800,23 @@ function preencher(){
     // Reset horas por dia
     S.colabs.forEach(c=>hrs[c.id]=0);
 
-    // ── FIXOS PRIMEIRO
-    // Kayky Seg–Qui: 21h–fechamento
-    const kayky=S.colabs.find(c=>c.nome==='Kayky');
-    if(kayky&&['Seg','Ter','Qua','Qui'].includes(dia)){
-      for(let h=21;h<=hO;h++){
-        const cell=S.escala[dia]?.[h];if(!cell)continue;
-        if(!cell.alocados.includes('Kayky')){cell.alocados.push('Kayky');hrs[kayky.id]=(hrs[kayky.id]||0)+1;}
-      }
-    }
-    // Gabriel: Qua e Sex a partir de 18h; Sáb de 09-18h
-    const gabriel=S.colabs.find(c=>c.nome==='Gabriel');
-    if(gabriel){
-      if(['Qua','Sex'].includes(dia)){
-        for(let h=18;h<=hO;h++){const cell=S.escala[dia]?.[h];if(!cell)continue;if(!cell.alocados.includes('Gabriel')&&hrs[gabriel.id]<gabriel.maxH){cell.alocados.push('Gabriel');hrs[gabriel.id]++;}}
-      }
-      if(dia==='Sab'){
-        for(let h=9;h<=18;h++){const cell=S.escala[dia]?.[h];if(!cell)continue;if(!cell.alocados.includes('Gabriel')&&hrs[gabriel.id]<gabriel.maxH){cell.alocados.push('Gabriel');hrs[gabriel.id]++;}}
-      }
-    }
-    // Lucas H.: Seg-Sex 18h-00h fixo
-    const lucas=S.colabs.find(c=>c.nome==='Lucas H.');
-    if(lucas&&['Seg','Ter','Qua','Qui','Sex'].includes(dia)){
-      for(let h=18;h<=24;h++){const cell=S.escala[dia]?.[h];if(!cell)continue;if(!cell.alocados.includes('Lucas H.')&&hrs[lucas.id]<lucas.maxH){cell.alocados.push('Lucas H.');hrs[lucas.id]++;}}
-    }
+    // ── FIXOS PRIMEIRO — lê turnosFixos de cada colaborador dinamicamente
+    // Não há mais hardcode de nomes: qualquer colaborador com fixo:true e turnosFixos
+    // será alocado primeiro, nos dias e horários definidos no seu cadastro.
+    S.colabs.filter(c=>c.fixo&&c.turnosFixos&&c.turnosFixos.length).forEach(c=>{
+      c.turnosFixos.forEach(tf=>{
+        if(!tf.dias.includes(dia))return;
+        const ini=tf.horaIn??c.horaIn;
+        const fim=tf.horaOut??c.horaOut;
+        for(let h=ini;h<fim;h++){
+          const cell=S.escala[dia]?.[h];if(!cell)continue;
+          if(!cell.alocados.includes(c.nome)&&hrs[c.id]<(c.maxH||8)){
+            cell.alocados.push(c.nome);
+            hrs[c.id]=(hrs[c.id]||0)+1;
+          }
+        }
+      });
+    });
 
     // ── PREENCHER RESTANTE
     // Regra: colaborador só pode entrar num slot se conseguir trabalhar
@@ -810,10 +833,8 @@ function preencher(){
         if(hrs[c.id]>=(c.maxH||8))return false;
         // Já alocado nesse slot?
         if(cell.alocados.includes(c.nome))return false;
-        // Fixos já tratados
-        if(c.nome==='Kayky'&&['Seg','Ter','Qua','Qui'].includes(dia))return false;
-        if(c.nome==='Gabriel')return false;
-        if(c.nome==='Lucas H.'&&['Seg','Ter','Qua','Qui','Sex'].includes(dia))return false;
+        // Pula fixos já alocados nos seus turnos definidos
+        if(c.fixo&&c.turnosFixos&&c.turnosFixos.some(tf=>tf.dias.includes(dia)&&h>=tf.horaIn&&h<tf.horaOut))return false;
 
         // ── REGRA PRINCIPAL: verifica se consegue fazer minH horas CONSECUTIVAS
         // a partir de h, dentro dos limites do colaborador e da escala
@@ -1100,7 +1121,11 @@ function renderCo(){
         ${DIAS.map(d=>`<span class="dc ${c.dias.includes(d)?'dc-on':'dc-off'}">${d}</span>`).join('')}
       </div>
       <div class="ct">${fH(c.horaIn)} → ${fH(c.horaOut)} · mín ${c.minH||3}h · máx ${c.maxH||8}h/dia</div>
-      ${c.fixo?`<div class="badge-fixo badge-green">★ fixo</div>`:''}
+      ${c.fixo&&c.turnosFixos?.length
+        ?`<div class="badge-fixo">📌 FIXO · ${c.turnosFixos.map(tf=>
+            tf.dias.join('/') + ' ' + String(tf.horaIn).padStart(2,'0') + 'h–' + String(tf.horaOut).padStart(2,'0') + 'h'
+          ).join(' · ')}</div>`
+        :c.fixo?'<div class="badge-fixo">📌 FIXO</div>':''}
       <div class="c-custo">
         <span>R$/h:</span>
         <input type="number" step="0.01" value="${c.custo||''}" placeholder="0,00" onchange="atualizarCusto('${c.id}',this.value)" title="Custo por hora">
@@ -1137,6 +1162,20 @@ function aM(id){
     document.querySelectorAll('.dt').forEach(t=>t.classList.toggle('on',['Seg','Ter','Qua','Qui','Sex'].includes(t.dataset.d)));
   }
   document.getElementById('mCo').style.display='flex';
+  // Preenche turno fixo se existir
+  const tf=c?c.turnosFixos?.[0]:null;
+  const fixoAtivo=!!(c&&c.fixo&&tf);
+  document.getElementById('fFixo').checked=fixoAtivo;
+  toggleFixoUI(fixoAtivo);
+  if(fixoAtivo&&tf){
+    document.getElementById('fFixoHI').value=tf.horaIn??9;
+    document.getElementById('fFixoHO').value=tf.horaOut??18;
+    document.querySelectorAll('[data-fd]').forEach(t=>{
+      t.classList.toggle('on',tf.dias.includes(t.dataset.fd));
+    });
+  } else {
+    document.querySelectorAll('[data-fd]').forEach(t=>t.classList.remove('on'));
+  }
   setTimeout(()=>document.getElementById('fN').focus(),80);
 }
 function fM(){document.getElementById('mCo').style.display='none';}
@@ -1154,7 +1193,18 @@ function salvarC(){
   const minH=parseInt(document.getElementById('fMinH').value)||3;
   const maxH=parseInt(document.getElementById('fMaxH').value)||8;
   const nota=document.getElementById('fNo').value.trim();
-  const obj={id:S.editId||Date.now().toString(),nome,funcao,custo,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:false,nota};
+  // Turno fixo
+  const isFixo=document.getElementById('fFixo').checked;
+  let turnosFixos=[];
+  if(isFixo){
+    const fHI=parseInt(document.getElementById('fFixoHI').value);
+    const fHO=parseInt(document.getElementById('fFixoHO').value);
+    const fDias=Array.from(document.querySelectorAll('[data-fd].on')).map(t=>t.dataset.fd);
+    if(fDias.length&&!isNaN(fHI)&&!isNaN(fHO)){
+      turnosFixos=[{dias:fDias,horaIn:fHI,horaOut:fHO}];
+    }
+  }
+  const obj={id:S.editId||Date.now().toString(),nome,funcao,custo,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,nota};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
   save();renderCo();fM();
@@ -1168,6 +1218,11 @@ function delC(id){
   save();renderCo();toast('Removido.','tok');
 }
 document.querySelectorAll('.dt').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
+document.querySelectorAll('[data-fd]').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
+
+function toggleFixoUI(on){
+  document.getElementById('fixoUI').style.display=on?'block':'none';
+}
 
 // ── Ações na escala
 function rmA(dia,h,nome){
