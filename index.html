@@ -2533,9 +2533,12 @@ function parseDataOrion(str){
 }
 
 function diffMinutos(a,b){
-  if(!a||!b)return null;
-  const diff=(b-a)/60000;
-  return diff>=0&&diff<480?diff:null; // ignora gaps absurdos (>8h)
+  if(a==null||b==null)return null;
+  const ta=a instanceof Date?a.getTime():Number(a);
+  const tb=b instanceof Date?b.getTime():Number(b);
+  if(isNaN(ta)||isNaN(tb))return null;
+  const diff=(tb-ta)/60000;
+  return diff>=0&&diff<480?diff:null;
 }
 
 function fmtTempo(minutos){
@@ -2664,13 +2667,21 @@ function copiarScriptInd(){
 }
 
 function receberDadosIndicadores(payload){
-  // Salva payload recebido via hash/postMessage no histórico de indicadores
+  // Salva payload recebido via hash no histórico de indicadores.
+  // IMPORTANTE: timestamps ficam como NÚMEROS (ms epoch) — Date não sobrevive ao JSON.stringify/parse.
+  // diffMinutos já opera com números diretamente.
   try{
-    // payload já vem com vendas/cancelamentos como arrays de objetos com timestamps (números)
-    // Precisamos reconverter ts de número para Date nos campos de tempo
-    const reidrata=arr=>arr.map(v=>{
+    const normaliza=arr=>arr.map(v=>{
       const r={...v};
-      ['cadastro','pronto','coleta','conclusao'].forEach(k=>{if(typeof r[k]==='number')r[k]=new Date(r[k]);});
+      // garante que campos de tempo são número ou null (nunca Date nem string de data)
+      ['cadastro','pronto','coleta','conclusao'].forEach(k=>{
+        if(r[k] instanceof Date) r[k]=r[k].getTime();
+        else if(typeof r[k]==='string'&&r[k]!=='-'&&r[k].includes('/')){
+          // string "dd/MM/yyyy HH:mm" → número
+          const dt=parseDataOrion(r[k]);
+          r[k]=dt?dt.getTime():null;
+        } else if(typeof r[k]!=='number') r[k]=null;
+      });
       return r;
     });
     const entrada={
@@ -2678,8 +2689,8 @@ function receberDadosIndicadores(payload){
       ts:payload.ts||Date.now(),
       semana:payload.semana||(payload.deBR+'–'+payload.ateBR),
       semanaISO:payload.semanaISO||(payload.de+'/'+payload.ate),
-      vendas:reidrata(payload.vendas||[]),
-      cancelamentos:reidrata(payload.cancelamentos||[]),
+      vendas:normaliza(payload.vendas||[]),
+      cancelamentos:normaliza(payload.cancelamentos||[]),
       hubs:payload.hubs||[],
     };
     const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
