@@ -1103,8 +1103,7 @@ function atualizarSideRegras(){
   regras.innerHTML=html||'<div class="rule-badge"><span class="rb-dot" style="background:#9ca3af"></span>Sem regras especiais</div>';
 }
 
-
-  if(!S.escala)return;
+function limpar(){
   DIAS.forEach(d=>Object.values(S.escala[d]).forEach(c=>{if(c){c.alocados=[];c.custo=0;}}));
   save();renderEscala();atualizarCustoTotal();toast('Alocações limpas.','tok');
 }
