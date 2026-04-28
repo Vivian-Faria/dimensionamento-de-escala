@@ -1362,7 +1362,6 @@ function aM(id){
     ['fN','fF','fNo'].forEach(i=>document.getElementById(i).value='');
     document.getElementById('fCusto').value='';
     document.getElementById('fPassagem').value='';
-    document.getElementById('fHI').value=9;document.getElementById('fHO').value=17;
     document.getElementById('fMinH').value=3;document.getElementById('fMaxH').value=8;
     document.querySelectorAll('.dt').forEach(t=>t.classList.toggle('on',['Seg','Ter','Qua','Qui','Sex'].includes(t.dataset.d)));
   }
@@ -1909,18 +1908,33 @@ function publicarEscala(){
   // Monta resumo numérico
   let totalPed=0,totalCusto=0,totalForca=0,slots=0;
   const forcaPorDia={};
+  // Mapa de dias trabalhados por colaborador (para passagem)
+  const diasTrabPub={};
   diasO.forEach(dia=>{
     let fDia=new Set();
     for(let h=hI;h<=hO;h++){
       const cell=S.escala[dia]?.[h];
       if(!cell)continue;
       totalPed+=cell.ped||0;
-      totalCusto+=cell.custo||0;
       totalForca+=cell.alocados.length;
       if(cell.alocados.length){slots++;}
-      cell.alocados.forEach(n=>fDia.add(n));
+      cell.alocados.forEach(n=>{
+        fDia.add(n);
+        if(!diasTrabPub[n])diasTrabPub[n]=new Set();
+        diasTrabPub[n].add(dia);
+      });
+      // Soma custo/hora (sem passagem — passagem será somada separado)
+      cell.alocados.forEach(n=>{
+        const c=S.colabs.find(x=>x.nome===n);
+        if(c&&c.custo>0)totalCusto+=c.custo;
+      });
     }
     forcaPorDia[dia]=[...fDia];
+  });
+  // Soma passagem: 1× por colaborador por dia trabalhado
+  Object.entries(diasTrabPub).forEach(([nome,diasSet])=>{
+    const c=S.colabs.find(x=>x.nome===nome);
+    if(c&&(c.passagem||0)>0)totalCusto+=c.passagem*diasSet.size;
   });
 
   // Monta mapa de confirmações detalhadas: por colaborador, por dia, por turno
@@ -2030,9 +2044,18 @@ function renderHistorico(filtro){
     const custoAbatido=horasAbatidas>0?(()=>{
       let tot=0;
       Object.entries(confs).forEach(([nome,c])=>{
-        if((c.horasAbatidas||0)>0){
-          const colab=h.colabs?.find(x=>x.nome===nome);
-          if(colab&&colab.custo>0)tot+=colab.custo*(c.horasAbatidas||0);
+        const colab=h.colabs?.find(x=>x.nome===nome);
+        if(!colab)return;
+        const custoH=colab.custo||0;
+        const passagem=colab.passagem||0;
+        // Soma abatimento por horas faltadas
+        const totalAbatNome=(c.horasAbatidas||0)+(c.turnos||[]).reduce((s,t)=>s+(t.horasAbatidas||0),0);
+        if(totalAbatNome>0&&custoH>0)tot+=custoH*totalAbatNome;
+        // Se faltou (status=faltou ou tem turnos com faltou), abate passagem dos dias faltados
+        if(passagem>0){
+          const diasFaltados=new Set();
+          (c.turnos||[]).forEach(t=>{if(t.faltou)diasFaltados.add(t.dia);});
+          tot+=passagem*diasFaltados.size;
         }
       });
       return tot;
@@ -2049,9 +2072,12 @@ function renderHistorico(filtro){
       const st=c.status||'pendente';
       const colab=h.colabs?.find(x=>x.nome===nome);
       const custoH=colab?.custo||0;
+      const passagem=colab?.passagem||0;
       const turnos=c.turnos||[];
       const totalAbat=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
-      const custoAbat=custoH*totalAbat;
+      // Dias em que faltou (para abater passagem)
+      const diasFaltadosColab=new Set(turnos.filter(t=>t.faltou).map(t=>t.dia));
+      const custoAbat=custoH*totalAbat + passagem*diasFaltadosColab.size;
 
       // Linhas por turno individual
       const turnoRows=turnos.map(t=>{
@@ -2070,7 +2096,12 @@ function renderHistorico(filtro){
             style="width:44px;padding:2px 5px;border:1px solid #fca5a5;border-radius:5px;font-size:11px;font-family:var(--fn);color:#dc2626"
             onchange="setHorasAbatadasTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.value)"
             title="Horas abatidas por falta">
-          <span style="font-size:10px;color:#dc2626">${custoH>0?'-R$ '+(custoH*(t.horasAbatidas||t.horas)).toFixed(2).replace('.',','):''}</span>`:''}
+          <span style="font-size:10px;color:#dc2626">${(()=>{
+            let val=0;
+            if(custoH>0)val+=custoH*(t.horasAbatidas||t.horas);
+            if(passagem>0)val+=passagem; // passagem do dia faltado
+            return val>0?'-R$ '+val.toFixed(2).replace('.',','):'';
+          })()}</span>`:''}
         </div>`;
       }).join('');
 
