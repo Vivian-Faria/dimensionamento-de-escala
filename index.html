@@ -2499,26 +2499,57 @@ try{
 // INDICADORES OPERACIONAIS
 // ══════════════════════════════════════════════════════
 const KIND = 'orion_v7_indicadores';
+const KIND_CH = 'orion_escala_indicadores';
 
 function parseDataOrion(str){
-  // Converte "dd/MM/yyyy HH:mm" para Date
   if(!str||str==='-')return null;
-  const [dp,tp]=str.split(' ');
+  if(str instanceof Date)return isNaN(str.getTime())?null:str;
+  if(typeof str==='string'&&str.includes('T')){
+    const iso=new Date(str);
+    return isNaN(iso.getTime())?null:iso;
+  }
+  const [dp,tp]=String(str).trim().split(' ');
   if(!dp||!tp)return null;
   const [d,m,y]=dp.split('/');
-  return new Date(`${y}-${m}-${d}T${tp}:00`);
+  const dt=new Date(`${y}-${m}-${d}T${tp}:00`);
+  return isNaN(dt.getTime())?null:dt;
+}
+
+function normalizarTextoIndicador(txt){
+  return (txt||'').toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+function sanitizarHubIndicador(txt){
+  const hub=(txt||'').toString().replace(/\s+/g,' ').trim();
+  return !hub||hub==='-'||hub==='--'?'Sem hub':hub;
+}
+
+function toDateIndicador(valor){
+  if(!valor)return null;
+  if(valor instanceof Date)return isNaN(valor.getTime())?null:valor;
+  if(typeof valor==='string')return parseDataOrion(valor);
+  const dt=new Date(valor);
+  return isNaN(dt.getTime())?null:dt;
 }
 
 function diffMinutos(a,b){
-  if(!a||!b)return null;
-  const diff=(b-a)/60000;
-  return diff>=0&&diff<480?diff:null; // ignora gaps absurdos (>8h)
+  const ini=toDateIndicador(a);
+  const fim=toDateIndicador(b);
+  if(!ini||!fim)return null;
+  const diff=(fim.getTime()-ini.getTime())/60000;
+  return diff>=0&&diff<480?diff:null;
 }
 
 function fmtTempo(minutos){
   if(minutos===null||isNaN(minutos))return'—';
-  const h=Math.floor(minutos/60);
-  const m=Math.round(minutos%60);
+  let h=Math.floor(minutos/60);
+  let m=Math.round(minutos%60);
+  if(m===60){h+=1;m=0;}
   return h>0?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`:`00:${String(m).padStart(2,'0')}`;
 }
 
@@ -2527,68 +2558,198 @@ function calcVariacao(atual, anterior){
   return ((atual-anterior)/anterior*100).toFixed(1);
 }
 
-async function buscarPaginaOrion(url){
-  const r=await fetch(url,{credentials:'include',mode:'cors'});
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  return r.text();
+async function buscarPaginaOrion(urls){
+  const lista=Array.isArray(urls)?urls:[urls];
+  let ultimoErro=null;
+  for(const url of lista){
+    try{
+      const r=await fetch(url,{credentials:'include',mode:'cors'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return await r.text();
+    }catch(err){
+      ultimoErro=err;
+    }
+  }
+  throw ultimoErro||new Error('Falha ao buscar dados do Ã“rion');
+}
+
+function mapearCabecalhosIndicadores(doc){
+  const mapa={};
+  doc.querySelectorAll('table thead th').forEach((th,idx)=>{
+    const txt=normalizarTextoIndicador(th.textContent);
+    if(txt&&!Object.prototype.hasOwnProperty.call(mapa,txt))mapa[txt]=idx;
+  });
+  return mapa;
+}
+
+function acharColunaIndicador(mapa, aliases, fallback){
+  const chaves=Object.keys(mapa);
+  for(const alias of aliases){
+    const alvo=normalizarTextoIndicador(alias);
+    const hit=chaves.find(ch=>ch===alvo||ch.includes(alvo)||alvo.includes(ch));
+    if(hit!==undefined)return mapa[hit];
+  }
+  return fallback;
+}
+
+function textoCelulaIndicador(tds, idx){
+  return idx!==null&&idx!==undefined&&idx>=0&&idx<tds.length?(tds[idx].textContent||'').trim():'';
 }
 
 function parsearTabelaOrion(html, tipo='vendas'){
   const doc=new DOMParser().parseFromString(html,'text/html');
   const rows=doc.querySelectorAll('table tbody tr');
+  const mapa=mapearCabecalhosIndicadores(doc);
   const dados=[];
+
+  const idxHub=acharColunaIndicador(mapa,['hub','unidade','grupo'],1);
+  const idxEst=acharColunaIndicador(mapa,['estabelecimento','loja','negocio'],2);
+  const idxCadastro=acharColunaIndicador(mapa,['cadastro','criado em','data cadastro'], tipo==='vendas'?9:5);
+  const idxPronto=acharColunaIndicador(mapa,['pronto para coleta','pronto p/ coleta','pronto'],10);
+  const idxColeta=acharColunaIndicador(mapa,['coleta','coletado'],11);
+  const idxConclusao=acharColunaIndicador(mapa,['conclusao','conclusao em','concluido','finalizado','despachado'],13);
+  const idxMotivo=acharColunaIndicador(mapa,['motivo','motivo cancelamento'],4);
+
   rows.forEach(row=>{
     const tds=row.querySelectorAll('td');
     if(tds.length<5)return;
-    const hub=(tds[1]?.textContent.trim()||'').replace('-','') || 'Sem hub';
+    const hub=sanitizarHubIndicador(textoCelulaIndicador(tds,idxHub));
     if(tipo==='vendas'){
       dados.push({
         hub,
-        estabelecimento:tds[2]?.textContent.trim()||'',
-        cadastro:  parseDataOrion(tds[9]?.textContent.trim()),
-        pronto:    parseDataOrion(tds[10]?.textContent.trim()),
-        coleta:    parseDataOrion(tds[11]?.textContent.trim()),
-        conclusao: parseDataOrion(tds[13]?.textContent.trim()),
+        estabelecimento:textoCelulaIndicador(tds,idxEst),
+        cadastro:parseDataOrion(textoCelulaIndicador(tds,idxCadastro)),
+        pronto:parseDataOrion(textoCelulaIndicador(tds,idxPronto)),
+        coleta:parseDataOrion(textoCelulaIndicador(tds,idxColeta)),
+        conclusao:parseDataOrion(textoCelulaIndicador(tds,idxConclusao)),
       });
     } else {
-      // cancelamentos
       dados.push({
         hub,
-        motivo:tds[4]?.textContent.trim()||'',
-        cadastro: parseDataOrion(tds[5]?.textContent.trim()),
+        motivo:textoCelulaIndicador(tds,idxMotivo),
+        cadastro:parseDataOrion(textoCelulaIndicador(tds,idxCadastro)),
       });
     }
   });
   return dados;
 }
 
+function criarEntradaIndicadores(vendas, cancelamentos, segAnt, domAnt){
+  const de=fmtISO(segAnt);
+  const ate=fmtISO(domAnt);
+  const deBR=fmtBR(segAnt);
+  const ateBR=fmtBR(domAnt);
+  const hubs=[...new Set([...vendas,...cancelamentos].map(r=>sanitizarHubIndicador(r.hub)).filter(Boolean))].sort();
+  return {
+    de, ate, deBR, ateBR,
+    ts:Date.now(),
+    semana:`${deBR}â€“${ateBR}`,
+    semanaISO:`${de}/${ate}`,
+    vendas,
+    cancelamentos,
+    hubs,
+  };
+}
+
+function salvarEntradaIndicadores(entrada){
+  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const idx=hist.findIndex(h=>h.semanaISO===entrada.semanaISO);
+  if(idx!==-1)hist[idx]=entrada; else hist.unshift(entrada);
+  if(hist.length>20)hist.splice(20);
+  localStorage.setItem(KIND,JSON.stringify(hist));
+  return hist;
+}
+
+function receberIndicadoresPayload(payload, abrirAba=true){
+  if(!payload||!Array.isArray(payload.vendas)||!Array.isArray(payload.cancelamentos)||!payload.de||!payload.ate)return false;
+  const segAnt=new Date(`${payload.de}T12:00:00`);
+  const domAnt=new Date(`${payload.ate}T12:00:00`);
+  const entrada=criarEntradaIndicadores(payload.vendas,payload.cancelamentos,segAnt,domAnt);
+  entrada.ts=payload.ts||Date.now();
+  salvarEntradaIndicadores(entrada);
+  atualizarSelectHubs(entrada.hubs||[]);
+
+  const banner=document.getElementById('indBanner');
+  if(banner){
+    banner.className='banner b-ok';
+    banner.innerHTML=`<div class="b-title">âœ… Dados coletados â€” ${entrada.vendas.length} pedidos + ${entrada.cancelamentos.length} cancelamentos</div><div>PerÃ­odo: <strong>${entrada.deBR} (Seg) â†’ ${entrada.ateBR} (Dom)</strong></div>`;
+  }
+
+  if(abrirAba)goT('ind');
+  renderIndicadores();
+  toast('âœ“ Indicadores atualizados!','tok');
+  return true;
+}
+
+function scriptColetaIndicadores(){
+  const alvo=(location.href||'').split('#')[0];
+  return `(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const nt=s=>(s||'').toString().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/\\s+/g,' ').trim();const pd=s=>{if(!s||s==='-')return null;if(typeof s==='string'&&s.includes('T'))return s;const parts=String(s).trim().split(' ');if(parts.length<2)return null;const[d,t]=parts;const[dd,mm,yy]=d.split('/');return yy&&mm&&dd&&t?yy+'-'+mm+'-'+dd+'T'+t+':00':null;};const mh=d=>{const m={};d.querySelectorAll('table thead th').forEach((th,i)=>{const t=nt(th.textContent);if(t&&!Object.prototype.hasOwnProperty.call(m,t))m[t]=i;});return m;};const fc=(m,a,f)=>{const k=Object.keys(m);for(const x of a){const n=nt(x);const h=k.find(c=>c===n||c.includes(n)||n.includes(c));if(h!==undefined)return m[h];}return f;};const tc=(tds,i)=>i!==null&&i!==undefined&&i>=0&&i<tds.length?(tds[i].textContent||'').trim():'';const sh=t=>{const h=(t||'').toString().replace(/\\s+/g,' ').trim();return !h||h==='-'||h==='--'?'Sem hub':h;};const pr=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');const mapa=mh(doc);const idxHub=fc(mapa,['hub','unidade','grupo'],1);const idxEst=fc(mapa,['estabelecimento','loja','negocio'],2);const idxCad=fc(mapa,['cadastro','criado em','data cadastro'],tipo==='vendas'?9:5);const idxPr=fc(mapa,['pronto para coleta','pronto p/ coleta','pronto'],10);const idxCo=fc(mapa,['coleta','coletado'],11);const idxFn=fc(mapa,['conclusao','conclusao em','concluido','finalizado','despachado'],13);const idxMo=fc(mapa,['motivo','motivo cancelamento'],4);const out=[];doc.querySelectorAll('table tbody tr').forEach(row=>{const tds=row.querySelectorAll('td');if(tds.length<5)return;const hub=sh(tc(tds,idxHub));if(tipo==='vendas'){out.push({hub,estabelecimento:tc(tds,idxEst),cadastro:pd(tc(tds,idxCad)),pronto:pd(tc(tds,idxPr)),coleta:pd(tc(tds,idxCo)),conclusao:pd(tc(tds,idxFn))});return;}out.push({hub,motivo:tc(tds,idxMo),cadastro:pd(tc(tds,idxCad))});});return out;};const hj=new Date();const dw=hj.getDay();const n=dw===0?7:dw;const dom=new Date(hj);dom.setDate(hj.getDate()-n);dom.setHours(12,0,0,0);const seg=new Date(dom);seg.setDate(dom.getDate()-6);const de=fi(seg),ate=fi(dom),deBR=fb(seg),ateBR=fb(dom);const ler=async urls=>{const lista=Array.isArray(urls)?urls:[urls];let err=null;for(const url of lista){try{const r=await fetch(url,{credentials:'include'});if(!r.ok)throw new Error('HTTP '+r.status);return await r.text();}catch(e){err=e;}}throw err||new Error('Falha ao buscar dados');};const [htmlV,htmlC]=await Promise.all([ler('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business='),ler(['/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=','/admin/reports/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business='])]);const vendas=pr(htmlV,'vendas');const cancelamentos=pr(htmlC,'cancel');const hubs=[...new Set(vendas.concat(cancelamentos).map(x=>sh(x.hub)).filter(Boolean))].sort();const payload={de,ate,deBR,ateBR,ts:Date.now(),semana:deBR+'-'+ateBR,semanaISO:de+'/'+ate,vendas,cancelamentos,hubs};try{const bc=new BroadcastChannel('${KIND_CH}');bc.postMessage({tipo:'dados_indicadores',payload});setTimeout(()=>bc.close(),1200);}catch(e){}const b64=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));window.open('${alvo}#indicadores='+encodeURIComponent(b64),'_blank');})();`;
+}
+
+function copiarScriptIndicadores(){
+  const script=scriptColetaIndicadores();
+  navigator.clipboard.writeText(script).catch(()=>{
+    const ta=document.createElement('textarea');
+    ta.value=script;
+    ta.style.cssText='position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+  const b=document.getElementById('indCopyBtn');
+  if(b){b.textContent='OK! Copiado';setTimeout(()=>{b.textContent='Copiar script';},2500);}
+}
+
+function mostrarBannerIndicadoresColeta(erro, deBR, ateBR){
+  const bm='javascript:'+encodeURIComponent(scriptColetaIndicadores());
+  const banner=document.getElementById('indBanner');
+  banner.className='banner b-err';
+  banner.innerHTML=`
+    <div class="b-title">Erro ao coletar dados</div>
+    <div>${erro||'Nao foi possivel acessar o Orion diretamente deste painel.'}</div>
+    <div style="margin-top:8px;font-size:11px;color:var(--mu)">Use um dos metodos abaixo no Orion para enviar os indicadores da semana ${deBR} -> ${ateBR} para o painel.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+      <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Metodo 1 - Console do Chrome</div>
+        <ol class="b-steps">
+          <li>Abra o Orion <button onclick="window.open('https://admin.orioncloudkitchens.com.br','_blank')" class="btn bs sm" style="margin-left:4px">Abrir</button></li>
+          <li>Pressione <code>F12</code> e entre na aba <strong>Console</strong></li>
+          <li>Se o Chrome pedir permissao, digite <code>allow pasting</code></li>
+          <li>Cole o script e pressione Enter</li>
+        </ol>
+        <button onclick="copiarScriptIndicadores()" id="indCopyBtn" class="btn bs sm" style="width:100%">Copiar script</button>
+      </div>
+      <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Metodo 2 - Favorito no Chrome</div>
+        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Arraste o botao abaixo para a barra de favoritos e clique quando estiver no relatorio do Orion.</p>
+        <a href="${bm}" style="display:block;background:var(--ac);color:#fff;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-size:12px;font-weight:600;cursor:grab" draggable="true">Coletar indicadores</a>
+      </div>
+    </div>`;
+}
+
 function calcularMetricasSemana(vendas, cancelamentos, hub){
-  const filtro=v=> hub==='todos' || v.hub===hub || (!v.hub&&hub==='Sem hub');
+  const filtro=v=> hub==='todos' || sanitizarHubIndicador(v.hub)===hub || (!v.hub&&hub==='Sem hub');
   const vF=vendas.filter(filtro);
   const cF=cancelamentos.filter(filtro);
 
   const tPreparo=[], tColeta=[], tDespacho=[];
   vF.forEach(v=>{
-    if(v.cadastro&&v.pronto){
-      const t=diffMinutos(v.cadastro,v.pronto);
-      if(t!==null)tPreparo.push(t);
-    }
-    if(v.pronto&&v.coleta){
-      const t=diffMinutos(v.pronto,v.coleta);
-      if(t!==null)tColeta.push(t);
-    }
-    if(v.coleta&&v.conclusao){
-      const t=diffMinutos(v.coleta,v.conclusao);
-      if(t!==null)tDespacho.push(t);
-    }
+    const tPrep=diffMinutos(v.cadastro,v.pronto);
+    const tCol=diffMinutos(v.pronto,v.coleta);
+    const tDesp=diffMinutos(v.coleta,v.conclusao);
+    if(tPrep!==null)tPreparo.push(tPrep);
+    if(tCol!==null)tColeta.push(tCol);
+    if(tDesp!==null)tDespacho.push(tDesp);
   });
 
   const media=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
+  const baseCancel=vF.length+cF.length;
 
   return {
     volume:vF.length,
     cancelamentos:cF.length,
-    pctCancel:vF.length>0?((cF.length/(vF.length+cF.length))*100):0,
+    pctCancel:baseCancel>0?((cF.length/baseCancel)*100):0,
     tPreparoMed:media(tPreparo),
     tColetaMed:media(tColeta),
     tDespachoMed:media(tDespacho),
@@ -2598,16 +2759,7 @@ function calcularMetricasSemana(vendas, cancelamentos, hub){
 
 async function coletarIndicadores(){
   // Calcula período seg–dom anterior
-  const hoje=new Date();
-  const dow=hoje.getDay();
-  const diasAteDom=dow===0?7:dow;
-  const domAnt=new Date(hoje);domAnt.setDate(hoje.getDate()-diasAteDom);
-  const segAnt=new Date(domAnt);segAnt.setDate(domAnt.getDate()-6);
-
-  const p2=v=>String(v).padStart(2,'0');
-  const fmtISO=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
-  const fmtBR=d=>p2(d.getDate())+'/'+p2(d.getMonth()+1);
-
+  const {segAnt,domAnt}=semanaAnterior();
   const de=fmtISO(segAnt), ate=fmtISO(domAnt);
   const deBR=fmtBR(segAnt), ateBR=fmtBR(domAnt);
 
@@ -2618,7 +2770,10 @@ async function coletarIndicadores(){
 
   try{
     const urlVendas=`https://admin.orioncloudkitchens.com.br/admin/reports/orders?start_date=${de}&start_time=00:00&end_date=${ate}&end_time=23:59&business=`;
-    const urlCancel=`https://admin.orioncloudkitchens.com.br/admin/reports/orders/cancellations?start_date=${de}&start_time=00:00&end_date=${ate}&end_time=23:59&business=`;
+    const urlCancel=[
+      `https://admin.orioncloudkitchens.com.br/admin/reports/orders/cancellations?start_date=${de}&start_time=00:00&end_date=${ate}&end_time=23:59&business=`,
+      `https://admin.orioncloudkitchens.com.br/admin/reports/cancellations?start_date=${de}&start_time=00:00&end_date=${ate}&end_time=23:59&business=`
+    ];
 
     const [htmlV, htmlC]=await Promise.all([
       buscarPaginaOrion(urlVendas),
@@ -2627,39 +2782,18 @@ async function coletarIndicadores(){
 
     const vendas=parsearTabelaOrion(htmlV,'vendas');
     const cancelamentos=parsearTabelaOrion(htmlC,'cancel');
-
-    // Extrai hubs únicos
-    const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();
-
-    // Salva no localStorage
-    const entrada={
-      de, ate, deBR, ateBR,
-      ts:Date.now(),
-      semana:`${deBR}–${ateBR}`,
-      semanaISO:`${de}/${ate}`,
-      vendas,
-      cancelamentos,
-      hubs,
-    };
-
-    // Carrega histórico e insere/substitui semana atual
-    const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
-    const idx=hist.findIndex(h=>h.semanaISO===entrada.semanaISO);
-    if(idx!==-1)hist[idx]=entrada; else hist.unshift(entrada);
-    if(hist.length>20)hist.splice(20);
-    localStorage.setItem(KIND,JSON.stringify(hist));
-
-    // Atualiza select de hubs
-    atualizarSelectHubs(hubs);
+    const entrada=criarEntradaIndicadores(vendas,cancelamentos,segAnt,domAnt);
+    salvarEntradaIndicadores(entrada);
+    atualizarSelectHubs(entrada.hubs);
 
     banner.className='banner b-ok';
     banner.innerHTML=`<div class="b-title">✅ Dados coletados — ${vendas.length} pedidos + ${cancelamentos.length} cancelamentos</div><div>Período: <strong>${deBR} (Seg) → ${ateBR} (Dom)</strong></div>`;
 
     renderIndicadores();
-  }catch(e){
-    banner.className='banner b-err';
-    banner.innerHTML=`<div class="b-title">❌ Erro ao coletar dados</div><div>${e.message}</div><div style="margin-top:8px;font-size:11px">Verifique se está logado no Órion e tente novamente.</div>`;
-    document.getElementById('indEmp').style.display='block';
+}catch(e){
+    mostrarBannerIndicadoresColeta(e.message, deBR, ateBR);
+    const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+    if(!hist.length)document.getElementById('indEmp').style.display='block';
   }
 }
 
@@ -2694,10 +2828,9 @@ function renderIndicadores(){
   // CPP da escala (pega do histórico de escalas publicadas, semana mais recente)
   let cpp=null;
   try{
-    const histEsc=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
-    if(histEsc.length&&histEsc[0].resumo.totalPed>0){
-      cpp=(histEsc[0].resumo.totalCusto/histEsc[0].resumo.totalPed);
-    }
+    const histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
+    const semanaEscala=histEsc.find(e=>e.segISO===semanaAtual.de&&e.resumo?.totalPed>0);
+    if(semanaEscala)cpp=(semanaEscala.resumo.totalCusto/semanaEscala.resumo.totalPed);
   }catch(e){}
 
   // KPI Cards
@@ -2735,7 +2868,7 @@ function renderIndicadores(){
 
   let histEscMap={};
   try{
-    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    const he=JSON.parse(localStorage.getItem(KH)||'[]');
     he.forEach(e=>{
       const seg=e.segISO;
       if(e.resumo.totalPed>0)histEscMap[seg]=(e.resumo.totalCusto/e.resumo.totalPed);
@@ -2843,7 +2976,7 @@ function exportarIndicadores(){
     const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
     let cppSem='';
     try{
-      const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+      const he=JSON.parse(localStorage.getItem(KH)||'[]');
       const e=he.find(x=>x.segISO===sem.de);
       if(e&&e.resumo.totalPed>0)cppSem=(e.resumo.totalCusto/e.resumo.totalPed).toFixed(2);
     }catch(e){}
@@ -2865,6 +2998,28 @@ function exportarIndicadores(){
 }
 
 // ── Indicadores: inicialização
+try{
+  const _bcIndicadores=new BroadcastChannel(KIND_CH);
+  _bcIndicadores.onmessage=(e)=>{
+    if(e.data?.tipo==='dados_indicadores'&&e.data?.payload){
+      receberIndicadoresPayload(e.data.payload,true);
+    }
+  };
+}catch(e){}
+
+(function(){
+  try{
+    const h=location.hash||'';
+    if(h.indexOf('#indicadores=')!==0)return;
+    const b64=decodeURIComponent(h.slice(13));
+    const json=decodeURIComponent(escape(atob(b64)));
+    const payload=JSON.parse(json);
+    if(receberIndicadoresPayload(payload,true)){
+      history.replaceState(null,'',location.pathname+location.search);
+    }
+  }catch(e){}
+})();
+
 load();renderCo();atualizarSideRegras();
 if(window._INBOUND){
   // Dados chegaram via hash/extensão — chama gerarEscala() DIRETAMENTE
