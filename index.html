@@ -392,6 +392,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div class="tab" id="tab-hm" onclick="goT('hm')">🌡 Mapa de demanda</div>
     <div class="tab" id="tab-co" onclick="goT('co')">👥 Equipe</div>
     <div class="tab" id="tab-hi" onclick="goT('hi')">📚 Histórico</div>
+    <div class="tab" id="tab-ind" onclick="goT('ind')">📈 Indicadores</div>
   </div>
   <div class="panels">
 
@@ -480,6 +481,52 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
         </div>
       </div>
       <div id="hiCon"></div>
+    </div>
+
+    <!-- INDICADORES OPERACIONAIS -->
+    <div class="panel" id="panel-ind">
+      <div class="sh">
+        <div>
+          <h2>Indicadores Operacionais</h2>
+          <p id="indSub">Análise semanal · baseada nos dados do Órion</p>
+        </div>
+        <div class="sh-r">
+          <select id="indHubFiltro" class="btn bs sm" style="padding:7px 10px;font-size:12px" onchange="renderIndicadores()">
+            <option value="todos">Todos os hubs</option>
+          </select>
+          <button class="btn ba" onclick="coletarIndicadores()">⚡ Coletar dados</button>
+          <button class="btn bs sm" onclick="limparIndicadores()">↺ Limpar</button>
+        </div>
+      </div>
+
+      <!-- STATUS COLETA -->
+      <div id="indBanner" style="margin-bottom:16px"></div>
+
+      <!-- KPI CARDS -->
+      <div id="indKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:20px"></div>
+
+      <!-- TABELA SEMANAL -->
+      <div class="card" id="indTabelaCard" style="display:none">
+        <div class="card-hdr" style="justify-content:space-between">
+          <h3>📅 Histórico semanal</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:11px;color:var(--mu)" id="indTabelaMeta"></span>
+            <button class="btn bs sm" onclick="exportarIndicadores()">⬇ Exportar CSV</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px" id="indTabela">
+          </table>
+        </div>
+      </div>
+
+      <!-- EMPTY STATE -->
+      <div id="indEmp" class="empty">
+        <div class="empty-ico">📈</div>
+        <h3>Nenhum dado coletado</h3>
+        <p>Clique em <strong>⚡ Coletar dados</strong> para buscar os indicadores<br>da semana anterior (Seg–Dom) no Órion.</p>
+        <button class="btn ba" onclick="coletarIndicadores()">⚡ Coletar dados agora</button>
+      </div>
     </div>
 
   </div>
@@ -647,6 +694,10 @@ function goT(n){
   document.getElementById('tab-'+n).classList.add('on');
   document.getElementById('panel-'+n).classList.add('on');
   if(n==='hi')renderHistorico();
+  if(n==='ind'){
+    const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+    if(hist.length){atualizarSelectHubs([]);renderIndicadores();}
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -2444,6 +2495,376 @@ try{
   };
 }catch(e){}
 
+// ══════════════════════════════════════════════════════
+// INDICADORES OPERACIONAIS
+// ══════════════════════════════════════════════════════
+const KIND = 'orion_v7_indicadores';
+
+function parseDataOrion(str){
+  // Converte "dd/MM/yyyy HH:mm" para Date
+  if(!str||str==='-')return null;
+  const [dp,tp]=str.split(' ');
+  if(!dp||!tp)return null;
+  const [d,m,y]=dp.split('/');
+  return new Date(`${y}-${m}-${d}T${tp}:00`);
+}
+
+function diffMinutos(a,b){
+  if(!a||!b)return null;
+  const diff=(b-a)/60000;
+  return diff>=0&&diff<480?diff:null; // ignora gaps absurdos (>8h)
+}
+
+function fmtTempo(minutos){
+  if(minutos===null||isNaN(minutos))return'—';
+  const h=Math.floor(minutos/60);
+  const m=Math.round(minutos%60);
+  return h>0?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`:`00:${String(m).padStart(2,'0')}`;
+}
+
+function calcVariacao(atual, anterior){
+  if(!anterior||anterior===0)return null;
+  return ((atual-anterior)/anterior*100).toFixed(1);
+}
+
+async function buscarPaginaOrion(url){
+  const r=await fetch(url,{credentials:'include',mode:'cors'});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return r.text();
+}
+
+function parsearTabelaOrion(html, tipo='vendas'){
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const rows=doc.querySelectorAll('table tbody tr');
+  const dados=[];
+  rows.forEach(row=>{
+    const tds=row.querySelectorAll('td');
+    if(tds.length<5)return;
+    const hub=(tds[1]?.textContent.trim()||'').replace('-','') || 'Sem hub';
+    if(tipo==='vendas'){
+      dados.push({
+        hub,
+        estabelecimento:tds[2]?.textContent.trim()||'',
+        cadastro:  parseDataOrion(tds[9]?.textContent.trim()),
+        pronto:    parseDataOrion(tds[10]?.textContent.trim()),
+        coleta:    parseDataOrion(tds[11]?.textContent.trim()),
+        conclusao: parseDataOrion(tds[13]?.textContent.trim()),
+      });
+    } else {
+      // cancelamentos
+      dados.push({
+        hub,
+        motivo:tds[4]?.textContent.trim()||'',
+        cadastro: parseDataOrion(tds[5]?.textContent.trim()),
+      });
+    }
+  });
+  return dados;
+}
+
+function calcularMetricasSemana(vendas, cancelamentos, hub){
+  const filtro=v=> hub==='todos' || v.hub===hub || (!v.hub&&hub==='Sem hub');
+  const vF=vendas.filter(filtro);
+  const cF=cancelamentos.filter(filtro);
+
+  const tPreparo=[], tColeta=[], tDespacho=[];
+  vF.forEach(v=>{
+    if(v.cadastro&&v.pronto){
+      const t=diffMinutos(v.cadastro,v.pronto);
+      if(t!==null)tPreparo.push(t);
+    }
+    if(v.pronto&&v.coleta){
+      const t=diffMinutos(v.pronto,v.coleta);
+      if(t!==null)tColeta.push(t);
+    }
+    if(v.coleta&&v.conclusao){
+      const t=diffMinutos(v.coleta,v.conclusao);
+      if(t!==null)tDespacho.push(t);
+    }
+  });
+
+  const media=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
+
+  return {
+    volume:vF.length,
+    cancelamentos:cF.length,
+    pctCancel:vF.length>0?((cF.length/(vF.length+cF.length))*100):0,
+    tPreparoMed:media(tPreparo),
+    tColetaMed:media(tColeta),
+    tDespachoMed:media(tDespacho),
+    amostras:{preparo:tPreparo.length,coleta:tColeta.length,despacho:tDespacho.length},
+  };
+}
+
+async function coletarIndicadores(){
+  // Calcula período seg–dom anterior
+  const hoje=new Date();
+  const dow=hoje.getDay();
+  const diasAteDom=dow===0?7:dow;
+  const domAnt=new Date(hoje);domAnt.setDate(hoje.getDate()-diasAteDom);
+  const segAnt=new Date(domAnt);segAnt.setDate(domAnt.getDate()-6);
+
+  const p2=v=>String(v).padStart(2,'0');
+  const fmtISO=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+  const fmtBR=d=>p2(d.getDate())+'/'+p2(d.getMonth()+1);
+
+  const de=fmtISO(segAnt), ate=fmtISO(domAnt);
+  const deBR=fmtBR(segAnt), ateBR=fmtBR(domAnt);
+
+  const banner=document.getElementById('indBanner');
+  banner.className='banner b-warn';
+  banner.innerHTML='<div class="b-title">⏳ Coletando dados do Órion...</div><div>Buscando vendas e cancelamentos de '+deBR+' a '+ateBR+'</div>';
+  document.getElementById('indEmp').style.display='none';
+
+  try{
+    const urlVendas=`https://admin.orioncloudkitchens.com.br/admin/reports/orders?start_date=${de}&start_time=00:00&end_date=${ate}&end_time=23:59&business=`;
+    const urlCancel=`https://admin.orioncloudkitchens.com.br/admin/reports/orders/cancellations?start_date=${de}&start_time=00:00&end_date=${ate}&end_time=23:59&business=`;
+
+    const [htmlV, htmlC]=await Promise.all([
+      buscarPaginaOrion(urlVendas),
+      buscarPaginaOrion(urlCancel),
+    ]);
+
+    const vendas=parsearTabelaOrion(htmlV,'vendas');
+    const cancelamentos=parsearTabelaOrion(htmlC,'cancel');
+
+    // Extrai hubs únicos
+    const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();
+
+    // Salva no localStorage
+    const entrada={
+      de, ate, deBR, ateBR,
+      ts:Date.now(),
+      semana:`${deBR}–${ateBR}`,
+      semanaISO:`${de}/${ate}`,
+      vendas,
+      cancelamentos,
+      hubs,
+    };
+
+    // Carrega histórico e insere/substitui semana atual
+    const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+    const idx=hist.findIndex(h=>h.semanaISO===entrada.semanaISO);
+    if(idx!==-1)hist[idx]=entrada; else hist.unshift(entrada);
+    if(hist.length>20)hist.splice(20);
+    localStorage.setItem(KIND,JSON.stringify(hist));
+
+    // Atualiza select de hubs
+    atualizarSelectHubs(hubs);
+
+    banner.className='banner b-ok';
+    banner.innerHTML=`<div class="b-title">✅ Dados coletados — ${vendas.length} pedidos + ${cancelamentos.length} cancelamentos</div><div>Período: <strong>${deBR} (Seg) → ${ateBR} (Dom)</strong></div>`;
+
+    renderIndicadores();
+  }catch(e){
+    banner.className='banner b-err';
+    banner.innerHTML=`<div class="b-title">❌ Erro ao coletar dados</div><div>${e.message}</div><div style="margin-top:8px;font-size:11px">Verifique se está logado no Órion e tente novamente.</div>`;
+    document.getElementById('indEmp').style.display='block';
+  }
+}
+
+function atualizarSelectHubs(hubs){
+  const sel=document.getElementById('indHubFiltro');
+  const atual=sel.value;
+  // Mantém "todos" + hubs da coleta mais recente
+  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const todosHubs=[...new Set(hist.flatMap(h=>h.hubs||[]))].sort();
+  sel.innerHTML='<option value="todos">Todos os hubs</option>'+todosHubs.map(h=>`<option value="${h}"${atual===h?' selected':''}>${h}</option>`).join('');
+}
+
+function renderIndicadores(){
+  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+  if(!hist.length){
+    document.getElementById('indEmp').style.display='block';
+    document.getElementById('indKpis').innerHTML='';
+    document.getElementById('indTabelaCard').style.display='none';
+    return;
+  }
+
+  document.getElementById('indEmp').style.display='none';
+  document.getElementById('indTabelaCard').style.display='block';
+
+  const hub=document.getElementById('indHubFiltro').value||'todos';
+  const semanaAtual=hist[0];
+  const semanaAnt=hist[1]||null;
+
+  const m=calcularMetricasSemana(semanaAtual.vendas,semanaAtual.cancelamentos,hub);
+  const mAnt=semanaAnt?calcularMetricasSemana(semanaAnt.vendas,semanaAnt.cancelamentos,hub):null;
+
+  // CPP da escala (pega do histórico de escalas publicadas, semana mais recente)
+  let cpp=null;
+  try{
+    const histEsc=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    if(histEsc.length&&histEsc[0].resumo.totalPed>0){
+      cpp=(histEsc[0].resumo.totalCusto/histEsc[0].resumo.totalPed);
+    }
+  }catch(e){}
+
+  // KPI Cards
+  const kpis=[
+    {icon:'📦',label:'Volume de pedidos',val:m.volume.toLocaleString('pt-BR'),prev:mAnt?mAnt.volume:null,unit:'',big:true,hiMelhor:true},
+    {icon:'❌',label:'Cancelamentos',val:m.cancelamentos,prev:mAnt?mAnt.cancelamentos:null,unit:'',big:false,hiMelhor:false},
+    {icon:'📉',label:'% Cancelamentos',val:m.pctCancel.toFixed(2)+'%',prev:mAnt?mAnt.pctCancel:null,unit:'%',big:false,hiMelhor:false,rawVal:m.pctCancel,prevRaw:mAnt?mAnt.pctCancel:null},
+    {icon:'🧑‍🍳',label:'Tempo médio preparo',val:fmtTempo(m.tPreparoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tPreparoMed,prevRaw:mAnt?mAnt.tPreparoMed:null},
+    {icon:'🛵',label:'Tempo médio coleta',val:fmtTempo(m.tColetaMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tColetaMed,prevRaw:mAnt?mAnt.tColetaMed:null},
+    {icon:'🏁',label:'Tempo médio despacho',val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null},
+    {icon:'💰',label:'CPP (custo/pedido)',val:cpp!==null?`R$ ${cpp.toFixed(2).replace('.',',')}`:'-',prev:null,unit:'',big:false,raw:cpp},
+  ];
+
+  document.getElementById('indKpis').innerHTML=kpis.map(k=>{
+    let varHtml='';
+    const rawAtual=k.rawVal!==undefined?k.rawVal:parseFloat(String(k.val).replace(',','.'));
+    const rawPrev=k.prevRaw!==undefined?k.prevRaw:(k.prev!==null?k.prev:null);
+    if(rawPrev!==null&&rawAtual!==null&&!isNaN(rawAtual)&&!isNaN(rawPrev)&&rawPrev!==0){
+      const pct=((rawAtual-rawPrev)/rawPrev*100);
+      const melhorou=k.hiMelhor?pct>0:pct<0;
+      const cor=melhorou?'#166534':'#dc2626';
+      const bg=melhorou?'#dcfce7':'#fee2e2';
+      varHtml=`<div style="margin-top:4px;font-size:10px;font-weight:600;color:${cor};background:${bg};border-radius:4px;padding:2px 6px;display:inline-block">${pct>=0?'+':''}${pct.toFixed(1)}% vs sem. ant.</div>`;
+    }
+    return`<div class="sc" style="text-align:center">
+      <div class="sc-l">${k.icon} ${k.label}</div>
+      <div class="sc-v" style="font-size:${k.big?'20':'17'}px">${k.val}</div>
+      ${varHtml}
+    </div>`;
+  }).join('');
+
+  // Tabela histórica
+  const semanas=hist.slice().reverse(); // ordem cronológica
+  const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP'];
+
+  let histEscMap={};
+  try{
+    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    he.forEach(e=>{
+      const seg=e.segISO;
+      if(e.resumo.totalPed>0)histEscMap[seg]=(e.resumo.totalCusto/e.resumo.totalPed);
+    });
+  }catch(e){}
+
+  // Cabeçalho da tabela
+  const thead=`<thead><tr>${cols.map(c=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">${c}</th>`).join('')}</tr></thead>`;
+
+  // Calcula médias mensais agrupando por mês
+  const porMes={};
+  semanas.forEach(sem=>{
+    const mes=sem.de.slice(0,7); // yyyy-mm
+    if(!porMes[mes])porMes[mes]={semanas:[],label:''};
+    const d=new Date(sem.de+'T12:00:00');
+    porMes[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+    porMes[mes].semanas.push(sem);
+  });
+
+  let tbody='<tbody>';
+  // Por mês
+  Object.entries(porMes).forEach(([mes,grupo])=>{
+    // Cabeçalho do mês
+    tbody+=`<tr><td colspan="${cols.length}" style="background:#f0fdf4;color:#166534;font-weight:700;font-size:11px;padding:6px 12px;text-transform:capitalize;border-bottom:1px solid #bbf7d0">${grupo.label}</td></tr>`;
+
+    const metricas=grupo.semanas.map(sem=>{
+      const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
+      // Encontra CPP da escala para essa semana
+      const cppSem=histEscMap[sem.de]||null;
+      return{sem,mt,cppSem};
+    });
+
+    metricas.forEach(({sem,mt,cppSem},i)=>{
+      const prev=i>0?metricas[i-1].mt:null;
+      function celVar(atual,ant,hiMelhor=false,fmt=v=>v){
+        if(ant===null||ant===undefined||atual===null)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)}</td>`;
+        const pct=ant!==0?((atual-ant)/ant*100):0;
+        const melhorou=hiMelhor?pct>0:pct<0;
+        const cor=melhorou?'#166534':'#dc2626';
+        const estudo=pct>=0?`+${pct.toFixed(1)}%`:`${pct.toFixed(1)}%`;
+        return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)} <span style="font-size:10px;color:${cor};font-weight:600">${estudo}</span></td>`;
+      }
+      tbody+=`<tr style="border-bottom:1px solid var(--brd)">
+        <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap">${sem.deBR}–${sem.ateBR}</td>
+        ${celVar(mt.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))}
+        ${celVar(mt.cancelamentos,prev?.cancelamentos,false,v=>v)}
+        ${celVar(mt.pctCancel,prev?.pctCancel,false,v=>v.toFixed(2)+'%')}
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tPreparoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tColetaMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cppSem!==null?'R$ '+cppSem.toFixed(2).replace('.',','):'—'}</td>
+      </tr>`;
+    });
+
+    // Linha de média do mês
+    if(metricas.length>1){
+      const vols=metricas.map(x=>x.mt.volume);
+      const cancs=metricas.map(x=>x.mt.cancelamentos);
+      const pcts=metricas.map(x=>x.mt.pctCancel);
+      const preps=metricas.map(x=>x.mt.tPreparoMed).filter(v=>v!==null);
+      const cols_=metricas.map(x=>x.mt.tColetaMed).filter(v=>v!==null);
+      const desps=metricas.map(x=>x.mt.tDespachoMed).filter(v=>v!==null);
+      const cpps=metricas.map(x=>x.cppSem).filter(v=>v!==null);
+      const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
+      tbody+=`<tr style="background:#f8f9fa;font-weight:600;border-top:2px solid var(--brd2)">
+        <td style="padding:6px 12px;font-size:11px;color:var(--mu)">Média do mês</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${Math.round(avg(vols)).toLocaleString('pt-BR')}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${Math.round(avg(cancs))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${avg(pcts).toFixed(2)}%</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(preps))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(cols_))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(desps))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cpps.length?'R$ '+avg(cpps).toFixed(2).replace('.',','):'—'}</td>
+      </tr>`;
+    }
+  });
+  tbody+='</tbody>';
+
+  document.getElementById('indTabela').innerHTML=thead+tbody;
+
+  const subTxt=`Semana atual: ${semanaAtual.deBR}–${semanaAtual.ateBR} · ${hist.length} semana${hist.length!==1?'s':''}`;
+  document.getElementById('indSub').textContent=subTxt;
+  document.getElementById('indTabelaMeta').textContent=`${hist.length} semanas coletadas`;
+
+  // Atualiza select hubs
+  atualizarSelectHubs([]);
+}
+
+function limparIndicadores(){
+  if(!confirm('Apagar todos os indicadores coletados?'))return;
+  localStorage.removeItem(KIND);
+  document.getElementById('indKpis').innerHTML='';
+  document.getElementById('indTabelaCard').style.display='none';
+  document.getElementById('indEmp').style.display='block';
+  document.getElementById('indBanner').innerHTML='';
+  toast('Indicadores apagados.','tok');
+}
+
+function exportarIndicadores(){
+  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+  if(!hist.length){toast('Nenhum dado para exportar.','ter');return;}
+  const hub=document.getElementById('indHubFiltro').value||'todos';
+  const linhas=[['Semana','Volume','Cancelamentos','% Cancel.','T.Preparo (min)','T.Coleta (min)','T.Despacho (min)','CPP']];
+  hist.forEach(sem=>{
+    const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
+    let cppSem='';
+    try{
+      const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+      const e=he.find(x=>x.segISO===sem.de);
+      if(e&&e.resumo.totalPed>0)cppSem=(e.resumo.totalCusto/e.resumo.totalPed).toFixed(2);
+    }catch(e){}
+    linhas.push([
+      `${sem.deBR}–${sem.ateBR}`,
+      mt.volume,mt.cancelamentos,mt.pctCancel.toFixed(2)+'%',
+      mt.tPreparoMed!==null?mt.tPreparoMed.toFixed(1):'',
+      mt.tColetaMed!==null?mt.tColetaMed.toFixed(1):'',
+      mt.tDespachoMed!==null?mt.tDespachoMed.toFixed(1):'',
+      cppSem,
+    ]);
+  });
+  const csv=linhas.map(r=>r.join(';')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download=`indicadores_orion_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('✓ CSV exportado!','tok');
+}
+
+// ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
 if(window._INBOUND){
   // Dados chegaram via hash/extensão — chama gerarEscala() DIRETAMENTE
