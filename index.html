@@ -79,6 +79,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 /* ── SEMANA GRID */
 .sg{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:16px}
 .sd{background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:10px;text-align:center;box-shadow:var(--shadow)}
+.sd-feriado{border-color:#fca5a5;background:#fff5f5}
+.sd-feriado .sd-n{color:#dc2626}
 .sd-n{font-size:10px;color:var(--mu);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 .sd-d{font-size:15px;font-weight:700;font-family:var(--mo);margin:3px 0}
 .sd-t{font-size:11px;font-weight:600;color:var(--ac)}
@@ -532,6 +534,52 @@ function pedirDadosDaExtensao(timeout=2500){
   });
 }
 
+// ══════════════════════════════════════════════════════
+// FERIADOS — Nacionais + Municipais BH + Pontos Facultativos
+// Formato: 'MM-DD' (recorrentes) ou 'YYYY-MM-DD' (específicos)
+// ══════════════════════════════════════════════════════
+const FERIADOS_BH = {
+  // Nacionais fixos (todo ano)
+  '01-01': {nome:'Ano Novo', tipo:'nacional'},
+  '04-21': {nome:'Tiradentes', tipo:'nacional'},
+  '05-01': {nome:'Dia do Trabalho', tipo:'nacional'},
+  '09-07': {nome:'Independência', tipo:'nacional'},
+  '10-12': {nome:'Nossa Sra. Aparecida', tipo:'nacional'},
+  '11-02': {nome:'Finados', tipo:'nacional'},
+  '11-15': {nome:'Proc. da República', tipo:'nacional'},
+  '11-20': {nome:'Consciência Negra', tipo:'nacional'},
+  '12-25': {nome:'Natal', tipo:'nacional'},
+  // Municipais BH fixos
+  '08-15': {nome:'N. Sra. da Assunção', tipo:'municipal'},
+  '12-08': {nome:'Imaculada Conceição', tipo:'municipal'},
+  // Variáveis por ano (Páscoa, Carnaval, Corpus Christi)
+  '2025-02-28': {nome:'Carnaval', tipo:'ponto'},
+  '2025-03-01': {nome:'Carnaval', tipo:'ponto'},
+  '2025-04-18': {nome:'Sexta-feira Santa', tipo:'nacional'},
+  '2025-04-20': {nome:'Páscoa', tipo:'nacional'},
+  '2025-06-19': {nome:'Corpus Christi', tipo:'nacional'},
+  '2026-02-16': {nome:'Carnaval', tipo:'ponto'},
+  '2026-02-17': {nome:'Carnaval', tipo:'ponto'},
+  '2026-04-03': {nome:'Sexta-feira Santa', tipo:'nacional'},
+  '2026-04-05': {nome:'Páscoa', tipo:'nacional'},
+  '2026-06-04': {nome:'Corpus Christi', tipo:'nacional'},
+  '2027-02-08': {nome:'Carnaval', tipo:'ponto'},
+  '2027-02-09': {nome:'Carnaval', tipo:'ponto'},
+  '2027-03-26': {nome:'Sexta-feira Santa', tipo:'nacional'},
+  '2027-03-28': {nome:'Páscoa', tipo:'nacional'},
+  '2027-05-27': {nome:'Corpus Christi', tipo:'nacional'},
+};
+
+function getFeriadoBH(data){
+  // data = objeto Date
+  const p2=v=>String(v).padStart(2,'0');
+  const yyyy=data.getFullYear();
+  const mm=p2(data.getMonth()+1);
+  const dd=p2(data.getDate());
+  // Testa data específica primeiro, depois recorrente
+  return FERIADOS_BH[`${yyyy}-${mm}-${dd}`] || FERIADOS_BH[`${mm}-${dd}`] || null;
+}
+
 // ── Bookmarklet com período seg-dom correto
 const BM_SCRIPT=`(async()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const rs=await fetch('/admin/reports/orders?start_date='+fi(ds)+'&start_time=00:00&end_date='+fi(da)+'&end_time=23:59&business=',{credentials:'include'});const ht=await rs.text();const dc=new DOMParser().parseFromString(ht,'text/html');const rw=dc.querySelectorAll('table tbody tr');const mx={};D.forEach(d=>{mx[d]={};for(let h=0;h<30;h++)mx[d][p(h)]=0;});let tt=0;rw.forEach(r=>{const cs=r.querySelectorAll('td');if(cs.length<10)return;const c=cs[9]?.textContent?.trim();if(!c||!c.includes('/')||!c.includes(' '))return;const[dp,tp]=c.split(' ');const[d2,mm,yy]=dp.split('/');const h=parseInt(tp.split(':')[0],10);const di=D[new Date(+yy,+mm-1,+d2).getDay()];const hk=p(h);if(mx[di]&&mx[di][hk]!==undefined){mx[di][hk]++;tt++;}});const pl={mx,total:tt,de:fi(ds),ate:fi(da),deBR:fb(ds),ateBR:fb(da),ts:Date.now()};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#dados='+b64,'_blank');})()`;
 
@@ -602,14 +650,15 @@ function semanaAnterior(){
   return{segAnt,domAnt};
 }
 function proximaSemana(){
-  const hoje=new Date();
-  const dow=hoje.getDay();
-  // Se hoje é segunda (dow=1): projeção é essa semana (diff=0)
-  // Se hoje é domingo (dow=0): projeção começa amanhã (diff=1)
-  // Qualquer outro dia: próxima segunda (diff=8-dow)
-  const diff=dow===1?0:dow===0?1:8-dow;
-  const seg=new Date(hoje);seg.setDate(hoje.getDate()+diff);
-  const dom=new Date(seg);dom.setDate(seg.getDate()+6);
+  // REGRA: projeta sempre para a semana SEGUINTE à semana coletada.
+  // A semana coletada é sempre seg–dom anterior.
+  // Então a projeção é sempre a semana que começa 7 dias após
+  // a segunda-feira da semana coletada.
+  const {segAnt} = semanaAnterior();
+  const seg = new Date(segAnt);
+  seg.setDate(segAnt.getDate()+14); // 14 dias após a seg da semana coletada = semana seguinte
+  const dom = new Date(seg);
+  dom.setDate(seg.getDate()+6);
   return{seg,dom};
 }
 function fmtISO(d){return fmtISOlocal(d);}
@@ -1000,7 +1049,9 @@ function renderEscala(){
     const tot=Object.values(S.escala[dia]||{}).reduce((a,c)=>a+(c?.ped||0),0);
     const custo=Object.values(S.escala[dia]||{}).reduce((a,c)=>a+(c?.custo||0),0);
     const forca=Object.values(S.escala[dia]||{}).reduce((a,c)=>a+(c?.alocados?.length||0),0);
-    return`<div class="sd">
+    const ferSd=getFeriadoBH(d);
+    const ferBadgeSd=ferSd?`<div style="font-size:9px;background:${ferSd.tipo==='nacional'?'#fee2e2':ferSd.tipo==='municipal'?'#fef3c7':'#f3f4f6'};color:${ferSd.tipo==='nacional'?'#dc2626':ferSd.tipo==='municipal'?'#92400e':'#6b7280'};border-radius:4px;padding:1px 5px;margin-top:2px;font-weight:600;line-height:1.4" title="${ferSd.nome}">${ferSd.tipo==='nacional'?'🇧🇷':ferSd.tipo==='municipal'?'🏙':'📅'} ${ferSd.nome}</div>`:'';
+    return`<div class="sd${ferSd?' sd-feriado':''}">
       <div class="sd-n">${dia}</div>
       <div class="sd-d">${fmtBR(d)}</div>
       <div class="sd-t">${tot.toLocaleString()} ped.</div>
@@ -1355,9 +1406,22 @@ function renderEscalaFiltrada(dia){
 
   // ── CABEÇALHO
   const head=document.getElementById('qHead');
+  // Monta cabeçalho com datas reais e badges de feriado
+  const {seg:segHead}=proximaSemana();
   head.innerHTML=`<tr class="q-head">
     <th class="h-hora" rowspan="2">Hora</th>
-    ${diasVis.map(d=>`<th colspan="1">${d}</th>`).join('')}
+    ${diasVis.map((d,i)=>{
+      const diasTodos=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+      const idxDia=diasTodos.indexOf(d);
+      const dataD=new Date(segHead);dataD.setDate(segHead.getDate()+idxDia);
+      const p2=v=>String(v).padStart(2,'0');
+      const dataStr=p2(dataD.getDate())+'/'+p2(dataD.getMonth()+1);
+      const fer=getFeriadoBH(dataD);
+      const ferBadge=fer
+        ?`<div style="font-size:9px;background:${fer.tipo==='nacional'?'#fee2e2':fer.tipo==='municipal'?'#fef3c7':'#f3f4f6'};color:${fer.tipo==='nacional'?'#dc2626':fer.tipo==='municipal'?'#92400e':'#6b7280'};border-radius:4px;padding:1px 5px;margin-top:2px;font-weight:600;white-space:nowrap" title="${fer.nome}">${fer.tipo==='nacional'?'🇧🇷':fer.tipo==='municipal'?'🏙':'📅'} ${fer.nome}</div>`
+        :'';
+      return`<th colspan="1">${d}<div style="font-size:10px;opacity:.7;font-weight:400">${dataStr}</div>${ferBadge}</th>`;
+    }).join('')}
     <th class="h-sep" rowspan="2">Volume<br>${dia==='todos'?'Total':'Dia'}</th>
     <th class="h-sep" rowspan="2">Custo/h<br>e /ped</th>
     <th class="h-sep" rowspan="2">Força<br>p/h</th>
