@@ -296,11 +296,20 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <input id="fCusto" type="number" step="0.01" min="0" placeholder="Ex: 14.54">
     </div>
     <div class="fg">
+      <label>Passagem por dia (R$)</label>
+      <input id="fPassagem" type="number" step="0.01" min="0" placeholder="Ex: 16.00">
+    </div>
+  </div>
+  <div class="fr">
+    <div class="fg">
       <label>Tipo de contrato</label>
       <select id="fTipo">
         <option value="hora">Por hora</option>
         <option value="fixo">Fixo mensal</option>
       </select>
+    </div>
+    <div class="fg" style="justify-content:flex-end;padding-top:18px">
+      <div style="font-size:10px;color:var(--mu);line-height:1.6">Passagem é cobrada 1× por dia que o colaborador for escalado, independente do horário.</div>
     </div>
   </div>
   <div class="fr">
@@ -355,17 +364,19 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div class="sc"><div class="sc-l">Custo médio / pedido</div><div class="sc-v" id="sCpp" style="font-size:14px;color:#2563eb">—</div><div class="sc-s" id="sCppSub">R$ por pedido na semana</div></div>
 
   <div class="stit">Configurações</div>
-  <div class="cfg"><label>Pedidos/pessoa/hora</label><input type="number" id="cPPH" value="30" min="1" max="200"></div>
-  <div class="cfg"><label>Mín. pessoas abertura (09h)</label><input type="number" id="cMin" value="2" min="1" max="10"></div>
-  <div class="cfg"><label>Hora abertura</label><input type="number" id="cHI" value="9" min="0" max="23"></div>
-  <div class="cfg"><label>Hora fechamento (25=01h)</label><input type="number" id="cHO" value="25" min="1" max="30"></div>
+  <div class="cfg"><label>Pedidos/pessoa/hora</label><input type="number" id="cPPH" value="30" min="1" max="200" oninput="atualizarSideRegras()"></div>
+  <div class="cfg"><label>Mín. pessoas abertura (09h)</label><input type="number" id="cMin" value="2" min="1" max="10" oninput="atualizarSideRegras()"></div>
+  <div class="cfg"><label>Hora abertura</label><input type="number" id="cHI" value="9" min="0" max="23" oninput="atualizarSideRegras()"></div>
+  <div class="cfg"><label>Hora fechamento (25=01h)</label><input type="number" id="cHO" value="25" min="1" max="30" oninput="atualizarSideRegras()"></div>
 
   <div class="stit">Regras ativas</div>
-  <div class="rule-badge"><span class="rb-dot" style="background:#16a34a"></span>Período: Seg–Dom anterior</div>
-  <div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>Mínimo 3h por colaborador</div>
-  <div class="rule-badge"><span class="rb-dot" style="background:#7c3aed"></span>Máx. 8h/dia por pessoa</div>
-  <div class="rule-badge"><span class="rb-dot" style="background:#d97706"></span>Kayky: fechamento Seg–Qui fixo</div>
-  <div class="rule-badge"><span class="rb-dot" style="background:#dc2626"></span>Sem gaps 09h→01:20</div>
+  <div id="sideRegras">
+    <div class="rule-badge"><span class="rb-dot" style="background:#16a34a"></span>Período: Seg–Dom anterior</div>
+    <div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>Mínimo 3h por colaborador</div>
+    <div class="rule-badge"><span class="rb-dot" style="background:#7c3aed"></span>Máx. 8h/dia por pessoa</div>
+    <div class="rule-badge"><span class="rb-dot" style="background:#d97706"></span>Kayky: fechamento Seg–Qui fixo</div>
+    <div class="rule-badge"><span class="rb-dot" style="background:#dc2626"></span>Sem gaps 09h→01:20</div>
+  </div>
 
   <div class="stit" style="margin-top:16px">Dados</div>
   <div style="font-size:11px;color:var(--mu);line-height:1.9">
@@ -866,7 +877,7 @@ function gerarEscala(dados){
   document.getElementById('esBanner').innerHTML='';
   document.getElementById('esBanner').className='';
   hideLd();
-  renderEscala();renderHM();
+  renderEscala();renderHM();atualizarSideRegras();
   goT('es');
   toast(`✓ Escala gerada! ${dados.total.toLocaleString()} pedidos (${per}).`,'tok');
 }
@@ -991,21 +1002,49 @@ function preencher(){
 
 function calcularCustos(){
   if(!S.escala)return;
+  // Primeiro: monta mapa de dias trabalhados por colaborador (para passagem)
+  // passagem é cobrada 1x por dia que o colaborador tem pelo menos 1 hora alocada
+  const diasTrabalhados={}; // {nome: Set<dia>}
   DIAS.forEach(dia=>{
     Object.values(S.escala[dia]||{}).forEach(cell=>{
       if(!cell)return;
-      // Soma o custo/hora de todos os alocados na célula
+      cell.alocados.forEach(nome=>{
+        if(!diasTrabalhados[nome])diasTrabalhados[nome]=new Set();
+        diasTrabalhados[nome].add(dia);
+      });
+    });
+  });
+
+  DIAS.forEach(dia=>{
+    Object.values(S.escala[dia]||{}).forEach(cell=>{
+      if(!cell)return;
       let custoHora=0;
       cell.alocados.forEach(nome=>{
         const c=S.colabs.find(x=>x.nome===nome);
         if(c&&c.custo>0)custoHora+=c.custo;
       });
-      cell.custo=custoHora; // custo total dos alocados nessa hora
-      // Custo por pedido = custo total ÷ pedidos (para exibição na coluna)
-      cell.custoPorPedido=(custoHora>0&&cell.ped>0)
-        ? custoHora/cell.ped
-        : 0;
+      cell.custo=custoHora;
+      cell.custoPorPedido=(custoHora>0&&cell.ped>0)?custoHora/cell.ped:0;
     });
+  });
+
+  // Distribui o custo de passagem: adiciona na PRIMEIRA hora alocada do colaborador no dia
+  DIAS.forEach(dia=>{
+    const hI=+document.getElementById('cHI').value||9;
+    const hO=+document.getElementById('cHO').value||25;
+    const jaAdicionado=new Set();
+    for(let h=hI;h<=hO;h++){
+      const cell=S.escala[dia]?.[h];
+      if(!cell)continue;
+      cell.alocados.forEach(nome=>{
+        if(jaAdicionado.has(nome))return;
+        const c=S.colabs.find(x=>x.nome===nome);
+        if(c&&(c.passagem||0)>0){
+          cell.custo=(cell.custo||0)+c.passagem;
+          jaAdicionado.add(nome);
+        }
+      });
+    }
   });
 }
 
@@ -1022,7 +1061,49 @@ function atualizarCustoTotal(){
   document.getElementById('sCppSub').textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe';
 }
 
-function limpar(){
+function atualizarSideRegras(){
+  const pph=+document.getElementById('cPPH').value||30;
+  const minPes=+document.getElementById('cMin').value||2;
+  const hI=+document.getElementById('cHI').value||9;
+  const hO=+document.getElementById('cHO').value||25;
+  const hOlbl=hO>=24?`${String(hO-24).padStart(2,'0')}:00 (+1)`:`${String(hO).padStart(2,'0')}:00`;
+  const hIlbl=`${String(hI).padStart(2,'0')}:00`;
+
+  // Colaboradores fixos
+  const fixos=S.colabs.filter(c=>c.fixo);
+
+  // Mínimos por colaborador
+  const mins=S.colabs.length?[...new Set(S.colabs.map(c=>c.minH||3))].sort((a,b)=>a-b):null;
+  const maxs=S.colabs.length?[...new Set(S.colabs.map(c=>c.maxH||8))].sort((a,b)=>a-b):null;
+  const minHLbl=mins?(mins[0]===mins[mins.length-1]?`${mins[0]}h`:`${mins[0]}–${mins[mins.length-1]}h`):'-h';
+  const maxHLbl=maxs?(maxs[0]===maxs[maxs.length-1]?`${maxs[0]}h`:`${maxs[0]}–${maxs[maxs.length-1]}h`):'-h';
+
+  // Passagem
+  const comPassagem=S.colabs.filter(c=>(c.passagem||0)>0);
+
+  const regras=document.getElementById('sideRegras');
+  if(!regras)return;
+  let html='';
+  html+=`<div class="rule-badge"><span class="rb-dot" style="background:#16a34a"></span>Abertura: ${hIlbl} · Fechamento: ${hOlbl}</div>`;
+  html+=`<div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>Limite: ${pph} pedidos/pessoa/hora</div>`;
+  html+=`<div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>Mín. ${minPes} pessoa${minPes!==1?'s':''} na abertura</div>`;
+  if(S.colabs.length){
+    html+=`<div class="rule-badge"><span class="rb-dot" style="background:#7c3aed"></span>Turnos: mín ${minHLbl} · máx ${maxHLbl}/dia</div>`;
+  }
+  if(fixos.length){
+    fixos.forEach(c=>{
+      const blocos=(c.turnosFixos&&c.turnosFixos.length)?c.turnosFixos:[{dias:c.dias,horaIn:c.horaIn,horaOut:c.horaOut}];
+      const desc=blocos.map(tf=>tf.dias.join('/')+' '+String(tf.horaIn).padStart(2,'0')+'h–'+String(tf.horaOut<24?tf.horaOut:tf.horaOut-24).padStart(2,'0')+'h').join(', ');
+      html+=`<div class="rule-badge"><span class="rb-dot" style="background:#d97706"></span>📌 ${c.nome.split(' ')[0]}: ${desc}</div>`;
+    });
+  }
+  if(comPassagem.length){
+    html+=`<div class="rule-badge"><span class="rb-dot" style="background:#7c3aed"></span>🚌 Passagem: ${comPassagem.length} colaborador${comPassagem.length!==1?'es':''}</div>`;
+  }
+  regras.innerHTML=html||'<div class="rule-badge"><span class="rb-dot" style="background:#9ca3af"></span>Sem regras especiais</div>';
+}
+
+
   if(!S.escala)return;
   DIAS.forEach(d=>Object.values(S.escala[d]).forEach(c=>{if(c){c.alocados=[];c.custo=0;}}));
   save();renderEscala();atualizarCustoTotal();toast('Alocações limpas.','tok');
@@ -1243,6 +1324,11 @@ function renderCo(){
         <input type="number" step="0.01" value="${c.custo||''}" placeholder="0,00" onchange="atualizarCusto('${c.id}',this.value)" title="Custo por hora">
         ${c.custo>0?`<span style="color:var(--or);font-weight:600">R$ ${c.custo.toFixed(2).replace('.',',')}/h</span>`:'<span style="color:var(--m2);font-size:10px">não cadastrado</span>'}
       </div>
+      <div class="c-custo" style="margin-top:4px">
+        <span>🚌 Pass.:</span>
+        <input type="number" step="0.01" value="${(c.passagem||0)||''}" placeholder="0,00" onchange="atualizarPassagem('${c.id}',this.value)" title="Passagem por dia trabalhado">
+        ${(c.passagem||0)>0?`<span style="color:#7c3aed;font-weight:600">R$ ${c.passagem.toFixed(2).replace('.',',')}/dia</span>`:'<span style="color:var(--m2);font-size:10px">sem passagem</span>'}
+      </div>
       ${c.nota?`<div class="cno">${c.nota}</div>`:''}
     </div>`).join('');
 }
@@ -1250,6 +1336,11 @@ function renderCo(){
 function atualizarCusto(id,val){
   const c=S.colabs.find(x=>x.id===id);
   if(c){c.custo=parseFloat(val)||0;save();if(S.escala){calcularCustos();renderEscala();}renderCo();}
+}
+
+function atualizarPassagem(id,val){
+  const c=S.colabs.find(x=>x.id===id);
+  if(c){c.passagem=parseFloat(val)||0;save();if(S.escala){calcularCustos();renderEscala();}renderCo();}
 }
 
 function aM(id){
@@ -1261,6 +1352,7 @@ function aM(id){
     document.getElementById('fN').value=c.nome;
     document.getElementById('fF').value=c.funcao||'';
     document.getElementById('fCusto').value=c.custo||'';
+    document.getElementById('fPassagem').value=c.passagem||'';
     document.getElementById('fTipo').value=c.tipo||'hora';
     document.getElementById('fMinH').value=c.minH||3;
     document.getElementById('fMaxH').value=c.maxH||8;
@@ -1270,6 +1362,7 @@ function aM(id){
   }else{
     ['fN','fF','fNo'].forEach(i=>document.getElementById(i).value='');
     document.getElementById('fCusto').value='';
+    document.getElementById('fPassagem').value='';
     document.getElementById('fHI').value=9;document.getElementById('fHO').value=17;
     document.getElementById('fMinH').value=3;document.getElementById('fMaxH').value=8;
     document.querySelectorAll('.dt').forEach(t=>t.classList.toggle('on',['Seg','Ter','Qua','Qui','Sex'].includes(t.dataset.d)));
@@ -1325,6 +1418,7 @@ function salvarC(){
   if(!nome){toast('Informe o nome.','ter');return;}
   const funcao=document.getElementById('fF').value.trim()||'Colaborador';
   const custo=parseFloat(document.getElementById('fCusto').value)||0;
+  const passagem=parseFloat(document.getElementById('fPassagem').value)||0;
   const minH=parseInt(document.getElementById('fMinH').value)||3;
   const maxH=parseInt(document.getElementById('fMaxH').value)||8;
   const nota=document.getElementById('fNo').value.trim();
@@ -1338,10 +1432,10 @@ function salvarC(){
   // Turno fixo — um bloco por dia com horário específico
   const isFixo=document.getElementById('fFixo').checked;
   const turnosFixos=isFixo?dias.map(d=>({dias:[d],horaIn:dispDia[d].horaIn,horaOut:dispDia[d].horaOut})):[];
-  const obj={id:S.editId||Date.now().toString(),nome,funcao,custo,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota};
+  const obj={id:S.editId||Date.now().toString(),nome,funcao,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
-  save();renderCo();fM();
+  save();renderCo();fM();atualizarSideRegras();
   if(S.escala){calcularCustos();renderEscala();}
   toast(S.editId?'✓ Atualizado!':'✓ Colaborador adicionado!','tok');
 }
@@ -1574,15 +1668,23 @@ function abrirPainelTurnos(){
     }).join('');
 
     const custoH=c&&c.custo>0?c.custo:0;
-    const custoTotal=custoH*totalH;
+    const passagemDia=c&&(c.passagem||0)>0?c.passagem:0;
+    // Conta dias únicos trabalhados
+    const diasUnicos=new Set(diasTurno).size;
+    const custoTotal=custoH*totalH + passagemDia*diasUnicos;
+    const custoInfo=custoTotal>0
+      ?(custoH>0&&passagemDia>0
+        ?`R$ ${custoTotal.toFixed(2).replace('.',',')} <span style="font-size:10px;opacity:.7">(${totalH}h + ${diasUnicos}× pass.)</span>`
+        :`R$ ${custoTotal.toFixed(2).replace('.',',')}`)
+      :'sem custo';
     html_colab+=`
     <div class="pt-card" id="ptc-${nome.replace(/\s/g,'_')}">
       <div class="pt-header">
         <span class="pt-nome">${nome}</span>
         <span class="pt-func">${c?.funcao||'Colaborador'}</span>
         <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end">
-          <span class="pt-info">${totalH}h · ${custoTotal>0?'R$ '+custoTotal.toFixed(2).replace('.',','):'sem custo'}</span>
-          <button class="btn bs sm" onclick="copiarTurnoPorNome(nome)">📋 Copiar</button>
+          <span class="pt-info">${totalH}h · ${custoInfo}</span>
+          <button class="btn bs sm" onclick="copiarTurnoPorNome('${nome.replace(/'/g,"\\'")}')">📋 Copiar</button>
         </div>
       </div>
       <div class="pt-slots"
@@ -2312,7 +2414,7 @@ try{
   };
 }catch(e){}
 
-load();renderCo();
+load();renderCo();atualizarSideRegras();
 if(window._INBOUND){
   // Dados chegaram via hash/extensão — chama gerarEscala() DIRETAMENTE
   // (nunca montarEscala(), que relê localStorage e causaria loop infinito)
@@ -2355,7 +2457,7 @@ if(window._INBOUND){
     DIAS.forEach(d=>Object.entries(S.matrix[d]).forEach(([h,v])=>{if(v>mx){mx=v;mxd=d;mxh=h;}}));
     document.getElementById('sPi').textContent=DIASF[mxd]||'—';
     document.getElementById('sPiS').textContent=`Pico: ${mx} ped. às ${mxh}h`;
-    calcularCustos();renderEscala();renderHM();atualizarCustoTotal();
+    calcularCustos();renderEscala();renderHM();atualizarCustoTotal();atualizarSideRegras();
   }else{
     document.getElementById('esEmp').style.display='block';
   }
