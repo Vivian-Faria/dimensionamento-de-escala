@@ -2539,46 +2539,57 @@ try {
 //   C) BroadcastChannel — fallback mesma origem
 // ══════════════════════════════════════════════════════
 
-// A) Hash da URL — suporta formato simples (#dados=B64) e combinado (#dados=B64&ind_dados=B64)
+// A) Hash da URL — suporta formato simples e combinado
+// IMPORTANTE: BASE64 pode conter '+' e '=' — extraímos por indexOf, não split por '&'
 (function(){
   try{
-    var h=location.hash.slice(1); // remove o '#'
-    if(!h) return;
-    // parse manual de query string no hash
-    var params={};
-    h.split('&').forEach(function(part){
-      var eq=part.indexOf('=');
-      if(eq<0)return;
-      params[part.slice(0,eq)]=part.slice(eq+1);
-    });
+    var raw=location.hash.slice(1);
+    if(!raw) return;
+    var temDados=false;
 
-    // Escala
-    if(params['dados']){
+    function extrairParam(str, chave){
+      var prefix=chave+'=';
+      var ini=str.indexOf(prefix);
+      if(ini<0) return null;
+      ini+=prefix.length;
+      // fim = próximo '&ind_dados=' ou '&dados=' ou fim da string
+      var fim=str.length;
+      var marcadores=['&dados=','&ind_dados='];
+      marcadores.forEach(function(m){
+        var p=str.indexOf(m, ini);
+        if(p>=0&&p<fim) fim=p;
+      });
+      return str.slice(ini, fim);
+    }
+
+    var b64Escala=extrairParam(raw,'dados');
+    var b64Ind=extrairParam(raw,'ind_dados');
+
+    if(b64Escala){
       try{
-        var json=decodeURIComponent(escape(atob(decodeURIComponent(params['dados']))));
-        var payload=JSON.parse(json);
-        if(payload&&payload.mx&&typeof payload.total==='number'){
-          localStorage.setItem('orion_coleta',JSON.stringify(payload));
-          window._INBOUND=payload;
+        var json=decodeURIComponent(escape(atob(b64Escala)));
+        var p=JSON.parse(json);
+        if(p&&p.mx&&typeof p.total==='number'){
+          localStorage.setItem('orion_coleta',JSON.stringify(p));
+          window._INBOUND=p;
+          temDados=true;
         }
-      }catch(e){ console.error('[OrionEscala] hash dados erro:', e); }
+      }catch(e){ console.error('[OrionEscala] hash dados erro:',e); }
     }
 
-    // Indicadores
-    if(params['ind_dados']){
+    if(b64Ind){
       try{
-        var json2=decodeURIComponent(escape(atob(decodeURIComponent(params['ind_dados']))));
-        var payload2=JSON.parse(json2);
-        if(payload2&&payload2.de&&Array.isArray(payload2.vendas)){
-          window._INBOUND_IND=payload2;
+        var json2=decodeURIComponent(escape(atob(b64Ind)));
+        var p2=JSON.parse(json2);
+        if(p2&&p2.de&&Array.isArray(p2.vendas)){
+          window._INBOUND_IND=p2;
+          temDados=true;
         }
-      }catch(e){ console.error('[OrionEscala] hash ind_dados erro:', e); }
+      }catch(e){ console.error('[OrionEscala] hash ind_dados erro:',e); }
     }
 
-    if(params['dados']||params['ind_dados']){
-      history.replaceState(null,'',location.pathname);
-    }
-  }catch(e){ console.error('[OrionEscala] hash reader erro:', e); }
+    if(temDados) history.replaceState(null,'',location.pathname);
+  }catch(e){ console.error('[OrionEscala] hash reader erro:',e); }
 })();
 
 // B) postMessage — extensão Chrome manda ORION_ESCALA_DATA / ORION_IND_DATA
@@ -3064,24 +3075,31 @@ function exportarIndicadores(){
 // ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
 
-// Dados de INDICADORES chegaram via hash (#ind_dados=)
-if(window._INBOUND_IND){
-  const _pi=window._INBOUND_IND;
-  window._INBOUND_IND=null;
-  setTimeout(()=>{
-    goT('ind'); // navega para a aba de indicadores
-    receberDadosIndicadores(_pi);
-  },400);
-}else if(window._INBOUND){
-  // Dados de ESCALA chegaram via hash/extensão — chama gerarEscala() DIRETAMENTE
-  // (nunca montarEscala(), que relê localStorage e causaria loop infinito)
-  const _p=window._INBOUND;
-  window._INBOUND=null; // limpa imediatamente para evitar qualquer re-entrada
-  setTimeout(()=>{
-    toast(`✓ ${_p.total?.toLocaleString()} pedidos recebidos! Montando escala...`,'tok');
-    setTimeout(()=>gerarEscala(_p), 600);
-  },300);
-}else{
+// Inicialização — processa dados recebidos via hash ou postMessage
+{
+  const _pi=window._INBOUND_IND; window._INBOUND_IND=null;
+  const _pe=window._INBOUND;     window._INBOUND=null;
+
+  if(_pe&&_pi){
+    // Chegaram os dois juntos (botão unificado)
+    setTimeout(()=>{
+      toast(`✓ ${_pe.total?.toLocaleString()} pedidos recebidos! Montando escala...`,'tok');
+      gerarEscala(_pe);
+      receberDadosIndicadores(_pi);
+    },400);
+  } else if(_pi){
+    setTimeout(()=>{
+      goT('ind');
+      receberDadosIndicadores(_pi);
+    },400);
+  } else if(_pe){
+    setTimeout(()=>{
+      toast(`✓ ${_pe.total?.toLocaleString()} pedidos recebidos! Montando escala...`,'tok');
+      setTimeout(()=>gerarEscala(_pe),600);
+    },300);
+  }
+}
+if(!window._INBOUND&&!window._INBOUND_IND){
   if(!S.matrix){
     try{
       const s=localStorage.getItem(KCOL);
