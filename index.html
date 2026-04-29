@@ -354,11 +354,12 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <button class="btn bg sm" id="btnCol" onclick="iniciarColeta()">↻ Coletar dados</button>
   <div style="position:relative;display:inline-block">
     <button class="btn ba" onclick="abrirSeletorHub()">⚡ Montar escala</button>
-    <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:200;min-width:220px;padding:6px 0">
-      <div style="padding:8px 14px;font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">SELECIONE O HUB</div>
+    <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:200;min-width:240px;padding:6px 0">
+      <div style="padding:8px 14px;font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">SELECIONE OS HUBS</div>
       <div id="hubSeletorLista"></div>
-      <div style="padding:6px 8px;border-top:1px solid rgba(255,255,255,.08)">
-        <button style="width:100%;background:transparent;border:1px solid rgba(255,255,255,.15);color:#d1d5db;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:var(--fn)" onmouseover="this.style.background='rgba(255,255,255,.08)'" onmouseout="this.style.background='transparent'" onclick="selecionarHub('todos')">🌐 Todos os hubs</button>
+      <div style="padding:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:6px">
+        <button id="hubBtnConfirmar" style="flex:1;background:#16a34a;border:none;color:#fff;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--fn)" onclick="confirmarHubsSelecionados()">⚡ Montar</button>
+        <button style="flex:1;background:transparent;border:1px solid rgba(255,255,255,.15);color:#9ca3af;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:var(--fn)" onclick="document.getElementById('hubSeletorDrop').style.display='none'">Cancelar</button>
       </div>
     </div>
   </div>
@@ -858,28 +859,55 @@ async function iniciarColeta(){
   }
 }
 
-// Seletor de hub antes de montar escala
+// ── Mapa de nomes de hub (normalização)
+const HUB_NOMES = { 'Sem hub': 'Cozinhas Sion', '-': 'Cozinhas Sion' };
+function nomeHub(h){ return HUB_NOMES[h] || h; }
+
+// Seletor multi-hub antes de montar escala
+let _hubsSelecionados = new Set();
+
 function abrirSeletorHub(){
   const drop = document.getElementById('hubSeletorDrop');
   const lista = document.getElementById('hubSeletorLista');
-  // Pegar hubs disponíveis do payload atual
   const raw = localStorage.getItem('orion_coleta');
   let hubs = [];
-  if(raw){ try{ const p=JSON.parse(raw); if(p.mxPorHub) hubs=Object.keys(p.mxPorHub).sort(); }catch(e){} }
-  if(!hubs.length){
-    // Sem hubs separados — monta direto
-    montarEscala(); return;
-  }
-  lista.innerHTML = hubs.map(h=>`
-    <div onclick="selecionarHub('${h.replace(/'/g,"\'")}');event.stopPropagation()"
-      style="padding:8px 14px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;color:#f3f4f6;transition:.1s"
-      onmouseover="this.style.background='rgba(134,239,172,.15)';this.style.color='#86efac'" onmouseout="this.style.background='';this.style.color='#f3f4f6'">
-      <span>${h}</span>
-      <span style="font-size:10px;color:#6b7280">${(()=>{try{const p=JSON.parse(localStorage.getItem('orion_coleta'));return(p.totalPorHub?.[h]||0).toLocaleString('pt-BR')+' ped';}catch(e){return '';}})()}</span>
-    </div>`).join('');
+  if(raw){ try{ const p=JSON.parse(raw); if(p.mxPorHub) hubs=Object.keys(p.mxPorHub).sort((a,b)=>nomeHub(a).localeCompare(nomeHub(b))); }catch(e){} }
+  if(!hubs.length){ montarEscala(); return; }
+
+  let totais = {};
+  try{ const p=JSON.parse(raw); totais=p.totalPorHub||{}; }catch(e){}
+
+  lista.innerHTML = hubs.map(h=>{
+    const nome = nomeHub(h);
+    const total = (totais[h]||0).toLocaleString('pt-BR');
+    const chk = _hubsSelecionados.has(h) ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;font-size:12px;color:#f3f4f6;transition:.1s"
+      onmouseover="this.style.background='rgba(134,239,172,.1)'" onmouseout="this.style.background=''">
+      <input type="checkbox" ${chk} data-hub="${h.replace(/"/g,'&quot;')}"
+        style="width:14px;height:14px;accent-color:#16a34a;cursor:pointer"
+        onclick="event.stopPropagation();toggleHubSeletor(this)">
+      <span style="flex:1">${nome}</span>
+      <span style="font-size:10px;color:#6b7280">${total} ped</span>
+    </label>`;
+  }).join('');
+
   const isOpen = drop.style.display !== 'none';
   drop.style.display = isOpen ? 'none' : 'block';
-  if(!isOpen) setTimeout(()=>document.addEventListener('click', function f(){ drop.style.display='none'; document.removeEventListener('click',f); }, {once:true}), 10);
+  if(!isOpen) setTimeout(()=>document.addEventListener('click', function f(e){
+    if(!drop.contains(e.target)){ drop.style.display='none'; document.removeEventListener('click',f); }
+  }), 10);
+}
+
+function toggleHubSeletor(chk){
+  const hub = chk.getAttribute('data-hub');
+  if(chk.checked) _hubsSelecionados.add(hub);
+  else _hubsSelecionados.delete(hub);
+}
+
+function confirmarHubsSelecionados(){
+  document.getElementById('hubSeletorDrop').style.display='none';
+  if(_hubsSelecionados.size === 0){ montarEscala('todos'); return; }
+  montarEscala([..._hubsSelecionados]);
 }
 
 function selecionarHub(hub){
@@ -945,20 +973,31 @@ async function montarComCache(){const c=verificarCache();if(c.p)gerarEscala(c.p)
 
 function gerarEscala(dados, hubFiltro){
   setLd('Calculando projeção...');
-  // Se tem mxPorHub e um hub foi selecionado, usa a matriz filtrada
-  const hub = hubFiltro || dados._hubFiltro || 'todos';
-  if(hub && hub !== 'todos' && dados.mxPorHub && dados.mxPorHub[hub]){
-    S.matrix = dados.mxPorHub[hub];
-    dados = Object.assign({}, dados, {
-      mx: dados.mxPorHub[hub],
-      total: dados.totalPorHub?.[hub] || dados.total,
-      _hubFiltro: hub
+  // hubFiltro pode ser: string, array de strings, ou 'todos'
+  const hubFiltro_ = hubFiltro || dados._hubFiltro || 'todos';
+  const hubs = Array.isArray(hubFiltro_) ? hubFiltro_ : (hubFiltro_ === 'todos' ? [] : [hubFiltro_]);
+
+  if(hubs.length > 0 && dados.mxPorHub){
+    // Mescla as matrizes dos hubs selecionados
+    const DIAS_=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
+    const p2_=v=>String(v).padStart(2,'0');
+    const mxMesclado={};
+    DIAS_.forEach(d=>{ mxMesclado[d]={}; for(let h=0;h<30;h++) mxMesclado[d][p2_(h)]=0; });
+    let totalMesclado=0;
+    hubs.forEach(h=>{
+      if(!dados.mxPorHub[h]) return;
+      DIAS_.forEach(d=>{ Object.keys(mxMesclado[d]).forEach(hk=>{ mxMesclado[d][hk]+=(dados.mxPorHub[h][d]?.[hk]||0); }); });
+      totalMesclado+=(dados.totalPorHub?.[h]||0);
     });
+    S.matrix = mxMesclado;
+    dados = Object.assign({}, dados, { mx: mxMesclado, total: totalMesclado, _hubFiltro: hubFiltro_ });
   } else {
     S.matrix = dados.mx;
   }
-  // Salva o hub atual para referência no resumo
-  S.hubAtual = hub === 'todos' ? null : hub;
+  // Label do hub no resumo
+  S.hubAtual = hubs.length === 0 ? null
+    : hubs.length === 1 ? nomeHub(hubs[0])
+    : hubs.map(nomeHub).join(' + ');
 
   const hI=+document.getElementById('cHI').value||9;
   const hO=+document.getElementById('cHO').value||25;
@@ -2926,7 +2965,7 @@ function _atualizarLabelHub(){
   const lbl=document.getElementById('indHubLabel');
   if(!lbl)return;
   if(_hubsSel.has('todos')||_hubsSel.size===0){lbl.textContent='Todos os hubs';return;}
-  if(_hubsSel.size===1){lbl.textContent=[..._hubsSel][0];return;}
+  if(_hubsSel.size===1){lbl.textContent=nomeHub([..._hubsSel][0]);return;}
   lbl.textContent=`${_hubsSel.size} hubs`;
 }
 function atualizarSelectHubs(hubs){
@@ -2936,7 +2975,7 @@ function atualizarSelectHubs(hubs){
   const todosHubs=[...new Set(hist.flatMap(h=>h.hubs||[]))].sort();
   lista.innerHTML=todosHubs.map(h=>`
     <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;white-space:nowrap">
-      <input type="checkbox" ${_hubsSel.has('todos')||_hubsSel.has(h)?'checked':''} onchange="hubItemChange(this,'${h.replace(/'/g,"\'")}')"> ${h}
+      <input type="checkbox" ${_hubsSel.has('todos')||_hubsSel.has(h)?'checked':''} onchange="hubItemChange(this,'${h.replace(/'/g,"\'")}')"> ${nomeHub(h)}
     </label>`).join('');
   _atualizarLabelHub();
 }
