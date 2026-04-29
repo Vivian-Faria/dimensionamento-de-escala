@@ -244,7 +244,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 .hist-actions{padding:10px 18px;display:flex;gap:8px;border-top:1px solid var(--brd);flex-wrap:wrap}
 
 /* Drag & drop no painel de turnos */
-.pt-slot{cursor:grab;transition:.15s}
+.pt-slot{cursor:pointer;transition:.15s;position:relative}
+.pt-slot:hover{border-color:var(--ac)!important;background:#f0fdf4!important}
 .pt-slot:active{cursor:grabbing}
 .pt-slot.dragging{opacity:.4;transform:scale(.95)}
 .pt-slot.drag-over{border-color:var(--ac)!important;background:#f0fdf4!important}
@@ -491,9 +492,18 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <p id="indSub">Análise semanal · baseada nos dados do Órion</p>
         </div>
         <div class="sh-r">
-          <select id="indHubFiltro" class="btn bs sm" style="padding:7px 10px;font-size:12px" onchange="renderIndicadores()">
-            <option value="todos">Todos os hubs</option>
-          </select>
+          <div style="position:relative;display:inline-block">
+            <button id="indHubBtn" class="btn bs sm" onclick="toggleHubDropdown(event)" style="min-width:140px;justify-content:space-between;gap:8px">
+              <span id="indHubLabel">Todos os hubs</span>
+              <span style="font-size:10px;opacity:.6">▾</span>
+            </button>
+            <div id="indHubDropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:var(--card);border:1px solid var(--brd);border-radius:8px;box-shadow:var(--shadow2);z-index:200;min-width:180px;padding:6px 0;max-height:260px;overflow-y:auto">
+              <label style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--brd)">
+                <input type="checkbox" id="hubChkTodos" checked onchange="hubChkTodosChange(this)"> Todos os hubs
+              </label>
+              <div id="indHubLista"></div>
+            </div>
+          </div>
           <button class="btn ba" onclick="coletarIndicadores()">⚡ Coletar dados</button>
           <button class="btn bs sm" onclick="limparIndicadores()">↺ Limpar</button>
         </div>
@@ -1711,7 +1721,8 @@ function abrirPainelTurnos(){
           draggable="true"
           data-nome="${nome}" data-dia="${dia}" data-ini="${gr.ini}" data-fim="${gr.fim}" data-dur="${gr.horas}"
           ondragstart="ptDragStart(event,this)"
-          ondragend="ptDragEnd(event,this)">
+          ondragend="ptDragEnd(event,this)"
+          onclick="ptSlotClick(event,this)">
           <span class="pt-dia">${dia} <span style="opacity:.6;font-size:10px">${dr}</span></span>
           <span class="pt-hrs">${fH(gr.ini)} – ${fH(gr.fim)}</span>
           <span class="pt-dur">${gr.horas}h</span>
@@ -1888,7 +1899,85 @@ function ptDrop(e, el){
   _ptDragData=null;
 }
 
-// Copia o turno de um colaborador formatado para texto (para enviar por WhatsApp/mensagem)
+// ── Popover de troca de colaborador ao clicar no turno
+let _ptPopoverSlot=null;
+function ptSlotClick(e, el){
+  e.stopPropagation();
+  // remove qualquer popover existente
+  document.querySelectorAll('.pt-popover').forEach(p=>p.remove());
+  _ptPopoverSlot=el;
+  const nome=el.dataset.nome;
+  const dia=el.dataset.dia;
+  const ini=parseInt(el.dataset.ini);
+  const fim=parseInt(el.dataset.fim);
+  // Lista todos os colaboradores disponíveis (exceto o atual)
+  const outros=S.colabs.filter(c=>c.nome!==nome).sort((a,b)=>a.nome.localeCompare(b.nome));
+  const pop=document.createElement('div');
+  pop.className='pt-popover';
+  pop.style.cssText=`position:absolute;z-index:9999;background:var(--card);border:1px solid var(--brd);border-radius:10px;box-shadow:var(--shadow2);padding:0;min-width:200px;overflow:hidden`;
+  pop.innerHTML=`
+    <div style="padding:9px 12px;background:var(--card2);border-bottom:1px solid var(--brd);font-size:11px;font-weight:600;color:var(--mu)">
+      Trocar turno de <strong style="color:var(--tx)">${nome}</strong><br>
+      <span style="font-weight:400">${dia} ${fH(ini)}–${fH(fim)}</span>
+    </div>
+    <div style="max-height:220px;overflow-y:auto">
+      ${outros.map(c=>`
+        <div onclick="ptTrocarPor('${nome.replace(/'/g,"\'")}',' ${dia}',${ini},${fim},'${c.nome.replace(/'/g,"\'")}');event.stopPropagation()"
+          style="padding:8px 12px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;transition:.1s"
+          onmouseover="this.style.background='var(--acd)'"
+          onmouseout="this.style.background=''">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--ac);flex-shrink:0"></span>
+          ${c.nome}
+          <span style="font-size:10px;color:var(--mu);margin-left:auto">${c.funcao||''}</span>
+        </div>`).join('')}
+    </div>
+    <div style="padding:7px 12px;border-top:1px solid var(--brd);display:flex;justify-content:space-between;gap:6px">
+      <button onclick="ptRemoverSlot('${nome.replace(/'/g,"\'")}','${dia}',${ini},${fim});event.stopPropagation()" class="btn bd sm" style="flex:1;font-size:11px">🗑 Remover</button>
+      <button onclick="document.querySelectorAll('.pt-popover').forEach(p=>p.remove())" class="btn bs sm" style="flex:1;font-size:11px">Cancelar</button>
+    </div>`;
+  // Posiciona relativo ao slot
+  const rect=el.getBoundingClientRect();
+  const modal=el.closest('.mbg')||document.body;
+  const mRect=modal.getBoundingClientRect();
+  pop.style.top=(rect.bottom-mRect.top+4)+'px';
+  pop.style.left=(rect.left-mRect.left)+'px';
+  modal.style.position='relative';
+  modal.appendChild(pop);
+  setTimeout(()=>document.addEventListener('click',()=>document.querySelectorAll('.pt-popover').forEach(p=>p.remove()),{once:true}),10);
+}
+function ptTrocarPor(oriNome, dia, ini, fim, destNome){
+  document.querySelectorAll('.pt-popover').forEach(p=>p.remove());
+  dia=dia.trim();
+  if(!S.escala)return;
+  let trocados=0;
+  for(let h=ini;h<fim;h++){
+    const cell=S.escala[dia]?.[h];
+    if(!cell)continue;
+    cell.alocados=cell.alocados.filter(n=>n!==oriNome);
+    if(!cell.alocados.includes(destNome)){cell.alocados.push(destNome);trocados++;}
+  }
+  if(trocados>0){
+    calcularCustos();save();
+    toast(`✅ ${oriNome} → ${destNome} (${dia} ${fH(ini)}–${fH(fim)})`, 'tok');
+    setTimeout(()=>abrirPainelTurnos(),300);
+  } else {
+    toast(`${destNome} já está nesse turno.`,'ter');
+  }
+}
+function ptRemoverSlot(nome, dia, ini, fim){
+  document.querySelectorAll('.pt-popover').forEach(p=>p.remove());
+  if(!confirm(`Remover ${nome} do turno ${dia} ${fH(ini)}–${fH(fim)}?`))return;
+  for(let h=ini;h<fim;h++){
+    const cell=S.escala[dia]?.[h];
+    if(cell)cell.alocados=cell.alocados.filter(n=>n!==nome);
+  }
+  calcularCustos();save();
+  toast(`Turno de ${nome} removido (${dia} ${fH(ini)}–${fH(fim)}).`,'tok');
+  setTimeout(()=>abrirPainelTurnos(),300);
+}
+
+// Copia o turno de um colaborador formatado para texto
+ (para enviar por WhatsApp/mensagem)
 function copiarTurnoPorNome(nome){ copiarTurno(nome); }
 function copiarTurno(nome){
   if(!S.escala)return;
@@ -2589,7 +2678,9 @@ function parsearTabelaOrion(html, tipo='vendas'){
 }
 
 function calcularMetricasSemana(vendas, cancelamentos, hub){
-  const filtro=v=> hub==='todos' || v.hub===hub || (!v.hub&&hub==='Sem hub');
+  // hub pode ser 'todos', string, ou Set de hubs (multi-seleção)
+  const hubSet=hub instanceof Set?hub:new Set([hub]);
+  const filtro=v=>hubSet.has('todos')||hubSet.has(v.hub)||(!v.hub&&hubSet.has('Sem hub'));
   const vF=vendas.filter(filtro);
   const cF=cancelamentos.filter(filtro);
 
@@ -2710,13 +2801,59 @@ function receberDadosIndicadores(payload){
   }
 }
 
+// hubs selecionados no multi-dropdown
+let _hubsSel=new Set(['todos']);
+
+function toggleHubDropdown(e){
+  e.stopPropagation();
+  const d=document.getElementById('indHubDropdown');
+  const isOpen=d.style.display!=='none';
+  d.style.display=isOpen?'none':'block';
+  if(!isOpen){
+    // fechar ao clicar fora
+    setTimeout(()=>document.addEventListener('click',_fecharHubDrop,{once:true}),10);
+  }
+}
+function _fecharHubDrop(){
+  const d=document.getElementById('indHubDropdown');
+  if(d)d.style.display='none';
+}
+function hubChkTodosChange(chk){
+  _hubsSel=chk.checked?new Set(['todos']):new Set();
+  document.querySelectorAll('#indHubLista input[type=checkbox]').forEach(c=>{c.checked=chk.checked;});
+  _atualizarLabelHub();
+  renderIndicadores();
+}
+function hubItemChange(chk,hub){
+  if(chk.checked){_hubsSel.delete('todos');_hubsSel.add(hub);}
+  else{_hubsSel.delete(hub);}
+  // se nenhum selecionado, volta para todos
+  if(_hubsSel.size===0){_hubsSel.add('todos');}
+  const todosMarcados=document.querySelectorAll('#indHubLista input[type=checkbox]');
+  const todosCheck=[...todosMarcados].every(c=>c.checked);
+  const nenhum=[...todosMarcados].every(c=>!c.checked);
+  document.getElementById('hubChkTodos').checked=todosCheck||nenhum;
+  if(nenhum){_hubsSel=new Set(['todos']);}
+  _atualizarLabelHub();
+  renderIndicadores();
+}
+function _atualizarLabelHub(){
+  const lbl=document.getElementById('indHubLabel');
+  if(!lbl)return;
+  if(_hubsSel.has('todos')||_hubsSel.size===0){lbl.textContent='Todos os hubs';return;}
+  if(_hubsSel.size===1){lbl.textContent=[..._hubsSel][0];return;}
+  lbl.textContent=`${_hubsSel.size} hubs`;
+}
 function atualizarSelectHubs(hubs){
-  const sel=document.getElementById('indHubFiltro');
-  const atual=sel.value;
-  // Mantém "todos" + hubs da coleta mais recente
+  const lista=document.getElementById('indHubLista');
+  if(!lista)return;
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
   const todosHubs=[...new Set(hist.flatMap(h=>h.hubs||[]))].sort();
-  sel.innerHTML='<option value="todos">Todos os hubs</option>'+todosHubs.map(h=>`<option value="${h}"${atual===h?' selected':''}>${h}</option>`).join('');
+  lista.innerHTML=todosHubs.map(h=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;white-space:nowrap">
+      <input type="checkbox" ${_hubsSel.has('todos')||_hubsSel.has(h)?'checked':''} onchange="hubItemChange(this,'${h.replace(/'/g,"\'")}')"> ${h}
+    </label>`).join('');
+  _atualizarLabelHub();
 }
 
 function renderIndicadores(){
@@ -2731,7 +2868,7 @@ function renderIndicadores(){
   document.getElementById('indEmp').style.display='none';
   document.getElementById('indTabelaCard').style.display='block';
 
-  const hub=document.getElementById('indHubFiltro').value||'todos';
+  const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
   const semanaAtual=hist[0];
   const semanaAnt=hist[1]||null;
 
@@ -2884,7 +3021,7 @@ function limparIndicadores(){
 function exportarIndicadores(){
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
   if(!hist.length){toast('Nenhum dado para exportar.','ter');return;}
-  const hub=document.getElementById('indHubFiltro').value||'todos';
+  const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
   const linhas=[['Semana','Volume','Cancelamentos','% Cancel.','T.Preparo (min)','T.Coleta (min)','T.Despacho (min)','CPP']];
   hist.forEach(sem=>{
     const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
