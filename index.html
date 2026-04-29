@@ -352,7 +352,16 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <button class="btn bg sm" onclick="goT('co')">👥 Equipe</button>
   <button class="btn bg sm" onclick="goT('hm')">🌡 Demanda</button>
   <button class="btn bg sm" id="btnCol" onclick="iniciarColeta()">↻ Coletar dados</button>
-  <button class="btn ba" onclick="montarEscala()">⚡ Montar escala</button>
+  <div style="position:relative;display:inline-block">
+    <button class="btn ba" onclick="abrirSeletorHub()">⚡ Montar escala</button>
+    <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--card);border:1px solid var(--brd);border-radius:10px;box-shadow:var(--shadow2);z-index:200;min-width:200px;padding:8px 0">
+      <div style="padding:6px 14px 8px;font-size:11px;font-weight:600;color:var(--mu);border-bottom:1px solid var(--brd)">Selecione o hub</div>
+      <div id="hubSeletorLista"></div>
+      <div style="padding:6px 8px;border-top:1px solid var(--brd)">
+        <button class="btn bs sm" style="width:100%;font-size:11px" onclick="selecionarHub('todos')">🌐 Todos os hubs</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="body">
@@ -849,7 +858,36 @@ async function iniciarColeta(){
   }
 }
 
-async function montarEscala(){
+// Seletor de hub antes de montar escala
+function abrirSeletorHub(){
+  const drop = document.getElementById('hubSeletorDrop');
+  const lista = document.getElementById('hubSeletorLista');
+  // Pegar hubs disponíveis do payload atual
+  const raw = localStorage.getItem('orion_coleta');
+  let hubs = [];
+  if(raw){ try{ const p=JSON.parse(raw); if(p.mxPorHub) hubs=Object.keys(p.mxPorHub).sort(); }catch(e){} }
+  if(!hubs.length){
+    // Sem hubs separados — monta direto
+    montarEscala(); return;
+  }
+  lista.innerHTML = hubs.map(h=>`
+    <div onclick="selecionarHub('${h.replace(/'/g,"\'")}');event.stopPropagation()"
+      style="padding:7px 14px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center"
+      onmouseover="this.style.background='var(--acd)'" onmouseout="this.style.background=''">
+      <span>${h}</span>
+      <span style="font-size:10px;color:var(--mu)">${(()=>{try{const p=JSON.parse(localStorage.getItem('orion_coleta'));return(p.totalPorHub?.[h]||0).toLocaleString('pt-BR')+' ped';}catch(e){return '';}})()}</span>
+    </div>`).join('');
+  const isOpen = drop.style.display !== 'none';
+  drop.style.display = isOpen ? 'none' : 'block';
+  if(!isOpen) setTimeout(()=>document.addEventListener('click', function f(){ drop.style.display='none'; document.removeEventListener('click',f); }, {once:true}), 10);
+}
+
+function selecionarHub(hub){
+  document.getElementById('hubSeletorDrop').style.display='none';
+  montarEscala(hub);
+}
+
+async function montarEscala(hubFiltro){
   showLd('Buscando dados do Órion...');
   let dados=null;
 
@@ -900,14 +938,27 @@ async function montarEscala(){
   }
 
   if(!dados){hideLd();document.getElementById('esEmp').style.display='block';document.getElementById('esCon').style.display='none';mostrarBanner();return;}
-  gerarEscala(dados);
+  gerarEscala(dados, hubFiltro);
 }
 
 async function montarComCache(){const c=verificarCache();if(c.p)gerarEscala(c.p);}
 
-function gerarEscala(dados){
+function gerarEscala(dados, hubFiltro){
   setLd('Calculando projeção...');
-  S.matrix=dados.mx;
+  // Se tem mxPorHub e um hub foi selecionado, usa a matriz filtrada
+  const hub = hubFiltro || dados._hubFiltro || 'todos';
+  if(hub && hub !== 'todos' && dados.mxPorHub && dados.mxPorHub[hub]){
+    S.matrix = dados.mxPorHub[hub];
+    dados = Object.assign({}, dados, {
+      mx: dados.mxPorHub[hub],
+      total: dados.totalPorHub?.[hub] || dados.total,
+      _hubFiltro: hub
+    });
+  } else {
+    S.matrix = dados.mx;
+  }
+  // Salva o hub atual para referência no resumo
+  S.hubAtual = hub === 'todos' ? null : hub;
 
   const hI=+document.getElementById('cHI').value||9;
   const hO=+document.getElementById('cHO').value||25;
@@ -925,6 +976,16 @@ function gerarEscala(dados){
 
   // Sidebar
   document.getElementById('sT').textContent=dados.total.toLocaleString('pt-BR');
+  // Mostrar hub no resumo
+  const hubLabel = S.hubAtual || 'Todos os hubs';
+  const elHub = document.getElementById('sHub') || (() => {
+    const el = document.createElement('div');
+    el.id = 'sHub'; el.className = 'sc';
+    el.innerHTML = '<div class="sc-l">Hub</div><div class="sc-v" id="sHubV" style="font-size:13px">—</div>';
+    document.getElementById('sT').closest('.sc').after(el);
+    return el;
+  })();
+  document.getElementById('sHubV').textContent = hubLabel;
   const per=dados.deBR?`${dados.deBR}→${dados.ateBR}`:dados.de;
   document.getElementById('sPe').textContent=`Semana: ${per}`;
   const{seg,dom}=proximaSemana();
