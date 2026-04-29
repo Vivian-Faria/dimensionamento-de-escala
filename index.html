@@ -354,11 +354,11 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <button class="btn bg sm" id="btnCol" onclick="iniciarColeta()">↻ Coletar dados</button>
   <div style="position:relative;display:inline-block">
     <button class="btn ba" onclick="abrirSeletorHub()">⚡ Montar escala</button>
-    <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--card);border:1px solid var(--brd);border-radius:10px;box-shadow:var(--shadow2);z-index:200;min-width:200px;padding:8px 0">
-      <div style="padding:6px 14px 8px;font-size:11px;font-weight:600;color:var(--mu);border-bottom:1px solid var(--brd)">Selecione o hub</div>
+    <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:200;min-width:220px;padding:6px 0">
+      <div style="padding:8px 14px;font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">SELECIONE O HUB</div>
       <div id="hubSeletorLista"></div>
-      <div style="padding:6px 8px;border-top:1px solid var(--brd)">
-        <button class="btn bs sm" style="width:100%;font-size:11px" onclick="selecionarHub('todos')">🌐 Todos os hubs</button>
+      <div style="padding:6px 8px;border-top:1px solid rgba(255,255,255,.08)">
+        <button style="width:100%;background:transparent;border:1px solid rgba(255,255,255,.15);color:#d1d5db;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:var(--fn)" onmouseover="this.style.background='rgba(255,255,255,.08)'" onmouseout="this.style.background='transparent'" onclick="selecionarHub('todos')">🌐 Todos os hubs</button>
       </div>
     </div>
   </div>
@@ -872,10 +872,10 @@ function abrirSeletorHub(){
   }
   lista.innerHTML = hubs.map(h=>`
     <div onclick="selecionarHub('${h.replace(/'/g,"\'")}');event.stopPropagation()"
-      style="padding:7px 14px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center"
-      onmouseover="this.style.background='var(--acd)'" onmouseout="this.style.background=''">
+      style="padding:8px 14px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;color:#f3f4f6;transition:.1s"
+      onmouseover="this.style.background='rgba(134,239,172,.15)';this.style.color='#86efac'" onmouseout="this.style.background='';this.style.color='#f3f4f6'">
       <span>${h}</span>
-      <span style="font-size:10px;color:var(--mu)">${(()=>{try{const p=JSON.parse(localStorage.getItem('orion_coleta'));return(p.totalPorHub?.[h]||0).toLocaleString('pt-BR')+' ped';}catch(e){return '';}})()}</span>
+      <span style="font-size:10px;color:#6b7280">${(()=>{try{const p=JSON.parse(localStorage.getItem('orion_coleta'));return(p.totalPorHub?.[h]||0).toLocaleString('pt-BR')+' ped';}catch(e){return '';}})()}</span>
     </div>`).join('');
   const isOpen = drop.style.display !== 'none';
   drop.style.display = isOpen ? 'none' : 'block';
