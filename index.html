@@ -2581,22 +2581,26 @@ try {
   }catch(e){ console.error('[OrionEscala] hash reader erro:', e); }
 })();
 
-// B) postMessage — extensão Chrome manda ORION_ESCALA_DATA
+// B) postMessage — extensão Chrome manda ORION_ESCALA_DATA / ORION_IND_DATA
+// Flag para processar cada tipo apenas UMA vez (evita loop do postMessage repetido)
+var _pmEscalaProcessado=false;
+var _pmIndProcessado=false;
 window.addEventListener('message',function(ev){
   if(ev.data&&ev.data.type==='ORION_ESCALA_DATA'&&ev.data.payload&&ev.data.payload.mx){
+    if(_pmEscalaProcessado)return;
+    _pmEscalaProcessado=true;
+    setTimeout(function(){_pmEscalaProcessado=false;},5000); // reset após 5s
     var payload=ev.data.payload;
     localStorage.setItem('orion_coleta',JSON.stringify(payload));
-    window._INBOUND=payload;
-    // Se já carregou, aplica imediatamente
-    if(typeof S!=='undefined'&&typeof montarEscala==='function'){
-      // Chama gerarEscala diretamente — evita loop
-      setTimeout(()=>gerarEscala(payload),600);
+    if(typeof gerarEscala==='function'){
+      setTimeout(()=>gerarEscala(payload),400);
       toast('✓ '+payload.total.toLocaleString()+' pedidos recebidos! Montando...','tok');
     }
   }
-  // Indicadores via postMessage
   if(ev.data&&ev.data.type==='ORION_IND_DATA'&&ev.data.payload&&ev.data.payload.de){
-    goT('ind');
+    if(_pmIndProcessado)return;
+    _pmIndProcessado=true;
+    setTimeout(function(){_pmIndProcessado=false;},5000); // reset após 5s
     receberDadosIndicadores(ev.data.payload);
   }
 });
