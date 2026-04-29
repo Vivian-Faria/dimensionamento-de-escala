@@ -2539,37 +2539,46 @@ try {
 //   C) BroadcastChannel — fallback mesma origem
 // ══════════════════════════════════════════════════════
 
-// A) Hash da URL — enviado pelo bookmarklet ou botão flutuante
+// A) Hash da URL — suporta formato simples (#dados=B64) e combinado (#dados=B64&ind_dados=B64)
 (function(){
   try{
-    var h=location.hash; // NAO decodificar — o hash bruto ja tem #dados=BASE64
-    if(h.indexOf('#dados=')!==0)return;
-    var b64=h.slice(7); // base64 puro, sem decode adicional
-    // atob precisa de base64 sem encoding — mas se foi encodeURIComponent no envio, decodifica
-    var b64clean = decodeURIComponent(b64);
-    var json=decodeURIComponent(escape(atob(b64clean)));
-    var payload=JSON.parse(json);
-    if(payload&&payload.mx&&typeof payload.total==='number'){
-      localStorage.setItem('orion_coleta',JSON.stringify(payload));
+    var h=location.hash.slice(1); // remove o '#'
+    if(!h) return;
+    // parse manual de query string no hash
+    var params={};
+    h.split('&').forEach(function(part){
+      var eq=part.indexOf('=');
+      if(eq<0)return;
+      params[part.slice(0,eq)]=part.slice(eq+1);
+    });
+
+    // Escala
+    if(params['dados']){
+      try{
+        var json=decodeURIComponent(escape(atob(decodeURIComponent(params['dados']))));
+        var payload=JSON.parse(json);
+        if(payload&&payload.mx&&typeof payload.total==='number'){
+          localStorage.setItem('orion_coleta',JSON.stringify(payload));
+          window._INBOUND=payload;
+        }
+      }catch(e){ console.error('[OrionEscala] hash dados erro:', e); }
+    }
+
+    // Indicadores
+    if(params['ind_dados']){
+      try{
+        var json2=decodeURIComponent(escape(atob(decodeURIComponent(params['ind_dados']))));
+        var payload2=JSON.parse(json2);
+        if(payload2&&payload2.de&&Array.isArray(payload2.vendas)){
+          window._INBOUND_IND=payload2;
+        }
+      }catch(e){ console.error('[OrionEscala] hash ind_dados erro:', e); }
+    }
+
+    if(params['dados']||params['ind_dados']){
       history.replaceState(null,'',location.pathname);
-      window._INBOUND=payload;
     }
   }catch(e){ console.error('[OrionEscala] hash reader erro:', e); }
-})();
-
-// A2) Hash da URL para INDICADORES — enviado pelo bookmarklet de indicadores (#ind_dados=BASE64)
-(function(){
-  try{
-    var h=location.hash;
-    if(h.indexOf('#ind_dados=')!==0)return;
-    var b64clean=decodeURIComponent(h.slice(11));
-    var json=decodeURIComponent(escape(atob(b64clean)));
-    var payload=JSON.parse(json);
-    if(payload&&payload.de&&Array.isArray(payload.vendas)){
-      history.replaceState(null,'',location.pathname);
-      window._INBOUND_IND=payload;
-    }
-  }catch(e){ console.error('[OrionEscala] ind hash reader erro:', e); }
 })();
 
 // B) postMessage — extensão Chrome manda ORION_ESCALA_DATA
