@@ -508,11 +508,13 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
               <span id="indHubLabel">Todos os hubs</span>
               <span style="font-size:10px;opacity:.6">▾</span>
             </button>
-            <div id="indHubDropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:var(--card);border:1px solid var(--brd);border-radius:8px;box-shadow:var(--shadow2);z-index:200;min-width:180px;padding:6px 0;max-height:260px;overflow-y:auto">
-              <label style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--brd)">
-                <input type="checkbox" id="hubChkTodos" checked onchange="hubChkTodosChange(this)"> Todos os hubs
-              </label>
-              <div id="indHubLista"></div>
+            <div id="indHubDropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:200;min-width:220px;padding:6px 0">
+              <div style="padding:8px 14px;font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">FILTRAR POR HUB</div>
+              <div id="indHubLista" style="max-height:220px;overflow-y:auto"></div>
+              <div style="padding:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:6px">
+                <button style="flex:1;background:#16a34a;border:none;color:#fff;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--fn)" onclick="aplicarFiltroHub()">✓ Aplicar</button>
+                <button style="flex:1;background:transparent;border:1px solid rgba(255,255,255,.15);color:#9ca3af;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:var(--fn)" onclick="document.getElementById('indHubDropdown').style.display='none'">Cancelar</button>
+              </div>
             </div>
           </div>
           <button class="btn ba" onclick="coletarIndicadores()">⚡ Coletar dados</button>
@@ -522,6 +524,9 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 
       <!-- STATUS COLETA -->
       <div id="indBanner" style="margin-bottom:16px"></div>
+
+      <!-- DISTRIBUIÇÃO POR HUB (aparece quando 2+ hubs selecionados) -->
+      <div id="indDistHub" style="margin-bottom:4px"></div>
 
       <!-- KPI CARDS -->
       <div id="indKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:20px"></div>
@@ -2696,17 +2701,17 @@ try {
 })();
 
 // B) postMessage — extensão Chrome manda ORION_ESCALA_DATA / ORION_IND_DATA
-// Flag para processar cada tipo apenas UMA vez (evita loop do postMessage repetido)
+// Só processa a primeira mensagem de cada tipo — ignora o reforço posterior
 var _pmEscalaProcessado=false;
 var _pmIndProcessado=false;
 window.addEventListener('message',function(ev){
   if(ev.data&&ev.data.type==='ORION_ESCALA_DATA'&&ev.data.payload&&ev.data.payload.mx){
     if(_pmEscalaProcessado)return;
     _pmEscalaProcessado=true;
-    setTimeout(function(){_pmEscalaProcessado=false;},5000); // reset após 5s
     var payload=ev.data.payload;
     localStorage.setItem('orion_coleta',JSON.stringify(payload));
-    if(typeof gerarEscala==='function'){
+    // Só monta automaticamente se não há escala com hub específico já montada
+    if(typeof gerarEscala==='function'&&!S.hubAtual){
       setTimeout(()=>gerarEscala(payload),400);
       toast('✓ '+payload.total.toLocaleString()+' pedidos recebidos! Montando...','tok');
     }
@@ -2714,7 +2719,6 @@ window.addEventListener('message',function(ev){
   if(ev.data&&ev.data.type==='ORION_IND_DATA'&&ev.data.payload&&ev.data.payload.de){
     if(_pmIndProcessado)return;
     _pmIndProcessado=true;
-    setTimeout(function(){_pmIndProcessado=false;},5000); // reset após 5s
     receberDadosIndicadores(ev.data.payload);
   }
 });
@@ -2930,40 +2934,86 @@ function receberDadosIndicadores(payload){
 
 // hubs selecionados no multi-dropdown
 let _hubsSel=new Set(['todos']);
+let _hubsTemp=new Set(['todos']); // seleção temporária enquanto dropdown está aberto
 
 function toggleHubDropdown(e){
   e.stopPropagation();
   const d=document.getElementById('indHubDropdown');
   const isOpen=d.style.display!=='none';
-  d.style.display=isOpen?'none':'block';
   if(!isOpen){
-    // fechar ao clicar fora
-    setTimeout(()=>document.addEventListener('click',_fecharHubDrop,{once:true}),10);
+    // Ao abrir, copia estado atual para temporário e popula lista
+    _hubsTemp=new Set(_hubsSel);
+    _popularListaHub();
+    d.style.display='block';
+    setTimeout(()=>document.addEventListener('click',function f(ev){
+      if(!d.contains(ev.target)){d.style.display='none';document.removeEventListener('click',f);}
+    }),10);
+  } else {
+    d.style.display='none';
   }
 }
-function _fecharHubDrop(){
-  const d=document.getElementById('indHubDropdown');
-  if(d)d.style.display='none';
+
+function _popularListaHub(){
+  const lista=document.getElementById('indHubLista');
+  if(!lista)return;
+  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const todosHubs=[...new Set(hist.flatMap(h=>h.hubs||[]))].sort();
+  // Item "Todos"
+  const todosMarcado=_hubsTemp.has('todos');
+  lista.innerHTML=`<label style="display:flex;align-items:center;gap:10px;padding:7px 14px;cursor:pointer;font-size:12px;color:#f3f4f6;border-bottom:1px solid rgba(255,255,255,.06)"
+    onmouseover="this.style.background='rgba(255,255,255,.05)'" onmouseout="this.style.background=''">
+    <input type="checkbox" ${todosMarcado?'checked':''} id="hubChkTodos"
+      style="width:14px;height:14px;accent-color:#16a34a;cursor:pointer"
+      onclick="event.stopPropagation();_hubTodosToggle(this)">
+    <span>Todos os hubs</span>
+  </label>`+todosHubs.map(h=>{
+    const marcado=_hubsTemp.has('todos')||_hubsTemp.has(h);
+    return `<label style="display:flex;align-items:center;gap:10px;padding:7px 14px;cursor:pointer;font-size:12px;color:#f3f4f6;transition:.1s"
+      onmouseover="this.style.background='rgba(134,239,172,.08)'" onmouseout="this.style.background=''">
+      <input type="checkbox" ${marcado?'checked':''} data-hub="${h.replace(/"/g,'&quot;')}"
+        style="width:14px;height:14px;accent-color:#16a34a;cursor:pointer"
+        onclick="event.stopPropagation();_hubItemToggle(this)">
+      <span style="flex:1">${nomeHub(h)}</span>
+    </label>`;
+  }).join('');
 }
-function hubChkTodosChange(chk){
-  _hubsSel=chk.checked?new Set(['todos']):new Set();
-  document.querySelectorAll('#indHubLista input[type=checkbox]').forEach(c=>{c.checked=chk.checked;});
+
+function _hubTodosToggle(chk){
+  if(chk.checked){
+    _hubsTemp=new Set(['todos']);
+    document.querySelectorAll('#indHubLista input[data-hub]').forEach(c=>c.checked=true);
+  } else {
+    _hubsTemp=new Set();
+    document.querySelectorAll('#indHubLista input[data-hub]').forEach(c=>c.checked=false);
+  }
+}
+
+function _hubItemToggle(chk){
+  const hub=chk.getAttribute('data-hub');
+  if(chk.checked){
+    _hubsTemp.delete('todos');
+    _hubsTemp.add(hub);
+  } else {
+    _hubsTemp.delete(hub);
+  }
+  if(_hubsTemp.size===0) _hubsTemp=new Set(['todos']);
+  // Atualizar checkbox "todos"
+  const allItems=document.querySelectorAll('#indHubLista input[data-hub]');
+  const todosCheck=[...allItems].every(c=>c.checked);
+  const hubChkTodos=document.getElementById('hubChkTodos');
+  if(hubChkTodos) hubChkTodos.checked=todosCheck;
+}
+
+function aplicarFiltroHub(){
+  _hubsSel=new Set(_hubsTemp);
+  if(_hubsSel.size===0) _hubsSel=new Set(['todos']);
+  document.getElementById('indHubDropdown').style.display='none';
   _atualizarLabelHub();
   renderIndicadores();
 }
-function hubItemChange(chk,hub){
-  if(chk.checked){_hubsSel.delete('todos');_hubsSel.add(hub);}
-  else{_hubsSel.delete(hub);}
-  // se nenhum selecionado, volta para todos
-  if(_hubsSel.size===0){_hubsSel.add('todos');}
-  const todosMarcados=document.querySelectorAll('#indHubLista input[type=checkbox]');
-  const todosCheck=[...todosMarcados].every(c=>c.checked);
-  const nenhum=[...todosMarcados].every(c=>!c.checked);
-  document.getElementById('hubChkTodos').checked=todosCheck||nenhum;
-  if(nenhum){_hubsSel=new Set(['todos']);}
-  _atualizarLabelHub();
-  renderIndicadores();
-}
+
+function hubChkTodosChange(chk){ _hubTodosToggle(chk); }
+function hubItemChange(chk,hub){ _hubItemToggle(chk); }
 function _atualizarLabelHub(){
   const lbl=document.getElementById('indHubLabel');
   if(!lbl)return;
@@ -2972,14 +3022,7 @@ function _atualizarLabelHub(){
   lbl.textContent=`${_hubsSel.size} hubs`;
 }
 function atualizarSelectHubs(hubs){
-  const lista=document.getElementById('indHubLista');
-  if(!lista)return;
-  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
-  const todosHubs=[...new Set(hist.flatMap(h=>h.hubs||[]))].sort();
-  lista.innerHTML=todosHubs.map(h=>`
-    <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;font-size:12px;white-space:nowrap">
-      <input type="checkbox" ${_hubsSel.has('todos')||_hubsSel.has(h)?'checked':''} onchange="hubItemChange(this,'${h.replace(/'/g,"\'")}')"> ${nomeHub(h)}
-    </label>`).join('');
+  // Lista é populada ao abrir o dropdown — aqui só atualiza o label
   _atualizarLabelHub();
 }
 
@@ -3021,6 +3064,46 @@ function renderIndicadores(){
     {icon:'🏁',label:'Tempo médio despacho',val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null},
     {icon:'💰',label:'CPP (custo/pedido)',val:cpp!==null?`R$ ${cpp.toFixed(2).replace('.',',')}`:'-',prev:null,unit:'',big:false,raw:cpp},
   ];
+
+  // Painel de distribuição por hub (só aparece quando 2+ hubs selecionados)
+  const hubsAtivos = hub instanceof Set
+    ? (hub.has('todos') ? (semanaAtual.hubs||[]) : [...hub])
+    : (hub === 'todos' ? (semanaAtual.hubs||[]) : [hub]);
+
+  const distHubHtml = (() => {
+    if(hubsAtivos.length < 2) return '';
+    const totalGeral = m.volume;
+    if(!totalGeral) return '';
+    const rows = hubsAtivos.map(h=>{
+      const mH = calcularMetricasSemana(semanaAtual.vendas, semanaAtual.cancelamentos, new Set([h]));
+      const pct = totalGeral > 0 ? (mH.volume / totalGeral * 100) : 0;
+      const barW = Math.round(pct);
+      return { nome: nomeHub(h), vol: mH.volume, pct };
+    }).sort((a,b) => b.vol - a.vol);
+
+    return `<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:12px;letter-spacing:.03em">DISTRIBUIÇÃO POR HUB</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${rows.map((r,i)=>{
+          const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
+          const cor = cores[i % cores.length];
+          return `<div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:12px;font-weight:600">${r.nome}</span>
+              <span style="font-size:12px;color:var(--mu)">
+                <strong style="color:var(--tx)">${r.vol.toLocaleString('pt-BR')}</strong> ped &nbsp;·&nbsp;
+                <strong style="color:${cor}">${r.pct.toFixed(1)}%</strong>
+              </span>
+            </div>
+            <div style="background:var(--card2);border-radius:4px;height:6px;overflow:hidden">
+              <div style="background:${cor};height:100%;width:${r.pct.toFixed(1)}%;border-radius:4px;transition:.4s"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  })();
+  document.getElementById('indDistHub').innerHTML = distHubHtml;
 
   document.getElementById('indKpis').innerHTML=kpis.map(k=>{
     let varHtml='';
