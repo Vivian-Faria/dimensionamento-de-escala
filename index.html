@@ -1013,8 +1013,11 @@ function gerarEscala(dados, hubFiltro){
   });
   S.escala=esc;
 
-  // Sidebar
-  document.getElementById('sT').textContent=dados.total.toLocaleString('pt-BR');
+  // Sidebar — total filtrado pelo hub selecionado
+  const totalExibido = (hubs.length > 0 && dados.totalPorHub)
+    ? hubs.reduce((acc, h) => acc + (dados.totalPorHub[h] || 0), 0)
+    : dados.total;
+  document.getElementById('sT').textContent = totalExibido.toLocaleString('pt-BR');
   // Mostrar hub no resumo
   const hubLabel = S.hubAtual || 'Todos os hubs';
   const elHub = document.getElementById('sHub') || (() => {
@@ -1035,7 +1038,7 @@ function gerarEscala(dados, hubFiltro){
   // Status dot
   const min=Math.round((Date.now()-dados.ts)/60000);
   document.getElementById('dDot').style.cssText='background:var(--ac)';
-  document.getElementById('dLbl').textContent=`${dados.total.toLocaleString()} pedidos`;
+  document.getElementById('dLbl').textContent=`${totalExibido.toLocaleString()} pedidos`;
   document.getElementById('dSub').textContent=`${per} · há ${min}min`;
 
   save();
@@ -1044,7 +1047,7 @@ function gerarEscala(dados, hubFiltro){
   hideLd();
   renderEscala();renderHM();atualizarSideRegras();
   goT('es');
-  toast(`✓ Escala gerada! ${dados.total.toLocaleString()} pedidos (${per}).`,'tok');
+  toast(`✓ Escala gerada! ${totalExibido.toLocaleString()} pedidos (${per}).`,'tok');
 }
 
 // ══════════════════════════════════════════════════════
