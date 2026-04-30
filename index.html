@@ -433,6 +433,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <div><h2>Projeção da próxima semana</h2><p id="esSub">—</p></div>
           <div class="sh-r">
             <button class="btn ba" onclick="preencher()">👥 Preencher automaticamente</button>
+            <button class="btn bs" onclick="inverter12x36()" id="btn12x36" title="Inverte quais dias cada colaborador 12x36 trabalha nesta semana" style="display:none">↔ Inverter 12x36</button>
             <button class="btn bs" onclick="abrirPainelTurnos()">📋 Painel de turnos</button>
             <button class="btn ba sm" style="background:#2563eb" onclick="publicarEscala()">✅ Publicar escala</button>
             <button class="btn bs sm" onclick="limpar()">↺ Limpar alocação</button>
@@ -773,6 +774,8 @@ function load(){
     // Restaurar hub ativo
     const hubSalvo=localStorage.getItem('orion_v7_hub');
     if(hubSalvo){try{const hd=JSON.parse(hubSalvo);S.hubAtual=hd.hubAtual;S._hubFiltroAtual=hd.hubFiltro;}catch(e){}}
+    // Restaurar offset de inversão 12x36
+    try{ _inv12x36=parseInt(localStorage.getItem('orion_v7_inv12x36')||'0')||0; }catch(e){}
   }catch(err){S.colabs=JSON.parse(JSON.stringify(COLAB_DEF));}
 }
 
@@ -1178,6 +1181,27 @@ function calcP(ped,isAb){
 // ══════════════════════════════════════════════════════
 // PREENCHER ESCALA AUTOMÁTICO
 // ══════════════════════════════════════════════════════
+// Offset de inversão 12x36 (0 = padrão calculado, 1 = invertido)
+let _inv12x36 = 0;
+
+function inverter12x36(){
+  _inv12x36 = _inv12x36 === 0 ? 1 : 0;
+  // Salvar no localStorage para persistir
+  try{ localStorage.setItem('orion_v7_inv12x36', _inv12x36); }catch(e){}
+  // Re-preencher automaticamente com a nova paridade
+  limpar();
+  setTimeout(()=>{
+    preencher();
+    const hub = getHubColabAtual();
+    const grupo = S.colabs.filter(c=>(c.hub||'Sion')===hub&&c.tipoContrato==='12x36');
+    if(grupo.length >= 2){
+      toast(`↔ Invertido: ${grupo[0].nome} ↔ ${grupo[1].nome}`, 'tok');
+    } else {
+      toast('↔ Paridade 12x36 invertida', 'tok');
+    }
+  }, 100);
+}
+
 function preencher(){
   if(!S.escala){toast('Gere a escala primeiro.','ter');return;}
   if(!S.colabs.length){toast('Cadastre colaboradores!','ter');goT('co');return;}
@@ -1203,11 +1227,13 @@ function preencher(){
   let parBase = 0;
   try{
     const {seg} = proximaSemana();
-    // Número de dias desde uma data fixa de referência (01/01/2024 = Seg)
     const ref = new Date('2024-01-01');
     const diffDias = Math.round((seg - ref) / (1000*60*60*24));
-    parBase = diffDias % 2; // 0 ou 1
+    parBase = diffDias % 2;
   }catch(e){}
+  // Aplicar inversão manual se solicitada
+  try{ _inv12x36 = parseInt(localStorage.getItem('orion_v7_inv12x36')||'0')||0; }catch(e){}
+  parBase = (parBase + _inv12x36) % 2;
 
   // Para cada colaborador 12x36, calcular em quais dias da semana ele trabalha
   const diasTrabalho12x36 = {};
@@ -1321,6 +1347,11 @@ function preencher(){
   save();renderEscala();atualizarCustoTotal();
   if(av.length)toast(`⚠ ${av.length} slots com cobertura insuficiente.`,'twa');
   else toast('✓ Escala preenchida!','tok');
+  // Mostrar botão de inversão se houver 2+ colaboradores 12x36 no hub
+  const _hub12=getHubColabAtual();
+  const _g12=S.colabs.filter(c=>(c.hub||'Sion')===(_hub12||'Sion')&&c.tipoContrato==='12x36');
+  const btn12=document.getElementById('btn12x36');
+  if(btn12) btn12.style.display=_g12.length>=2?'':'none';
 }
 
 function calcularCustos(){
@@ -2563,47 +2594,66 @@ function renderHistorico(filtro){
       </div>`;
     }).join('');
 
-    return`<div class="hist-card">
-      <div class="hist-head">
-        <span style="font-size:20px">📅</span>
-        <div>
+    return`<div class="hist-card" style="padding:0;overflow:hidden">
+      <!-- CABEÇALHO CLICÁVEL (sempre visível) -->
+      <div class="hist-head" onclick="toggleHistCard('${h.id}')" style="cursor:pointer;padding:14px 18px;user-select:none">
+        <span style="font-size:18px">📅</span>
+        <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <div class="hist-semana">${h.semana}</div>
             ${hubLabel?`<span style="background:#dbeafe;color:#1e40af;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">${nomeHub(hubLabel)}</span>`:''}
           </div>
-          <div style="font-size:10px;color:var(--mu);margin-top:1px">Publicado em ${h.publicadoEm}</div>
+          <div style="font-size:10px;color:var(--mu);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">
+            <span>${(h.resumo.totalPed||0).toLocaleString('pt-BR')} ped.</span>
+            ${h.resumo.totalCusto>0?`<span>R$ ${(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',',')}</span>`:''}
+            ${cpp?`<span>CPP R$ ${cpp}</span>`:''}
+            ${faltaram>0?`<span style="color:#dc2626">⚠ ${faltaram} falta${faltaram!==1?'s':''}</span>`:''}
+            ${confirmados===totalColab&&totalColab>0?'<span style="color:#16a34a">✅ Todos confirmados</span>':''}
+            <span style="color:var(--mu)">Publicado em ${h.publicadoEm}</span>
+          </div>
         </div>
-        <span class="hist-badge hb-pub">✅ Publicada</span>
-        ${confirmados>0?`<span class="hist-badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac">${confirmados}/${totalColab} ✅</span>`:''}
-        ${faltaram>0?`<span class="hist-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">${faltaram} faltou</span>`:''}
-        ${horasAbatidas>0?`<span class="hist-badge" style="background:#f3f4f6;color:#6b7280">-${horasAbatidas}h / ${custoAbatido>0?'-R$'+custoAbatido.toFixed(2).replace('.',','):''}</span>`:''}
-      </div>
-      <div class="hist-resumo">
-        <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
-        <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
-        <div class="hist-stat"><div class="hist-stat-v">${h.resumo.mediaForca||'—'}</div><div class="hist-stat-l">média força/h</div></div>
-        <div class="hist-stat"><div class="hist-stat-v">${h.resumo.totalCusto>0?'R$ '+(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo${custoAbatido>0?' (líq.)':''}</div></div>
-        ${cpp?`<div class="hist-stat"><div class="hist-stat-v">R$ ${cpp}</div><div class="hist-stat-l">custo/pedido</div></div>`:''}
-      </div>
-      ${diaChips?`<div class="hist-dias">${diaChips}</div>`:''}
-      <!-- Confirmações sempre visíveis -->
-      <div style="border-top:1px solid var(--brd);padding:10px 18px 4px">
-        <div style="font-size:11px;font-weight:600;color:var(--mu);margin-bottom:8px">
-          👥 Confirmações
-          <span style="font-weight:400;margin-left:6px">${pendentes>0?`${pendentes} pendente${pendentes!==1?'s':''}`:confirmados===totalColab&&totalColab>0?'<span style="color:#166534">Todos confirmados ✅</span>':'—'}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          ${faltaram>0?`<span class="hist-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">${faltaram} faltou</span>`:''}
+          <span id="hist-chevron-${h.id}" style="font-size:12px;color:var(--mu);transition:.2s;transform:rotate(0deg)">▼</span>
         </div>
-        ${confRows}
       </div>
-      <div class="hist-actions">
-        <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">🔍 Ver escala completa</button>
-        <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
-        <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
+      <!-- DETALHE (colapsado por padrão) -->
+      <div id="hist-detail-${h.id}" style="display:none;border-top:1px solid var(--brd)">
+        <div class="hist-resumo" style="padding:10px 18px;border-bottom:1px solid var(--brd)">
+          <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
+          <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
+          <div class="hist-stat"><div class="hist-stat-v">${h.resumo.mediaForca||'—'}</div><div class="hist-stat-l">média força/h</div></div>
+          <div class="hist-stat"><div class="hist-stat-v">${h.resumo.totalCusto>0?'R$ '+(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo${custoAbatido>0?' (líq.)':''}</div></div>
+          ${cpp?`<div class="hist-stat"><div class="hist-stat-v">R$ ${cpp}</div><div class="hist-stat-l">custo/pedido</div></div>`:''}
+        </div>
+        ${diaChips?`<div class="hist-dias" style="padding:8px 18px;border-bottom:1px solid var(--brd)">${diaChips}</div>`:''}
+        <div style="padding:10px 18px 4px">
+          <div style="font-size:11px;font-weight:600;color:var(--mu);margin-bottom:8px">
+            👥 Confirmações
+            <span style="font-weight:400;margin-left:6px">${pendentes>0?`${pendentes} pendente${pendentes!==1?'s':''}`:confirmados===totalColab&&totalColab>0?'<span style="color:#166534">Todos confirmados ✅</span>':'—'}</span>
+          </div>
+          ${confRows}
+        </div>
+        <div class="hist-actions" style="padding:10px 18px;border-top:1px solid var(--brd)">
+          <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">🔍 Ver escala completa</button>
+          <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
+          <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
+        </div>
       </div>
     </div>`;
   }).join('');
   con.innerHTML=filterBar+cards;
   };
   _renderBody(hist);
+}
+
+function toggleHistCard(id){
+  const det=document.getElementById('hist-detail-'+id);
+  const chev=document.getElementById('hist-chevron-'+id);
+  if(!det)return;
+  const aberto=det.style.display!=='none';
+  det.style.display=aberto?'none':'block';
+  if(chev)chev.style.transform=aberto?'rotate(0deg)':'rotate(180deg)';
 }
 
 function verDiaHistorico(id,dia){
