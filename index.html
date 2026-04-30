@@ -1125,13 +1125,22 @@ function preencher(){
   function hubColabDeHub(hubInd){
     if(!hubInd) return null;
     if(hubInd==='DS Sion'||hubInd==='Sem hub') return 'Sion';
-    if(hubInd==='DS Cidade Nova') return 'Cidade Nova';
+    if(hubInd==='DS Cidade Nova'||hubInd==='Cidade Nova') return 'Cidade Nova';
     return null;
   }
-  const hubColab = hubColabDeHub(hubEscala);
-  const colabsAtivos = hubColab
-    ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
-    : S.colabs;
+  // Quando múltiplos hubs selecionados, pegar todos os hubs de colaboradores correspondentes
+  let colabsAtivos;
+  if(S._hubFiltroAtual && S._hubFiltroAtual.length > 0){
+    const hubColabsSet = new Set(S._hubFiltroAtual.map(hubColabDeHub).filter(Boolean));
+    colabsAtivos = hubColabsSet.size > 0
+      ? S.colabs.filter(c => hubColabsSet.has(c.hub||'Sion'))
+      : S.colabs;
+  } else {
+    const hubColab = hubColabDeHub(hubEscala);
+    colabsAtivos = hubColab
+      ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
+      : S.colabs;
+  }
 
   const hrs={};colabsAtivos.forEach(c=>hrs[c.id]=0); // horas por dia (reset diário abaixo)
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
@@ -2555,113 +2564,91 @@ function verEscalaHistorico(id){
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const hI=9, hO=25;
 
-  // Monta linhas da tabela
+  // Detectar horas com pedidos para omitir linhas vazias
+  const horasComDados=new Set();
+  diasO.forEach(d=>{ for(let h=hI;h<=hO;h++){ const c=entrada.escala[d]?.[h]; if(c&&(c.ped>0||c.alocados.length))horasComDados.add(h); }});
+
+  // Cores fixas por colaborador
+  const colabsUnicos=[...new Set(diasO.flatMap(d=>Object.values(entrada.escala[d]||{}).flatMap(c=>c.alocados||[])))].sort();
+  const cores=['#15803d','#1d4ed8','#b45309','#7c3aed','#b91c1c','#0e7490','#9d174d','#065f46','#1e40af'];
+  const corColab={};
+  colabsUnicos.forEach((n,i)=>corColab[n]=cores[i%cores.length]);
+
   let rows='';
   for(let h=hI;h<=hO;h++){
+    if(!horasComDados.has(h))continue;
+    const hora=fH(h);
     const tds=diasO.map(d=>{
       const cell=entrada.escala[d]?.[h];
-      if(!cell)return'<td style="padding:6px 4px;text-align:center;color:#9ca3af;font-size:10px">—</td>';
+      if(!cell||cell.ped===0)return`<td></td>`;
+      const bg=cell.alocados.length===0?'#fff1f2':cell.ped>150?'#f0fdf4':cell.ped>50?'#fffbeb':'#f8fafc';
       const nomes=cell.alocados.length
-        ?cell.alocados.map(n=>`<span style="display:inline-block;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:1px 5px;font-size:9px;margin:1px;font-weight:600;color:#14532d">${n.split(' ')[0]}</span>`).join('')
-        :'<span style="color:#dc2626;font-size:9px;font-weight:700">SEM</span>';
-      const bg=cell.alocados.length===0?'#fff1f2':cell.ped>200?'#f0fdf4':cell.ped>60?'#fffbeb':'#fff';
-      const border=cell.alocados.length===0?'border-left:3px solid #f87171':'';
-      return`<td style="padding:5px 6px;text-align:center;vertical-align:top;background:${bg};${border};border-bottom:1px solid #f3f4f6">
-        <div style="font-size:11px;font-weight:800;color:#374151;font-family:monospace;margin-bottom:2px">${cell.ped}</div>
-        <div>${nomes}</div>
-      </td>`;
+        ?cell.alocados.map(n=>`<b style="color:${corColab[n]||'#374151'}">${n.split(' ')[0]}</b>`).join('<br>')
+        :'<span style="color:#ef4444;font-size:8px">—</span>';
+      return`<td style="background:${bg}"><div class="ped">${cell.ped}</div>${nomes}</td>`;
     }).join('');
-    const hora=fH(h);
-    rows+=`<tr><td style="padding:5px 10px;font-family:monospace;font-size:11px;font-weight:700;white-space:nowrap;background:#f9fafb;border-right:2px solid #e5e7eb;border-bottom:1px solid #f3f4f6;color:#374151">${hora}</td>${tds}</tr>`;
+    rows+=`<tr><td class="hora">${hora}</td>${tds}</tr>`;
   }
 
-  // Resumo
-  const cpp=entrada.resumo.totalCusto>0&&entrada.resumo.totalPed>0?(entrada.resumo.totalCusto/entrada.resumo.totalPed).toFixed(2):'—';
   const hubLabel=entrada.hub&&entrada.hub!=='Todos os hubs'?nomeHub(entrada.hub):'Todos os hubs';
+  const cpp=entrada.resumo.totalCusto>0&&entrada.resumo.totalPed>0?(entrada.resumo.totalCusto/entrada.resumo.totalPed).toFixed(2):'—';
 
-  // KPIs da semana
-  const kpiHtml=`
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:24px">
-      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
-        <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:3px">Pedidos</div>
-        <div style="font-size:18px;font-weight:900;color:#111">${entrada.resumo.totalPed.toLocaleString('pt-BR')}</div>
-      </div>
-      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
-        <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:3px">Custo total</div>
-        <div style="font-size:18px;font-weight:900;color:#111">R$ ${entrada.resumo.totalCusto.toFixed(2).replace('.',',')}</div>
-      </div>
-      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
-        <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:3px">CPP</div>
-        <div style="font-size:18px;font-weight:900;color:#111">R$ ${cpp}</div>
-      </div>
-      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
-        <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:3px">Slots</div>
-        <div style="font-size:18px;font-weight:900;color:#111">${entrada.resumo.slots}</div>
-      </div>
-      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
-        <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:3px">Força média</div>
-        <div style="font-size:18px;font-weight:900;color:#111">${entrada.resumo.mediaForca}</div>
-      </div>
-    </div>`;
-
-  // Legenda de colaboradores
-  const colabsUnicos=[...new Set(diasO.flatMap(d=>Object.values(entrada.escala[d]||{}).flatMap(c=>c.alocados||[])))].sort();
-  const legendaHtml=colabsUnicos.length?`
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
-      ${colabsUnicos.map((n,i)=>{
-        const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626','#0891b2','#be185d'];
-        const cor=cores[i%cores.length];
-        return`<span style="display:inline-flex;align-items:center;gap:4px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600">
-          <span style="width:7px;height:7px;border-radius:50%;background:${cor};display:inline-block"></span>${n}
-        </span>`;
-      }).join('')}
-    </div>`:'';
+  const legendaHtml=colabsUnicos.map(n=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:${corColab[n]||'#374151'}"><span style="width:6px;height:6px;border-radius:50%;background:${corColab[n]||'#374151'};flex-shrink:0"></span>${n}</span>`).join('');
 
   const html=`<!DOCTYPE html><html lang="pt-BR"><head>
   <meta charset="UTF-8">
   <title>Escala ${entrada.semana}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:28px 32px;max-width:1100px;margin:0 auto}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid #111}
-    h1{font-size:22px;font-weight:900;margin-bottom:2px}
-    .sub{font-size:11px;color:#6b7280}
-    .badge{background:#d1fae5;color:#065f46;border-radius:12px;padding:2px 10px;font-size:10px;font-weight:700;margin-left:6px}
-    table{width:100%;border-collapse:collapse}
-    th{background:#111;color:#fff;padding:8px;font-size:11px;font-weight:700;text-align:center}
-    th:first-child{text-align:left}
-    .legend{margin-bottom:14px}
-    .print-btn{background:#16a34a;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px}
-    .footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;display:flex;justify-content:space-between}
-    @media print{.no-print{display:none!important}body{padding:12px 16px}@page{size:A4 landscape;margin:1cm}}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#111;padding:8px 10px;background:#fff}
+    .meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;padding-bottom:5px;border-bottom:2px solid #111}
+    .meta-l{font-size:11px;font-weight:900}.meta-s{font-size:9px;color:#6b7280}
+    .kpis{display:flex;gap:12px;margin-bottom:5px;flex-wrap:wrap}
+    .kpi{font-size:9px;color:#6b7280}.kpi b{font-size:11px;color:#111;display:block}
+    .legenda{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    col.hora-col{width:32px}
+    col.dia-col{width:calc((100% - 32px)/7)}
+    thead tr{background:#111}
+    th{color:#fff;padding:3px 2px;font-size:8px;font-weight:700;text-align:center}
+    th.hora{text-align:left;padding-left:4px}
+    td{padding:2px 2px;text-align:center;border:1px solid #f3f4f6;vertical-align:middle;height:22px;line-height:1.1}
+    td.hora{font-family:monospace;font-size:8px;font-weight:700;text-align:left;padding-left:3px;background:#f8fafc;border-right:2px solid #e5e7eb;color:#374151}
+    .ped{font-size:8px;font-weight:800;color:#374151;font-family:monospace;line-height:1}
+    .print-btn{background:#16a34a;color:#fff;border:none;padding:4px 10px;border-radius:5px;font-weight:700;cursor:pointer;font-size:9px}
+    @media print{
+      .no-print{display:none!important}
+      body{padding:4px 6px}
+      @page{size:A4 landscape;margin:0.5cm}
+    }
   </style></head><body>
-  <div class="header">
+  <div class="meta">
     <div>
-      <h1>Escala da semana <span class="badge">${hubLabel}</span></h1>
-      <div class="sub">${entrada.semana} · Publicada em ${entrada.publicadoEm}</div>
+      <div class="meta-l">Escala ${entrada.semana} <span style="background:#dbeafe;color:#1e40af;border-radius:8px;padding:1px 6px;font-size:8px;font-weight:700">${hubLabel}</span></div>
+      <div class="meta-s">Publicada em ${entrada.publicadoEm}</div>
     </div>
-    <button class="print-btn no-print" onclick="window.print()">🖨 Salvar PDF</button>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="kpis">
+        <div class="kpi"><b>${entrada.resumo.totalPed.toLocaleString('pt-BR')}</b>pedidos</div>
+        <div class="kpi"><b>R$ ${entrada.resumo.totalCusto.toFixed(2).replace('.',',')}</b>custo</div>
+        <div class="kpi"><b>R$ ${cpp}</b>CPP</div>
+        <div class="kpi"><b>${entrada.resumo.slots}</b>slots</div>
+      </div>
+      <button class="print-btn no-print" onclick="window.print()">🖨 PDF</button>
+    </div>
   </div>
-  ${kpiHtml}
-  <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Colaboradores na semana</div>
-  ${legendaHtml}
-  <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Quadro de escala · Pedidos × Alocação</div>
-  <div style="overflow-x:auto">
-    <table>
-      <thead><tr>
-        <th style="background:#111;color:#fff;padding:8px;font-size:11px;text-align:left;white-space:nowrap">HORA</th>
-        ${diasO.map(d=>`<th>${d}</th>`).join('')}
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>
-  <div class="footer">
-    <span>Órion · Escala — Relatório de Escala Semanal</span>
-    <span>${new Date().toLocaleDateString('pt-BR')}</span>
-  </div>
+  <div class="legenda">${legendaHtml}</div>
+  <table>
+    <colgroup><col class="hora-col">${diasO.map(()=>'<col class="dia-col">').join('')}</colgroup>
+    <thead><tr>
+      <th class="hora">H</th>
+      ${diasO.map(d=>`<th>${d}</th>`).join('')}
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
   </body></html>`;
 
-  const w=window.open('','_blank','width=1100,height=850');
+  const w=window.open('','_blank','width=1000,height=750');
   w.document.write(html);
   w.document.close();
 }
@@ -3104,8 +3091,11 @@ function receberDadosIndicadores(payload){
     localStorage.setItem(KIND,JSON.stringify(hist));
     atualizarSelectHubs(entrada.hubs);
     const banner=document.getElementById('indBanner');
+    // Total visível = excluindo hubs ocultos (DS Delivery Mall etc)
+    const _vendVis=entrada.vendas.filter(v=>!HUB_EXCLUIR||!HUB_EXCLUIR.has(v.hub));
+    const _cancVis=entrada.cancelamentos.filter(v=>!HUB_EXCLUIR||!HUB_EXCLUIR.has(v.hub));
     banner.className='banner b-ok';
-    banner.innerHTML=`<div class="b-title">✅ Dados coletados — ${entrada.vendas.length} pedidos + ${entrada.cancelamentos.length} cancelamentos</div><div>Período: <strong>${entrada.deBR} (Seg) → ${entrada.ateBR} (Dom)</strong></div>`;
+    banner.innerHTML=`<div class="b-title">✅ Dados coletados — ${_vendVis.length} pedidos + ${_cancVis.length} cancelamentos</div><div>Período: <strong>${entrada.deBR} (Seg) → ${entrada.ateBR} (Dom)</strong></div>`;
     document.getElementById('indEmp').style.display='none';
     renderIndicadores();
     toast('✓ Indicadores prontos!','tok');
@@ -3243,9 +3233,10 @@ function renderIndicadores(){
   ];
 
   // Painel de distribuição por hub (só aparece quando 2+ hubs selecionados)
-  const hubsAtivos = hub instanceof Set
+  const hubsAtivos = (hub instanceof Set
     ? (hub.has('todos') ? (semanaAtual.hubs||[]) : [...hub])
-    : (hub === 'todos' ? (semanaAtual.hubs||[]) : [hub]);
+    : (hub === 'todos' ? (semanaAtual.hubs||[]) : [hub])
+  ).filter(h => !HUB_EXCLUIR || !HUB_EXCLUIR.has(h));
 
   const distHubHtml = (() => {
     if(hubsAtivos.length < 2) return '';
