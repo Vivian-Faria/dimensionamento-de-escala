@@ -304,13 +304,23 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   </div>
   <div class="fr">
     <div class="fg">
+      <label>Hub</label>
+      <select id="fHub">
+        <option value="Sion">Sion (DS Sion + Cozinhas Sion)</option>
+        <option value="Cidade Nova">DS Cidade Nova</option>
+      </select>
+    </div>
+    <div class="fg">
       <label>Tipo de contrato</label>
       <select id="fTipo">
         <option value="hora">Por hora</option>
-        <option value="fixo">Fixo mensal</option>
+        <option value="12x36">12×36</option>
+        <option value="folguista">Folguista (FDS)</option>
       </select>
     </div>
-    <div class="fg" style="justify-content:flex-end;padding-top:18px">
+  </div>
+  <div class="fr">
+    <div class="fg" style="justify-content:flex-end;padding-top:4px">
       <div style="font-size:10px;color:var(--mu);line-height:1.6">Passagem é cobrada 1× por dia que o colaborador for escalado, independente do horário.</div>
     </div>
   </div>
@@ -479,7 +489,13 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div class="panel" id="panel-co">
       <div class="sh">
         <div><h2>Equipe</h2><p>Cadastre disponibilidades e custo/hora para preenchimento e cálculo de custo automáticos</p></div>
-        <div class="sh-r"><button class="btn ba" onclick="aM()">+ Novo colaborador</button></div>
+        <div class="sh-r">
+          <div style="display:flex;gap:6px;align-items:center">
+            <button class="btn bs sm" id="coHubBtn-Sion" onclick="filtrarCoHub('Sion')" style="background:var(--tx);color:var(--bg)">Sion</button>
+            <button class="btn bs sm" id="coHubBtn-CN" onclick="filtrarCoHub('Cidade Nova')">Cidade Nova</button>
+            <button class="btn ba" onclick="aM()">+ Novo colaborador</button>
+          </div>
+        </div>
       </div>
       <div class="cg" id="cG"></div>
     </div>
@@ -874,7 +890,9 @@ async function iniciarColeta(){
 
 // ── Mapa de nomes de hub (normalização)
 const HUB_NOMES = { 'Sem hub': 'Cozinhas Sion', '-': 'Cozinhas Sion' };
+const HUB_EXCLUIR = new Set(['DS Delivery Mall']); // hubs ocultos da plataforma
 function nomeHub(h){ return HUB_NOMES[h] || h; }
+function hubVisivel(h){ return !HUB_EXCLUIR.has(h); }
 
 // Seletor multi-hub antes de montar escala
 let _hubsSelecionados = new Set();
@@ -884,7 +902,7 @@ function abrirSeletorHub(){
   const lista = document.getElementById('hubSeletorLista');
   const raw = localStorage.getItem('orion_coleta');
   let hubs = [];
-  if(raw){ try{ const p=JSON.parse(raw); if(p.mxPorHub) hubs=Object.keys(p.mxPorHub).sort((a,b)=>nomeHub(a).localeCompare(nomeHub(b))); }catch(e){} }
+  if(raw){ try{ const p=JSON.parse(raw); if(p.mxPorHub) hubs=Object.keys(p.mxPorHub).filter(hubVisivel).sort((a,b)=>nomeHub(a).localeCompare(nomeHub(b))); }catch(e){} }
   if(!hubs.length){ montarEscala(); return; }
 
   let totais = {};
@@ -983,6 +1001,19 @@ async function montarEscala(hubFiltro){
 }
 
 async function montarComCache(){const c=verificarCache();if(c.p)gerarEscala(c.p,S.hubAtual?S._hubFiltroAtual:undefined);}
+
+// Regras de funcionamento por hub
+const HUB_REGRAS = {
+  'Sion': { horaMin: 9, horaMax: 24 },
+  'Cidade Nova': { horaMin: 11, horaMax: 23, intervalo: [{ini:16,fim:17}] },
+};
+
+function horaPermitidaHub(hub, hora){
+  const r = HUB_REGRAS[hub] || HUB_REGRAS['Sion'];
+  if(hora < r.horaMin || hora >= r.horaMax) return false;
+  if(r.intervalo) for(const iv of r.intervalo) if(hora>=iv.ini&&hora<iv.fim) return false;
+  return true;
+}
 
 function gerarEscala(dados, hubFiltro){
   setLd('Calculando projeção...');
@@ -1086,17 +1117,32 @@ function preencher(){
   const hO=+document.getElementById('cHO').value||25;
 
   DIAS.forEach(d=>{for(let h=hI;h<=hO;h++){if(S.escala[d]?.[h])S.escala[d][h].alocados=[];}});
-  const hrs={};S.colabs.forEach(c=>hrs[c.id]=0); // horas por dia (reset diário abaixo)
+  // Filtra colaboradores pelo hub da escala atual
+  const hubEscala = S.hubAtual && S.hubAtual!=='Todos os hubs' ? (
+    S._hubFiltroAtual && S._hubFiltroAtual.length===1 ? S._hubFiltroAtual[0] : null
+  ) : null;
+  // Mapear hubs de indicadores → hub de colaborador
+  function hubColabDeHub(hubInd){
+    if(!hubInd) return null;
+    if(hubInd==='DS Sion'||hubInd==='Sem hub') return 'Sion';
+    if(hubInd==='DS Cidade Nova') return 'Cidade Nova';
+    return null;
+  }
+  const hubColab = hubColabDeHub(hubEscala);
+  const colabsAtivos = hubColab
+    ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
+    : S.colabs;
+
+  const hrs={};colabsAtivos.forEach(c=>hrs[c.id]=0); // horas por dia (reset diário abaixo)
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const av=[];
 
   diasO.forEach(dia=>{
     // Reset horas por dia
-    S.colabs.forEach(c=>hrs[c.id]=0);
+    colabsAtivos.forEach(c=>hrs[c.id]=0);
 
-    // ── FIXOS PRIMEIRO — lê turnosFixos de cada colaborador dinamicamente
-    // Fallback: se turnosFixos vazio mas fixo=true, usa dias+horaIn/horaOut do cadastro
-    S.colabs.filter(c=>c.fixo).forEach(c=>{
+    // ── FIXOS PRIMEIRO
+    colabsAtivos.filter(c=>c.fixo).forEach(c=>{
       // Resolve os blocos de turno: usa turnosFixos se preenchido, senão monta do cadastro
       const blocos=(c.turnosFixos&&c.turnosFixos.length)
         ? c.turnosFixos
@@ -1120,11 +1166,13 @@ function preencher(){
     // pelo menos minH horas CONSECUTIVAS a partir dali (sem gap).
     // Isso evita turnos fragmentados e garante o mínimo obrigatório.
     for(let h=hI;h<=hO;h++){
+      // Pular horas fora das regras do hub (ex: intervalo 16h–17h do Cidade Nova)
+      if(hubColab&&!horaPermitidaHub(hubColab==='Sion'?'Sion':'Cidade Nova',h))continue;
       const cell=S.escala[dia]?.[h];if(!cell||cell.pessoas===0)continue;
       const faltam=cell.pessoas-cell.alocados.length;
       if(faltam<=0)continue;
 
-      const disp=S.colabs.filter(c=>{
+      const disp=colabsAtivos.filter(c=>{
         if(!c.dias.includes(dia))return false;
         const dispH=c.dispDia?.[dia]||{horaIn:c.horaIn,horaOut:c.horaOut};
         if(h<dispH.horaIn||h>=dispH.horaOut)return false;
@@ -1468,20 +1516,30 @@ function renderHM(){
 // ══════════════════════════════════════════════════════
 // COLABORADORES
 // ══════════════════════════════════════════════════════
+let _coHubFiltro='Sion';
+function filtrarCoHub(hub){
+  _coHubFiltro=hub;
+  document.getElementById('coHubBtn-Sion').style.cssText=hub==='Sion'?'background:var(--tx);color:var(--bg)':'';
+  document.getElementById('coHubBtn-CN').style.cssText=hub==='Cidade Nova'?'background:var(--tx);color:var(--bg)':'';
+  renderCo();
+}
+
 function renderCo(){
   const g=document.getElementById('cG');
-  document.getElementById('sCo').textContent=S.colabs.length;
-  if(!S.colabs.length){
-    g.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-ico">👤</div><h3>Nenhum colaborador</h3></div>';
+  const todos=S.colabs;
+  const lista=todos.filter(c=>(c.hub||'Sion')===_coHubFiltro);
+  document.getElementById('sCo').textContent=todos.length;
+  if(!lista.length){
+    g.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-ico">👤</div><h3>Nenhum colaborador em ${_coHubFiltro==='Cidade Nova'?'DS Cidade Nova':'Sion'}</h3><p style="margin-top:8px"><button class="btn ba sm" onclick="aM()">+ Adicionar</button></p></div>`;
     return;
   }
-  g.innerHTML=S.colabs.map((c,i)=>`
+  g.innerHTML=lista.map((c,i)=>`
     <div class="cc">
       <div class="cc-h">
         <div class="av" style="background:${avColor(i)};color:#fff">${c.nome.substring(0,2).toUpperCase()}</div>
         <div>
           <div class="cn">${c.nome}</div>
-          <div class="cf">${c.funcao||'Colaborador'}</div>
+          <div class="cf">${c.funcao||'Colaborador'} ${c.tipoContrato&&c.tipoContrato!=='hora'?`<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:3px">${c.tipoContrato==='12x36'?'12×36':'Folguista'}</span>`:''}</div>
         </div>
         <div class="ca">
           <button class="btn bs sm" onclick="editC('${c.id}')">✏</button>
@@ -1527,6 +1585,21 @@ function atualizarPassagem(id,val){
 function aM(id){
   S.editId=id||null;
   document.getElementById('mTit').textContent=id?'Editar colaborador':'Novo colaborador';
+  // Preenche hub e tipoContrato ao editar
+  const _c=id?S.colabs.find(x=>x.id===id):null;
+  const fHub=document.getElementById('fHub');
+  const fTipo=document.getElementById('fTipo');
+  if(fHub) fHub.value=_c?.hub||'Sion';
+  if(fTipo) fTipo.value=_c?.tipoContrato||'hora';
+  // Pré-preencher disponibilidade para Cidade Nova (11h–23h padrão)
+  if(fHub) fHub.onchange=function(){
+    if(this.value==='Cidade Nova'&&!_c){
+      // Preenche horários padrão CN: 11h–23h exceto 16h–17h (intervalo)
+      // O intervalo é tratado na geração da escala, não na disponibilidade
+      document.getElementById('fMinH').value='6';
+      document.getElementById('fMaxH').value='12';
+    }
+  };
   renderDispGrade(null);
   if(id){
     const c=S.colabs.find(x=>x.id===id);if(!c)return;
@@ -1612,7 +1685,9 @@ function salvarC(){
   // Turno fixo — um bloco por dia com horário específico
   const isFixo=document.getElementById('fFixo').checked;
   const turnosFixos=isFixo?dias.map(d=>({dias:[d],horaIn:dispDia[d].horaIn,horaOut:dispDia[d].horaOut})):[];
-  const obj={id:S.editId||Date.now().toString(),nome,funcao,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota};
+  const hub=document.getElementById('fHub')?.value||'Sion';
+  const tipoContrato=document.getElementById('fTipo')?.value||'hora';
+  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
   save();renderCo();fM();atualizarSideRegras();
@@ -2820,7 +2895,10 @@ function parsearTabelaOrion(html, tipo='vendas'){
 function calcularMetricasSemana(vendas, cancelamentos, hub){
   // hub pode ser 'todos', string, ou Set de hubs (multi-seleção)
   const hubSet=hub instanceof Set?hub:new Set([hub]);
-  const filtro=v=>hubSet.has('todos')||hubSet.has(v.hub)||(!v.hub&&hubSet.has('Sem hub'));
+  const filtro=v=>{
+    if(HUB_EXCLUIR&&HUB_EXCLUIR.has(v.hub))return false; // excluir DS Delivery Mall etc
+    return hubSet.has('todos')||hubSet.has(v.hub)||(!v.hub&&hubSet.has('Sem hub'));
+  };
   const vF=vendas.filter(filtro);
   const cF=cancelamentos.filter(filtro);
 
@@ -2851,6 +2929,29 @@ function calcularMetricasSemana(vendas, cancelamentos, hub){
     tDespachoMed:media(tDespacho),
     amostras:{preparo:tPreparo.length,coleta:tColeta.length,despacho:tDespacho.length},
   };
+}
+
+// CPP por hub: custo total da escala (mesmo para todos) ÷ volume de pedidos do hub
+// O custo da escala não é separado por hub — a equipe é compartilhada
+function calcularCppPorHub(volumeHub, custoEscala){
+  if(!volumeHub||volumeHub===0||!custoEscala) return null;
+  return custoEscala / volumeHub;
+}
+
+function getCustoEscalaSemana(semanaISO){
+  // Busca o custo total da escala publicada mais próxima da semana dos indicadores
+  try{
+    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    if(!he.length) return null;
+    // Tenta encontrar a escala da mesma semana
+    if(semanaISO){
+      const [de, ate] = semanaISO.split('/');
+      const match = he.find(e => e.segISO===de || e.domISO===ate);
+      if(match) return match.resumo?.totalCusto||null;
+    }
+    // Fallback: escala mais recente
+    return he[0].resumo?.totalCusto||null;
+  }catch(e){ return null; }
 }
 
 function coletarIndicadores(){
@@ -2966,7 +3067,7 @@ function _popularListaHub(){
   const lista=document.getElementById('indHubLista');
   if(!lista)return;
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
-  const todosHubs=[...new Set(hist.flatMap(h=>h.hubs||[]))].sort();
+  const todosHubs=[...new Set(hist.flatMap(h=>h.hubs||[]))].filter(hubVisivel).sort();
   // Item "Todos"
   const todosMarcado=_hubsTemp.has('todos');
   lista.innerHTML=`<label style="display:flex;align-items:center;gap:10px;padding:7px 14px;cursor:pointer;font-size:12px;color:#f3f4f6;border-bottom:1px solid rgba(255,255,255,.06)"
@@ -3054,14 +3155,9 @@ function renderIndicadores(){
   const m=calcularMetricasSemana(semanaAtual.vendas,semanaAtual.cancelamentos,hub);
   const mAnt=semanaAnt?calcularMetricasSemana(semanaAnt.vendas,semanaAnt.cancelamentos,hub):null;
 
-  // CPP da escala (pega do histórico de escalas publicadas, semana mais recente)
-  let cpp=null;
-  try{
-    const histEsc=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
-    if(histEsc.length&&histEsc[0].resumo.totalPed>0){
-      cpp=(histEsc[0].resumo.totalCusto/histEsc[0].resumo.totalPed);
-    }
-  }catch(e){}
+  // CPP: custo total da escala ÷ volume de pedidos do hub selecionado
+  const custoEscala = getCustoEscalaSemana(semanaAtual.semanaISO);
+  const cpp = custoEscala && m.volume > 0 ? custoEscala / m.volume : null;
 
   // KPI Cards
   const kpis=[
@@ -3246,12 +3342,9 @@ function gerarRelatorioIndicadores(){
   const hubsAtivos=hub instanceof Set?(hub.has('todos')?(hist[0].hubs||[]):[...hub]):[hub];
   const hubLabel=hubsAtivos.length===0||hub.has('todos')?'Todos os hubs':hubsAtivos.map(nomeHub).join(' + ');
 
-  // CPP do histórico de escalas
-  let cppGlobal=null;
-  try{
-    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
-    if(he.length&&he[0].resumo.totalPed>0) cppGlobal=he[0].resumo.totalCusto/he[0].resumo.totalPed;
-  }catch(e){}
+  // Custo total da escala — base para CPP por hub
+  const custoEscalaRel = getCustoEscalaSemana(hist[0]?.semanaISO);
+  // cppGlobal = custo / volume total selecionado (calculado depois de ter mTotal)
 
   function agruparPeriodo(semanas,tipo){
     if(tipo==='semanal') return semanas.map(s=>({label:s.semana||s.semanaISO,semanas:[s]})).reverse();
@@ -3318,9 +3411,11 @@ function gerarRelatorioIndicadores(){
 
   // Distribuição por hub (quando múltiplos)
   const mTotal=calcGrupo(hist);
+  const cppGlobal = custoEscalaRel && mTotal.volume > 0 ? custoEscalaRel / mTotal.volume : null;
   const distRows=hubsAtivos.length>1?hubsAtivos.map((h,i)=>{
     const mH=calcularMetricasSemana(hist.flatMap(s=>s.vendas||[]),hist.flatMap(s=>s.cancelamentos||[]),new Set([h]));
     const pct=mTotal.volume>0?(mH.volume/mTotal.volume*100).toFixed(1):'0';
+    const cppHub=cppGlobal!==null&&mTotal.volume>0?cppGlobal:null; // CPP é global (custo não é separado por hub)
     const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
     const cor=cores[i%cores.length];
     return `<tr>
@@ -3330,6 +3425,7 @@ function gerarRelatorioIndicadores(){
       <td>${fmtTempo(mH.tPreparoMed)}</td>
       <td>${fmtTempo(mH.tColetaMed)}</td>
       <td>${fmtTempo(mH.tDespachoMed)}</td>
+      <td>${cppHub!==null?'R$ '+cppHub.toFixed(2).replace('.',','):'—'}</td>
       <td style="color:${cor};font-weight:700">${pct}%</td>
     </tr>`;
   }).join(''):'';
@@ -3419,7 +3515,7 @@ function gerarRelatorioIndicadores(){
   ${distRows?`
   <h2>Distribuição por hub</h2>
   <table>
-    <thead><tr><th>Hub</th><th>Pedidos</th><th>Cancelamentos</th><th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th><th>% do total</th></tr></thead>
+    <thead><tr><th>Hub</th><th>Pedidos</th><th>Cancelamentos</th><th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th><th>CPP</th><th>% do total</th></tr></thead>
     <tbody>${distRows}</tbody>
   </table>`:''}
 
