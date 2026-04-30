@@ -1223,7 +1223,7 @@ function preencher(){
     // Isso evita turnos fragmentados e garante o mínimo obrigatório.
     for(let h=hI;h<=hO;h++){
       // Pular horas fora das regras do hub (ex: intervalo 16h–17h do Cidade Nova)
-      if(hubColab&&!horaPermitidaHub(hubColab==='Sion'?'Sion':'Cidade Nova',h))continue;
+      if(_hubColabAtual&&!horaPermitidaHub(_hubColabAtual,h))continue;
       const cell=S.escala[dia]?.[h];if(!cell||cell.pessoas===0)continue;
       const faltam=cell.pessoas-cell.alocados.length;
       if(faltam<=0)continue;
