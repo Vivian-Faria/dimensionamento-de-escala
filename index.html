@@ -3246,21 +3246,25 @@ function gerarRelatorioIndicadores(){
   const hubsAtivos=hub instanceof Set?(hub.has('todos')?(hist[0].hubs||[]):[...hub]):[hub];
   const hubLabel=hubsAtivos.length===0||hub.has('todos')?'Todos os hubs':hubsAtivos.map(nomeHub).join(' + ');
 
-  // Agrupa semanas conforme período
-  function agruparPeriodo(semanas, tipo){
-    if(tipo==='semanal') return semanas.map(s=>({label:s.semana||s.semanaISO,semanas:[s]}));
+  // CPP do histórico de escalas
+  let cppGlobal=null;
+  try{
+    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    if(he.length&&he[0].resumo.totalPed>0) cppGlobal=he[0].resumo.totalCusto/he[0].resumo.totalPed;
+  }catch(e){}
+
+  function agruparPeriodo(semanas,tipo){
+    if(tipo==='semanal') return semanas.map(s=>({label:s.semana||s.semanaISO,semanas:[s]})).reverse();
     if(tipo==='mensal'){
       const mp={};
       semanas.forEach(s=>{
-        const key=s.semana?(s.semana.slice(-5).replace('/','-')):'';
-        // Agrupa por mês/ano usando o campo 'ate'
         const d=s.ate?new Date(s.ate+'T00:00:00'):null;
-        const k=d?`${d.getMonth()+1}/${d.getFullYear()}`:'Outros';
+        const k=d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`:'outros';
         const nome=d?d.toLocaleString('pt-BR',{month:'long',year:'numeric'}):'Outros';
         if(!mp[k])mp[k]={label:nome,semanas:[]};
         mp[k].semanas.push(s);
       });
-      return Object.values(mp);
+      return Object.entries(mp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
     }
     if(tipo==='trimestral'){
       const tp={};
@@ -3268,101 +3272,179 @@ function gerarRelatorioIndicadores(){
         const d=s.ate?new Date(s.ate+'T00:00:00'):null;
         if(!d)return;
         const q=Math.ceil((d.getMonth()+1)/3);
-        const k=`T${q}/${d.getFullYear()}`;
-        if(!tp[k])tp[k]={label:k,semanas:[]};
+        const k=`${d.getFullYear()}-T${q}`;
+        if(!tp[k])tp[k]={label:`T${q}/${d.getFullYear()}`,semanas:[]};
         tp[k].semanas.push(s);
       });
-      return Object.values(tp);
+      return Object.entries(tp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
     }
-    return semanas.map(s=>({label:s.semana,semanas:[s]}));
+    return semanas.map(s=>({label:s.semana,semanas:[s]})).reverse();
   }
 
   function calcGrupo(semanas){
-    const vendas=semanas.flatMap(s=>s.vendas||[]);
-    const cancels=semanas.flatMap(s=>s.cancelamentos||[]);
-    return calcularMetricasSemana(vendas,cancels,hub);
+    return calcularMetricasSemana(
+      semanas.flatMap(s=>s.vendas||[]),
+      semanas.flatMap(s=>s.cancelamentos||[]),
+      hub
+    );
+  }
+
+  function var$(atual,ant,inverso=false){
+    if(ant===null||ant===undefined||atual===null||isNaN(atual)||isNaN(ant)||ant===0) return '';
+    const p=((atual-ant)/ant*100);
+    const melhorou=inverso?p<0:p>0;
+    const cor=melhorou?'#166534':'#991b1b';
+    const bg=melhorou?'#dcfce7':'#fee2e2';
+    return `<span style="font-size:10px;font-weight:700;color:${cor};background:${bg};border-radius:4px;padding:1px 5px;margin-left:4px">${p>=0?'+':''}${p.toFixed(1)}%</span>`;
   }
 
   const grupos=agruparPeriodo(hist,periodo);
 
-  // Montar HTML do relatório
-  const linhas=grupos.map(g=>{
+  // Linhas da tabela histórica com variação
+  const linhas=grupos.map((g,i)=>{
     const m=calcGrupo(g.semanas);
-    return `<tr>
-      <td>${g.label}</td>
-      <td>${m.volume.toLocaleString('pt-BR')}</td>
-      <td>${m.cancelamentos}</td>
-      <td>${m.pctCancel.toFixed(2)}%</td>
-      <td>${fmtTempo(m.tPreparoMed)}</td>
-      <td>${fmtTempo(m.tColetaMed)}</td>
-      <td>${fmtTempo(m.tDespachoMed)}</td>
+    const mAnt=grupos[i-1]?calcGrupo(grupos[i-1].semanas):null;
+    const bg=i%2===0?'#fff':'#f9fafb';
+    return `<tr style="background:${bg}">
+      <td style="font-weight:600">${g.label}</td>
+      <td>${m.volume.toLocaleString('pt-BR')}${mAnt?var$(m.volume,mAnt.volume,false):''}</td>
+      <td>${m.cancelamentos}${mAnt?var$(m.cancelamentos,mAnt.cancelamentos,true):''}</td>
+      <td>${m.pctCancel.toFixed(2)}%${mAnt?var$(m.pctCancel,mAnt.pctCancel,true):''}</td>
+      <td>${fmtTempo(m.tPreparoMed)}<span style="font-size:9px;color:#9ca3af;margin-left:3px">(${m.amostras?.preparo||0})</span>${mAnt?var$(m.tPreparoMed,mAnt.tPreparoMed,true):''}</td>
+      <td>${fmtTempo(m.tColetaMed)}<span style="font-size:9px;color:#9ca3af;margin-left:3px">(${m.amostras?.coleta||0})</span>${mAnt?var$(m.tColetaMed,mAnt.tColetaMed,true):''}</td>
+      <td>${fmtTempo(m.tDespachoMed)}<span style="font-size:9px;color:#9ca3af;margin-left:3px">(${m.amostras?.despacho||0})</span>${mAnt?var$(m.tDespachoMed,mAnt.tDespachoMed,true):''}</td>
     </tr>`;
   }).join('');
 
-  // Distribuição por hub para o relatório
-  const distRows = hubsAtivos.length>1 ? hubsAtivos.map(h=>{
-    const mH=calcularMetricasSemana(hist[0].vendas,hist[0].cancelamentos,new Set([h]));
-    return `<tr><td>${nomeHub(h)}</td><td>${mH.volume.toLocaleString('pt-BR')}</td><td>${hist[0].vendas.length>0?(mH.volume/hist[0].vendas.length*100).toFixed(1)+'%':'-'}</td></tr>`;
-  }).join('') : '';
+  // Distribuição por hub (quando múltiplos)
+  const mTotal=calcGrupo(hist);
+  const distRows=hubsAtivos.length>1?hubsAtivos.map((h,i)=>{
+    const mH=calcularMetricasSemana(hist.flatMap(s=>s.vendas||[]),hist.flatMap(s=>s.cancelamentos||[]),new Set([h]));
+    const pct=mTotal.volume>0?(mH.volume/mTotal.volume*100).toFixed(1):'0';
+    const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
+    const cor=cores[i%cores.length];
+    return `<tr>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cor};margin-right:6px"></span>${nomeHub(h)}</td>
+      <td style="font-weight:700">${mH.volume.toLocaleString('pt-BR')}</td>
+      <td>${mH.cancelamentos} (${mH.pctCancel.toFixed(1)}%)</td>
+      <td>${fmtTempo(mH.tPreparoMed)}</td>
+      <td>${fmtTempo(mH.tColetaMed)}</td>
+      <td>${fmtTempo(mH.tDespachoMed)}</td>
+      <td style="color:${cor};font-weight:700">${pct}%</td>
+    </tr>`;
+  }).join(''):'';
+
+  const periodoLabels={semanal:'Semanal',mensal:'Mensal',trimestral:'Trimestral'};
+  const dataGeracao=new Date().toLocaleString('pt-BR');
 
   const html=`<!DOCTYPE html><html lang="pt-BR"><head>
   <meta charset="UTF-8">
-  <title>Relatório Indicadores — ${hubLabel}</title>
+  <title>Relatório Indicadores Operacionais</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',sans-serif;background:#fff;color:#111;padding:32px;max-width:900px;margin:0 auto}
-    h1{font-size:22px;font-weight:800;margin-bottom:4px}
-    .sub{font-size:13px;color:#666;margin-bottom:24px}
-    .badge{display:inline-block;background:#d1fae5;color:#065f46;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;margin-left:8px}
-    h2{font-size:14px;font-weight:700;color:#374151;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.05em}
-    table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:24px}
-    th{background:#111;color:#fff;padding:8px 10px;text-align:left;font-weight:600}
-    td{padding:7px 10px;border-bottom:1px solid #e5e7eb}
-    tr:last-child td{border-bottom:none}
-    tr:nth-child(even) td{background:#f9fafb}
-    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
-    .kpi{border:1px solid #e5e7eb;border-radius:8px;padding:12px}
-    .kpi-l{font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:600;margin-bottom:4px}
-    .kpi-v{font-size:20px;font-weight:800;color:#111}
-    .footer{margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;display:flex;justify-content:space-between}
-    @media print{body{padding:16px}button{display:none!important}.no-print{display:none}}
-  </style>
-  </head><body>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
-    <div>
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:32px 40px;max-width:1000px;margin:0 auto;font-size:13px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;padding-bottom:16px;border-bottom:3px solid #111}
+    .header-left h1{font-size:24px;font-weight:900;color:#111;margin-bottom:2px}
+    .header-left .sub{font-size:12px;color:#6b7280}
+    .badge{display:inline-block;background:#d1fae5;color:#065f46;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px}
+    .print-btn{background:#16a34a;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px}
+    h2{font-size:12px;font-weight:800;color:#374151;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.06em;padding-bottom:4px;border-bottom:1px solid #e5e7eb}
+    .kpi-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:20px}
+    .kpi{border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fafafa}
+    .kpi-l{font-size:9px;color:#9ca3af;text-transform:uppercase;font-weight:700;margin-bottom:3px;line-height:1.3}
+    .kpi-v{font-size:18px;font-weight:900;color:#111;line-height:1}
+    .kpi-s{font-size:10px;color:#6b7280;margin-top:2px}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px}
+    thead tr{background:#111}
+    th{color:#fff;padding:7px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}
+    td{padding:6px 8px;border-bottom:1px solid #f3f4f6;vertical-align:middle}
+    .nota{font-size:9px;color:#9ca3af;display:block;margin-top:1px}
+    .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af}
+    .legenda{font-size:10px;color:#6b7280;margin-bottom:12px;background:#f9fafb;border-radius:6px;padding:8px 12px;border-left:3px solid #d1fae5}
+    @media print{
+      body{padding:16px 20px}
+      .print-btn{display:none!important}
+      .no-print{display:none!important}
+      @page{margin:1.5cm;size:A4 landscape}
+    }
+  </style></head><body>
+
+  <div class="header">
+    <div class="header-left">
       <h1>Indicadores Operacionais <span class="badge">${hubLabel}</span></h1>
-      <div class="sub">Período: ${({semanal:'Semanal',mensal:'Mensal',trimestral:'Trimestral'})[periodo]} · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+      <div class="sub">Análise ${periodoLabels[periodo].toLowerCase()} · Gerado em ${dataGeracao} · ${hist.length} semana${hist.length>1?'s':''} coletada${hist.length>1?'s':''}</div>
     </div>
-    <button class="no-print" onclick="window.print()" style="background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">🖨 Imprimir / Salvar PDF</button>
+    <button class="print-btn no-print" onclick="window.print()">🖨 Salvar PDF</button>
   </div>
 
-  ${(()=>{const m=calcGrupo(hist);return`
+  <h2>Resumo geral do período</h2>
   <div class="kpi-grid">
-    <div class="kpi"><div class="kpi-l">📦 Volume Total</div><div class="kpi-v">${m.volume.toLocaleString('pt-BR')}</div></div>
-    <div class="kpi"><div class="kpi-l">❌ Cancelamentos</div><div class="kpi-v">${m.cancelamentos} (${m.pctCancel.toFixed(1)}%)</div></div>
-    <div class="kpi"><div class="kpi-l">🧑‍🍳 T. Preparo médio</div><div class="kpi-v">${fmtTempo(m.tPreparoMed)}</div></div>
-    <div class="kpi"><div class="kpi-l">🏁 T. Despacho médio</div><div class="kpi-v">${fmtTempo(m.tDespachoMed)}</div></div>
-  </div>`;})()}
+    <div class="kpi">
+      <div class="kpi-l">📦 Volume de pedidos</div>
+      <div class="kpi-v">${mTotal.volume.toLocaleString('pt-BR')}</div>
+      <div class="kpi-s">${periodoLabels[periodo]}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">❌ Cancelamentos</div>
+      <div class="kpi-v">${mTotal.cancelamentos}</div>
+      <div class="kpi-s">${mTotal.pctCancel.toFixed(2)}% dos pedidos</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">📉 % Cancelamentos</div>
+      <div class="kpi-v">${mTotal.pctCancel.toFixed(2)}%</div>
+      <div class="kpi-s">&nbsp;</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">🧑‍🍳 T. Médio preparo</div>
+      <div class="kpi-v">${fmtTempo(mTotal.tPreparoMed)}</div>
+      <div class="kpi-s">${mTotal.amostras?.preparo||0} amostras</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">🛵 T. Médio coleta</div>
+      <div class="kpi-v">${fmtTempo(mTotal.tColetaMed)}</div>
+      <div class="kpi-s">${mTotal.amostras?.coleta||0} amostras</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">🏁 T. Médio despacho</div>
+      <div class="kpi-v">${fmtTempo(mTotal.tDespachoMed)}</div>
+      <div class="kpi-s">${mTotal.amostras?.despacho||0} amostras</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">💰 CPP</div>
+      <div class="kpi-v">${cppGlobal!==null?'R$ '+cppGlobal.toFixed(2).replace('.',','):'—'}</div>
+      <div class="kpi-s">custo/pedido</div>
+    </div>
+  </div>
 
-  ${distRows?`<h2>Distribuição por hub</h2>
-  <table><thead><tr><th>Hub</th><th>Pedidos</th><th>% do total</th></tr></thead><tbody>${distRows}</tbody></table>`:''}
+  ${distRows?`
+  <h2>Distribuição por hub</h2>
+  <table>
+    <thead><tr><th>Hub</th><th>Pedidos</th><th>Cancelamentos</th><th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th><th>% do total</th></tr></thead>
+    <tbody>${distRows}</tbody>
+  </table>`:''}
 
-  <h2>Histórico ${({semanal:'semanal',mensal:'mensal',trimestral:'trimestral'})[periodo]}</h2>
+  <h2>Histórico ${periodoLabels[periodo].toLowerCase()}</h2>
+  <div class="legenda">Os números entre parênteses indicam a quantidade de pedidos usados no cálculo de cada média de tempo. As variações em verde/vermelho comparam com o período anterior.</div>
   <table>
     <thead><tr>
-      <th>Período</th><th>Pedidos</th><th>Cancelamentos</th><th>% Cancel.</th>
-      <th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th>
+      <th>Período</th>
+      <th>Pedidos</th>
+      <th>Cancelamentos</th>
+      <th>% Cancel.</th>
+      <th>T. Preparo (n)</th>
+      <th>T. Coleta (n)</th>
+      <th>T. Despacho (n)</th>
     </tr></thead>
     <tbody>${linhas}</tbody>
   </table>
 
   <div class="footer">
-    <span>Órion · Escala — Relatório gerado automaticamente</span>
-    <span>${new Date().toLocaleDateString('pt-BR')}</span>
+    <span>Órion · Escala — Relatório de Indicadores Operacionais</span>
+    <span>${dataGeracao}</span>
   </div>
   </body></html>`;
 
-  const w=window.open('','_blank','width=960,height=800');
+  const w=window.open('','_blank','width=1100,height=850');
   w.document.write(html);
   w.document.close();
 }
