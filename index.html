@@ -1036,6 +1036,34 @@ async function montarEscala(hubFiltro){
 
 async function montarComCache(){const c=verificarCache();if(c.p)gerarEscala(c.p,S.hubAtual?S._hubFiltroAtual:undefined);}
 
+// Mapa hub indicadores → hub colaborador
+const HUB_IND_PARA_COLAB = {
+  'Cozinhas Sion': 'Sion',
+  'DS Sion': 'Sion',
+  'Sem hub': 'Sion',
+  'DS Cidade Nova': 'Cidade Nova',
+  'Cidade Nova': 'Cidade Nova',
+};
+
+// Retorna o hub de colaborador ativo (persiste no localStorage)
+function getHubColabAtual(){
+  // 1. Preferir S.hubAtual/S._hubFiltroAtual se definidos na sessão
+  if(S._hubFiltroAtual&&S._hubFiltroAtual.length>0){
+    const hubs=new Set(S._hubFiltroAtual.map(h=>HUB_IND_PARA_COLAB[h]).filter(Boolean));
+    if(hubs.size===1)return [...hubs][0];
+    if(hubs.size>1)return null; // múltiplos hubs → sem filtro
+  }
+  // 2. Fallback: localStorage
+  try{
+    const hd=JSON.parse(localStorage.getItem('orion_v7_hub')||'null');
+    if(hd&&hd.hubAtual&&hd.hubAtual!=='Todos os hubs'){
+      if(hd.hubFiltro&&hd.hubFiltro.length===1)return HUB_IND_PARA_COLAB[hd.hubFiltro[0]]||null;
+      return HUB_IND_PARA_COLAB[hd.hubAtual]||null;
+    }
+  }catch(e){}
+  return null; // sem filtro → todos os hubs
+}
+
 // Regras de funcionamento por hub
 const HUB_REGRAS = {
   'Sion': { horaMin: 9, horaMax: 24 },
@@ -1153,53 +1181,13 @@ function preencher(){
   const hO=+document.getElementById('cHO').value||25;
 
   DIAS.forEach(d=>{for(let h=hI;h<=hO;h++){if(S.escala[d]?.[h])S.escala[d][h].alocados=[];}});
-  // Filtra colaboradores pelo hub da escala atual
-  let hubEscala = null;
-  if(S._hubFiltroAtual && S._hubFiltroAtual.length > 0){
-    hubEscala = S._hubFiltroAtual.length === 1 ? S._hubFiltroAtual[0] : null;
-  } else {
-    // Tentar restaurar do localStorage (persiste entre recarregamentos)
-    try{
-      const hd=JSON.parse(localStorage.getItem('orion_v7_hub')||'null');
-      if(hd&&hd.hubAtual&&hd.hubAtual!=='Todos os hubs'){
-        if(!S.hubAtual)S.hubAtual=hd.hubAtual;
-        if(!S._hubFiltroAtual)S._hubFiltroAtual=hd.hubFiltro;
-        if(hd.hubFiltro&&hd.hubFiltro.length>0){
-          hubEscala=hd.hubFiltro.length===1?hd.hubFiltro[0]:null;
-        } else {
-          const _nomes={'Cozinhas Sion':'Sem hub','DS Sion':'DS Sion','DS Cidade Nova':'DS Cidade Nova'};
-          hubEscala=_nomes[hd.hubAtual]||hd.hubAtual;
-        }
-      }
-    }catch(e){}
-  }
+  // Filtrar colaboradores pelo hub da escala atual usando função centralizada
   // Mapear hubs de indicadores → hub de colaborador
-  function hubColabDeHub(hubInd){
-    if(!hubInd) return null;
-    if(hubInd==='DS Sion'||hubInd==='Sem hub') return 'Sion';
-    if(hubInd==='DS Cidade Nova'||hubInd==='Cidade Nova') return 'Cidade Nova';
-    return null;
-  }
-  // Filtra colaboradores pelo hub da escala
-  let colabsAtivos;
-  if(S._hubFiltroAtual && S._hubFiltroAtual.length > 0){
-    // Múltiplos hubs selecionados
-    const hubColabsSet = new Set(S._hubFiltroAtual.map(hubColabDeHub).filter(Boolean));
-    colabsAtivos = hubColabsSet.size > 0
-      ? S.colabs.filter(c => hubColabsSet.has(c.hub||'Sion'))
-      : S.colabs;
-  } else if(hubEscala){
-    // Hub único inferido — mapear para hub de colaborador
-    const hubColab = hubColabDeHub(hubEscala);
-    colabsAtivos = hubColab
-      ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
-      : S.colabs;
-    // Log de diagnóstico
-    console.log('[Preencher] hubEscala:', hubEscala, '→ hubColab:', hubColab, '→ colabs:', colabsAtivos.map(c=>c.nome));
-  } else {
-    // Sem filtro — usa todos
-    colabsAtivos = S.colabs;
-  }
+  const _hubColabAtual = getHubColabAtual();
+  const colabsAtivos = _hubColabAtual
+    ? S.colabs.filter(c=>(c.hub||'Sion')===_hubColabAtual)
+    : S.colabs;
+  console.log('[Preencher] hubColab:', _hubColabAtual, '→ colabs:', colabsAtivos.map(c=>c.nome));
 
   const hrs={};colabsAtivos.forEach(c=>hrs[c.id]=0); // horas por dia (reset diário abaixo)
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
@@ -1780,12 +1768,16 @@ function rmA(dia,h,nome){
 }
 function addM(dia,h){
   if(!S.colabs.length){toast('Cadastre colaboradores!','ter');return;}
-  const lista=S.colabs.map((c,i)=>`${i+1}. ${c.nome} (${fH(c.horaIn)}–${fH(c.horaOut)})`).join('\n');
+  // Filtrar colaboradores pelo hub da escala atual
+  const _hca=getHubColabAtual();
+  const _filtrado=_hca?S.colabs.filter(c=>(c.hub||'Sion')===_hca):S.colabs;
+  const colabsDisp=_filtrado.length>0?_filtrado:S.colabs;
+  const lista=colabsDisp.map((c,i)=>`${i+1}. ${c.nome} (${fH(c.horaIn)}–${fH(c.horaOut)})`).join('\n');
   const r=prompt(`Adicionar em ${dia} ${fH(h)}:\n\n${lista}\n\nDigite o número:`);
   if(!r)return;
   const idx=parseInt(r)-1;
-  if(isNaN(idx)||idx<0||idx>=S.colabs.length){toast('Inválido.','ter');return;}
-  const cell=S.escala[dia]?.[h];const nome=S.colabs[idx].nome;
+  if(isNaN(idx)||idx<0||idx>=colabsDisp.length){toast('Inválido.','ter');return;}
+  const cell=S.escala[dia]?.[h];const nome=colabsDisp[idx].nome;
   if(cell&&!cell.alocados.includes(nome)){cell.alocados.push(nome);calcularCustos();save();renderEscala();toast(`✓ ${nome} adicionado(a).`,'tok');}
 }
 
