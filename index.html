@@ -388,6 +388,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div class="stit">Configurações</div>
   <div class="cfg"><label>Pedidos/pessoa/hora</label><input type="number" id="cPPH" value="30" min="1" max="200" oninput="atualizarSideRegras()"></div>
   <div class="cfg"><label>Mín. pessoas abertura (09h)</label><input type="number" id="cMin" value="2" min="1" max="10" oninput="atualizarSideRegras()"></div>
+  <div class="cfg"><label>Meta CPP (R$/pedido)</label><input type="number" id="cCPPMeta" value="1.10" step="0.05" min="0.50" max="5.00" oninput="atualizarSideRegras()" title="Limite máximo de custo por pedido por slot. O preencher evita alocar além desse valor."></div>
   <div class="cfg"><label>Hora abertura</label><input type="number" id="cHI" value="9" min="0" max="23" oninput="atualizarSideRegras()"></div>
   <div class="cfg"><label>Hora fechamento (25=01h)</label><input type="number" id="cHO" value="25" min="1" max="30" oninput="atualizarSideRegras()"></div>
 
@@ -462,6 +463,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
                 <span class="leg-item"><span class="leg-s" style="background:#fef3c7"></span>VPF 31–50 (médio)</span>
                 <span class="leg-item"><span class="leg-s" style="background:#fee2e2"></span>VPF &gt;50 (crítico)</span>
                 <span class="leg-item"><span style="color:#dc2626;font-weight:700;font-size:11px">0</span>Sem pessoa</span>
+                <span class="leg-item"><span style="color:#f87171;font-weight:700;font-size:11px">⚠</span>CPP acima da meta</span>
               </div>
             </div>
           </div>
@@ -1171,11 +1173,34 @@ function gerarEscala(dados, hubFiltro){
 // CALCULAR PESSOAS
 // ══════════════════════════════════════════════════════
 function calcP(ped,isAb){
-  const pph=+document.getElementById('cPPH').value||30;
-  const mn=+document.getElementById('cMin').value||2;
-  if(ped===0&&!isAb)return 1; // nunca deixar sem pessoa
-  const c=Math.ceil(Math.max(1,ped)/pph);
-  return isAb?Math.max(mn,c):Math.max(1,c);
+  const pph    = +document.getElementById('cPPH').value    || 30;
+  const mn     = +document.getElementById('cMin').value    || 2;
+  const cppMeta= parseFloat(document.getElementById('cCPPMeta')?.value) || 1.10;
+
+  if(ped===0&&!isAb)return 1;
+
+  // Número de pessoas pelo VPF (pedidos por pessoa/hora)
+  const cVPF = Math.ceil(Math.max(1,ped)/pph);
+
+  // Número máximo de pessoas pelo CPP (custo/pedido)
+  // Usar custo médio dos colaboradores do hub ativo como referência
+  const _hca = typeof getHubColabAtual === 'function' ? getHubColabAtual() : null;
+  const colabsHub = _hca ? S.colabs.filter(c=>(c.hub||'Sion')===_hca) : S.colabs;
+  const colabsComCusto = colabsHub.filter(c=>c.custo>0);
+  const custoMedioH = colabsComCusto.length
+    ? colabsComCusto.reduce((s,c)=>s+c.custo,0)/colabsComCusto.length
+    : 0;
+
+  // Máximo de pessoas que mantém CPP ≤ meta
+  // CPP = (custoMedioH * nPessoas) / ped ≤ cppMeta
+  // → nPessoas ≤ (cppMeta * ped) / custoMedioH
+  const cCPP = custoMedioH > 0 && ped > 0
+    ? Math.floor((cppMeta * ped) / custoMedioH)
+    : 999;
+
+  // Usa o menor entre VPF e CPP (mais restritivo), garantindo mínimo 1
+  const c = Math.min(cVPF, Math.max(1, cCPP));
+  return isAb ? Math.max(mn, c) : Math.max(1, c);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1216,6 +1241,14 @@ function preencher(){
   const colabsAtivos = _hubColabAtual
     ? S.colabs.filter(c=>(c.hub||'Sion')===_hubColabAtual)
     : S.colabs;
+
+  // Meta de CPP por slot — limita alocação extra quando custo/pedido ultrapassa a meta
+  const _cppMeta = parseFloat(document.getElementById('cCPPMeta')?.value) || 1.10;
+  const _pph = parseInt(document.getElementById('cPPH')?.value) || 30;
+
+  // Mapa de custo/hora por colaborador para cálculo rápido
+  const _custoHora = {};
+  S.colabs.forEach(c=>{ _custoHora[c.nome] = c.custo||0; });
 
   // Pré-calcular quais dias cada colaborador 12x36 trabalha nesta semana
   // Lógica: colaboradores 12x36 do mesmo hub alternam dias entre si
@@ -1288,6 +1321,19 @@ function preencher(){
       const cell=S.escala[dia]?.[h];if(!cell||cell.pessoas===0)continue;
       const faltam=cell.pessoas-cell.alocados.length;
       if(faltam<=0)continue;
+
+      // Verificar se a meta de CPP já é suficiente com os alocados atuais
+      // Se já tem pelo menos 1 pessoa e o custo/pedido atual está OK, ser criterioso
+      if(cell.alocados.length > 0 && cell.ped > 0 && _cppMeta > 0){
+        const custoAtual = cell.alocados.reduce((s,n)=>s+(_custoHora[n]||0),0);
+        const cppAtual = custoAtual / cell.ped;
+        // VPF atual (pedidos por pessoa alocada)
+        const vpfAtual = cell.ped / cell.alocados.length;
+        // Só aloca mais se: VPF > _pph*1.5 (muito sobrecarregado) OU célula com demanda alta
+        // OU se o CPP ficaria abaixo da meta com mais um
+        const precisaMais = vpfAtual > _pph * 1.5;
+        if(!precisaMais && cppAtual >= _cppMeta * 0.85) continue; // já está OK, não alocar mais
+      }
 
       const disp=colabsAtivos.filter(c=>{
         if(!c.dias.includes(dia))return false;
@@ -1555,11 +1601,15 @@ function renderEscala(){
     const vpfClass=forcaHora===0?'vpf-empty':vpf<=30?'vpf-ok':vpf<=50?'vpf-warn':'vpf-crit';
     const forcaClass=forcaHora===0?'forca-vazio':forcaHora<=2?'forca-warn':'forca-ok';
 
-    // Custo/pedido desta hora: soma custo dos alocados nos 7 dias ÷ pedidos totais da hora
+    // Custo/pedido desta hora com indicador de meta
     const cpp=custoHora>0&&volHora>0 ? custoHora/volHora : 0;
+    const _metaCPP=parseFloat(document.getElementById('cCPPMeta')?.value)||1.10;
+    const cppOk = cpp===0||cpp<=_metaCPP;
+    const cppWarn = cpp>_metaCPP&&cpp<=_metaCPP*1.3;
+    const cppCor = cpp===0?'#9ca3af':cppOk?'#86efac':cppWarn?'#fbbf24':'#f87171';
     const custoCell = custoHora>0
       ? `<span style="font-size:11px;font-weight:700;color:#fbbf24">R$ ${custoHora.toFixed(2).replace('.',',')}</span>`
-        +`<br><span style="font-size:10px;color:#9ca3af">${cpp.toFixed(2).replace('.',',')}/ped</span>`
+        +`<br><span style="font-size:10px;color:${cppCor};font-weight:${cppOk?'400':'700'}">${cpp.toFixed(2).replace('.',',')}/ped${!cppOk?' ⚠':''}</span>`
       : '<span style="color:var(--mu)">—</span>';
 
     tr.innerHTML+=`
