@@ -1118,9 +1118,16 @@ function preencher(){
 
   DIAS.forEach(d=>{for(let h=hI;h<=hO;h++){if(S.escala[d]?.[h])S.escala[d][h].alocados=[];}});
   // Filtra colaboradores pelo hub da escala atual
-  const hubEscala = S.hubAtual && S.hubAtual!=='Todos os hubs' ? (
-    S._hubFiltroAtual && S._hubFiltroAtual.length===1 ? S._hubFiltroAtual[0] : null
-  ) : null;
+  // S._hubFiltroAtual pode ser null se a escala foi montada antes da feature de hub
+  // Nesse caso, inferir pelo nome exibido em S.hubAtual
+  let hubEscala = null;
+  if(S._hubFiltroAtual && S._hubFiltroAtual.length > 0){
+    hubEscala = S._hubFiltroAtual.length === 1 ? S._hubFiltroAtual[0] : null;
+  } else if(S.hubAtual && S.hubAtual !== 'Todos os hubs'){
+    // Inverter nomeHub para encontrar a chave original
+    const _nomes = {'Cozinhas Sion':'Sem hub','DS Sion':'DS Sion','DS Cidade Nova':'DS Cidade Nova'};
+    hubEscala = _nomes[S.hubAtual] || S.hubAtual;
+  }
   // Mapear hubs de indicadores → hub de colaborador
   function hubColabDeHub(hubInd){
     if(!hubInd) return null;
@@ -1128,18 +1135,25 @@ function preencher(){
     if(hubInd==='DS Cidade Nova'||hubInd==='Cidade Nova') return 'Cidade Nova';
     return null;
   }
-  // Quando múltiplos hubs selecionados, pegar todos os hubs de colaboradores correspondentes
+  // Filtra colaboradores pelo hub da escala
   let colabsAtivos;
   if(S._hubFiltroAtual && S._hubFiltroAtual.length > 0){
+    // Múltiplos hubs selecionados
     const hubColabsSet = new Set(S._hubFiltroAtual.map(hubColabDeHub).filter(Boolean));
     colabsAtivos = hubColabsSet.size > 0
       ? S.colabs.filter(c => hubColabsSet.has(c.hub||'Sion'))
       : S.colabs;
-  } else {
+  } else if(hubEscala){
+    // Hub único inferido — mapear para hub de colaborador
     const hubColab = hubColabDeHub(hubEscala);
     colabsAtivos = hubColab
       ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
       : S.colabs;
+    // Log de diagnóstico
+    console.log('[Preencher] hubEscala:', hubEscala, '→ hubColab:', hubColab, '→ colabs:', colabsAtivos.map(c=>c.nome));
+  } else {
+    // Sem filtro — usa todos
+    colabsAtivos = S.colabs;
   }
 
   const hrs={};colabsAtivos.forEach(c=>hrs[c.id]=0); // horas por dia (reset diário abaixo)
@@ -2564,91 +2578,132 @@ function verEscalaHistorico(id){
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const hI=9, hO=25;
 
-  // Detectar horas com pedidos para omitir linhas vazias
-  const horasComDados=new Set();
-  diasO.forEach(d=>{ for(let h=hI;h<=hO;h++){ const c=entrada.escala[d]?.[h]; if(c&&(c.ped>0||c.alocados.length))horasComDados.add(h); }});
-
-  // Cores fixas por colaborador
-  const colabsUnicos=[...new Set(diasO.flatMap(d=>Object.values(entrada.escala[d]||{}).flatMap(c=>c.alocados||[])))].sort();
-  const cores=['#15803d','#1d4ed8','#b45309','#7c3aed','#b91c1c','#0e7490','#9d174d','#065f46','#1e40af'];
+  // Cores por colaborador
+  const colabsUnicos=[...new Set(diasO.flatMap(d=>
+    Object.values(entrada.escala[d]||{}).flatMap(c=>c.alocados||[])
+  ))].sort();
+  const paleta=['#15803d','#1d4ed8','#b45309','#7c3aed','#b91c1c','#0e7490','#9d174d','#065f46','#1e40af','#92400e'];
   const corColab={};
-  colabsUnicos.forEach((n,i)=>corColab[n]=cores[i%cores.length]);
+  colabsUnicos.forEach((n,i)=>corColab[n]=paleta[i%paleta.length]);
 
-  let rows='';
-  for(let h=hI;h<=hO;h++){
-    if(!horasComDados.has(h))continue;
-    const hora=fH(h);
-    const tds=diasO.map(d=>{
-      const cell=entrada.escala[d]?.[h];
-      if(!cell||cell.ped===0)return`<td></td>`;
-      const bg=cell.alocados.length===0?'#fff1f2':cell.ped>150?'#f0fdf4':cell.ped>50?'#fffbeb':'#f8fafc';
-      const nomes=cell.alocados.length
-        ?cell.alocados.map(n=>`<b style="color:${corColab[n]||'#374151'}">${n.split(' ')[0]}</b>`).join('<br>')
-        :'<span style="color:#ef4444;font-size:8px">—</span>';
-      return`<td style="background:${bg}"><div class="ped">${cell.ped}</div>${nomes}</td>`;
-    }).join('');
-    rows+=`<tr><td class="hora">${hora}</td>${tds}</tr>`;
+  // Para cada colaborador e cada dia, descobrir os blocos de turno (horas consecutivas)
+  function turnosDoDia(nome, dia){
+    const blocos=[];
+    let ini=null;
+    for(let h=hI;h<=hO;h++){
+      const cell=entrada.escala[dia]?.[h];
+      const alocado=cell&&cell.alocados.includes(nome);
+      if(alocado&&ini===null) ini=h;
+      if(!alocado&&ini!==null){ blocos.push({ini,fim:h}); ini=null; }
+    }
+    if(ini!==null) blocos.push({ini,fim:hO+1});
+    return blocos;
   }
 
+  // KPIs
+  const cpp=entrada.resumo.totalCusto>0&&entrada.resumo.totalPed>0
+    ?(entrada.resumo.totalCusto/entrada.resumo.totalPed).toFixed(2):'—';
   const hubLabel=entrada.hub&&entrada.hub!=='Todos os hubs'?nomeHub(entrada.hub):'Todos os hubs';
-  const cpp=entrada.resumo.totalCusto>0&&entrada.resumo.totalPed>0?(entrada.resumo.totalCusto/entrada.resumo.totalPed).toFixed(2):'—';
 
-  const legendaHtml=colabsUnicos.map(n=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:${corColab[n]||'#374151'}"><span style="width:6px;height:6px;border-radius:50%;background:${corColab[n]||'#374151'};flex-shrink:0"></span>${n}</span>`).join('');
+  // Montar linhas: eixo Y = colaboradores, eixo X = dias (cada célula = bloco de horário)
+  const linhas = colabsUnicos.map(nome=>{
+    const cor = corColab[nome]||'#374151';
+    const tds = diasO.map(dia=>{
+      const blocos = turnosDoDia(nome, dia);
+      if(!blocos.length) return '<td class="vazio">—</td>';
+      const txt = blocos.map(b=>fH(b.ini)+'–'+fH(b.fim)).join(', ');
+      const horas = blocos.reduce((s,b)=>s+(b.fim-b.ini),0);
+      return `<td class="turno" style="border-left:3px solid ${cor}">
+        <span class="t-hrs">${txt}</span>
+        <span class="t-h">${horas}h</span>
+      </td>`;
+    }).join('');
+    return `<tr>
+      <td class="colab" style="color:${cor}">
+        <span class="dot" style="background:${cor}"></span>${nome}
+      </td>
+      ${tds}
+    </tr>`;
+  }).join('');
+
+  // Linha de totais de força por dia
+  const totaisDia = diasO.map(dia=>{
+    const forcas = new Set();
+    for(let h=hI;h<=hO;h++){
+      const cell=entrada.escala[dia]?.[h];
+      if(cell) (cell.alocados||[]).forEach(n=>forcas.add(n));
+    }
+    return `<td class="total-dia">${forcas.size} col.</td>`;
+  }).join('');
 
   const html=`<!DOCTYPE html><html lang="pt-BR"><head>
   <meta charset="UTF-8">
   <title>Escala ${entrada.semana}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#111;padding:8px 10px;background:#fff}
-    .meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;padding-bottom:5px;border-bottom:2px solid #111}
-    .meta-l{font-size:11px;font-weight:900}.meta-s{font-size:9px;color:#6b7280}
-    .kpis{display:flex;gap:12px;margin-bottom:5px;flex-wrap:wrap}
-    .kpi{font-size:9px;color:#6b7280}.kpi b{font-size:11px;color:#111;display:block}
-    .legenda{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
-    table{width:100%;border-collapse:collapse;table-layout:fixed}
-    col.hora-col{width:32px}
-    col.dia-col{width:calc((100% - 32px)/7)}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:10px;color:#111;padding:10px 12px;background:#fff}
+    .meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #111}
+    .meta-titulo{font-size:13px;font-weight:900;color:#111}
+    .meta-sub{font-size:9px;color:#6b7280;margin-top:1px}
+    .badge{background:#dbeafe;color:#1e40af;border-radius:8px;padding:1px 7px;font-size:9px;font-weight:700;margin-left:6px}
+    .kpis{display:flex;gap:16px}
+    .kpi{text-align:right}.kpi b{display:block;font-size:13px;font-weight:900;color:#111}
+    .kpi span{font-size:8px;color:#9ca3af;text-transform:uppercase}
+    .print-btn{background:#16a34a;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-weight:700;cursor:pointer;font-size:10px;margin-left:12px}
+    table{width:100%;border-collapse:collapse}
     thead tr{background:#111}
-    th{color:#fff;padding:3px 2px;font-size:8px;font-weight:700;text-align:center}
-    th.hora{text-align:left;padding-left:4px}
-    td{padding:2px 2px;text-align:center;border:1px solid #f3f4f6;vertical-align:middle;height:22px;line-height:1.1}
-    td.hora{font-family:monospace;font-size:8px;font-weight:700;text-align:left;padding-left:3px;background:#f8fafc;border-right:2px solid #e5e7eb;color:#374151}
-    .ped{font-size:8px;font-weight:800;color:#374151;font-family:monospace;line-height:1}
-    .print-btn{background:#16a34a;color:#fff;border:none;padding:4px 10px;border-radius:5px;font-weight:700;cursor:pointer;font-size:9px}
+    th{color:#fff;padding:5px 6px;font-size:9px;font-weight:700;text-align:center;white-space:nowrap}
+    th.th-colab{text-align:left;width:90px;padding-left:8px}
+    th.th-dia{min-width:80px}
+    td{padding:4px 6px;border:1px solid #f0f0f0;vertical-align:middle}
+    td.colab{font-size:10px;font-weight:700;white-space:nowrap;background:#fafafa;border-right:2px solid #e5e7eb;display:flex;align-items:center;gap:5px}
+    .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block}
+    td.vazio{text-align:center;color:#d1d5db;font-size:10px;background:#fafafa}
+    td.turno{background:#f8fafc;padding:4px 8px}
+    .t-hrs{font-size:10px;font-weight:700;display:block;color:#111}
+    .t-h{font-size:8px;color:#9ca3af;display:block;margin-top:1px}
+    tr.total td{background:#111;color:#fff;font-size:9px;font-weight:700;text-align:center;padding:3px 6px;border:none}
+    tr.total td.lbl{text-align:left;padding-left:8px}
+    td.total-dia{background:#111;color:#c8f135;font-size:9px;font-weight:700;text-align:center;border:none}
     @media print{
       .no-print{display:none!important}
-      body{padding:4px 6px}
-      @page{size:A4 landscape;margin:0.5cm}
+      body{padding:5px 8px}
+      @page{size:A4 landscape;margin:0.4cm}
     }
   </style></head><body>
   <div class="meta">
     <div>
-      <div class="meta-l">Escala ${entrada.semana} <span style="background:#dbeafe;color:#1e40af;border-radius:8px;padding:1px 6px;font-size:8px;font-weight:700">${hubLabel}</span></div>
-      <div class="meta-s">Publicada em ${entrada.publicadoEm}</div>
+      <div class="meta-titulo">${entrada.semana}<span class="badge">${hubLabel}</span></div>
+      <div class="meta-sub">Publicada em ${entrada.publicadoEm}</div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px">
+    <div style="display:flex;align-items:center">
       <div class="kpis">
-        <div class="kpi"><b>${entrada.resumo.totalPed.toLocaleString('pt-BR')}</b>pedidos</div>
-        <div class="kpi"><b>R$ ${entrada.resumo.totalCusto.toFixed(2).replace('.',',')}</b>custo</div>
-        <div class="kpi"><b>R$ ${cpp}</b>CPP</div>
-        <div class="kpi"><b>${entrada.resumo.slots}</b>slots</div>
+        <div class="kpi"><b>${entrada.resumo.totalPed.toLocaleString('pt-BR')}</b><span>pedidos</span></div>
+        <div class="kpi"><b>R$ ${entrada.resumo.totalCusto.toFixed(2).replace('.',',')}</b><span>custo</span></div>
+        <div class="kpi"><b>R$ ${cpp}</b><span>CPP</span></div>
+        <div class="kpi"><b>${colabsUnicos.length}</b><span>colaboradores</span></div>
       </div>
       <button class="print-btn no-print" onclick="window.print()">🖨 PDF</button>
     </div>
   </div>
-  <div class="legenda">${legendaHtml}</div>
   <table>
-    <colgroup><col class="hora-col">${diasO.map(()=>'<col class="dia-col">').join('')}</colgroup>
-    <thead><tr>
-      <th class="hora">H</th>
-      ${diasO.map(d=>`<th>${d}</th>`).join('')}
-    </tr></thead>
-    <tbody>${rows}</tbody>
+    <thead>
+      <tr>
+        <th class="th-colab">Colaborador</th>
+        ${diasO.map(d=>`<th class="th-dia">${d}</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>
+      ${linhas}
+      <tr class="total">
+        <td class="lbl">Total / dia</td>
+        ${totaisDia}
+      </tr>
+    </tbody>
   </table>
   </body></html>`;
 
-  const w=window.open('','_blank','width=1000,height=750');
+  const w=window.open('','_blank','width=1000,height=700');
   w.document.write(html);
   w.document.close();
 }
