@@ -506,6 +506,11 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <div class="sh">
         <div><h2>Histórico de escalas</h2><p>Escalas publicadas e arquivadas das semanas anteriores</p></div>
         <div class="sh-r">
+          <select id="hiHubFiltro" class="btn bs sm" style="padding:5px 8px;font-size:11px" onchange="renderHistorico()">
+            <option value="todos">Todos os hubs</option>
+            <option value="Sion">Sion</option>
+            <option value="DS Cidade Nova">DS Cidade Nova</option>
+          </select>
           <button class="btn bs sm" onclick="limparHistorico()">🗑 Limpar histórico</button>
         </div>
       </div>
@@ -1187,7 +1192,35 @@ function preencher(){
   const colabsAtivos = _hubColabAtual
     ? S.colabs.filter(c=>(c.hub||'Sion')===_hubColabAtual)
     : S.colabs;
-  console.log('[Preencher] hubColab:', _hubColabAtual, '→ colabs:', colabsAtivos.map(c=>c.nome));
+
+  // Pré-calcular quais dias cada colaborador 12x36 trabalha nesta semana
+  // Lógica: colaboradores 12x36 do mesmo hub alternam dias entre si
+  // Dia de trabalho = baseado na paridade do dia na semana (0=Seg, 1=Ter, ...)
+  // Grupo 12x36: ordenado por nome, índice par trabalha dias pares, ímpar trabalha dias ímpares
+  const grupo12x36 = colabsAtivos.filter(c=>c.tipoContrato==='12x36');
+  const diasOrdem = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  // Calcular paridade base usando a data de início da semana projetada
+  let parBase = 0;
+  try{
+    const {seg} = proximaSemana();
+    // Número de dias desde uma data fixa de referência (01/01/2024 = Seg)
+    const ref = new Date('2024-01-01');
+    const diffDias = Math.round((seg - ref) / (1000*60*60*24));
+    parBase = diffDias % 2; // 0 ou 1
+  }catch(e){}
+
+  // Para cada colaborador 12x36, calcular em quais dias da semana ele trabalha
+  const diasTrabalho12x36 = {};
+  grupo12x36.forEach((c, idx) => {
+    // Índice no grupo determina a paridade: idx 0 → dias pares, idx 1 → dias ímpares
+    const parColab = (idx + parBase) % 2;
+    diasTrabalho12x36[c.nome] = new Set(
+      diasOrdem.filter((d, i) => {
+        if(!c.dias.includes(d)) return false;
+        return i % 2 === parColab;
+      })
+    );
+  });
 
   const hrs={};colabsAtivos.forEach(c=>hrs[c.id]=0); // horas por dia (reset diário abaixo)
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
@@ -1199,6 +1232,8 @@ function preencher(){
 
     // ── FIXOS PRIMEIRO
     colabsAtivos.filter(c=>c.fixo).forEach(c=>{
+      // 12x36: mesmo fixos respeitam alternância
+      if(c.tipoContrato==='12x36'&&diasTrabalho12x36[c.nome]&&!diasTrabalho12x36[c.nome].has(dia))return;
       // Resolve os blocos de turno: usa turnosFixos se preenchido, senão monta do cadastro
       const blocos=(c.turnosFixos&&c.turnosFixos.length)
         ? c.turnosFixos
@@ -1230,6 +1265,8 @@ function preencher(){
 
       const disp=colabsAtivos.filter(c=>{
         if(!c.dias.includes(dia))return false;
+        // 12x36: só trabalha nos dias calculados para esta semana
+        if(c.tipoContrato==='12x36'&&diasTrabalho12x36[c.nome]&&!diasTrabalho12x36[c.nome].has(dia))return false;
         const dispH=c.dispDia?.[dia]||{horaIn:c.horaIn,horaOut:c.horaOut};
         if(h<dispH.horaIn||h>=dispH.horaOut)return false;
         if(hrs[c.id]>=(c.maxH||8))return false;
@@ -2408,9 +2445,18 @@ function renderHistorico(filtro){
 
   // Aplica filtro de data
   const agora=Date.now();
+  const hubFiltroHi=document.getElementById('hiHubFiltro')?.value||'todos';
   const filtrado=hist.filter(h=>{
     const diff=(agora-new Date(h.segISO).getTime())/(1000*60*60*24);
-    return diff<=_histFiltro;
+    if(diff>_histFiltro) return false;
+    // Filtro de hub: comparar com h.hub salvo na publicação
+    if(hubFiltroHi!=='todos'){
+      const hubH=h.hub||'Todos os hubs';
+      // Mapeamento: 'Sion' filtra entradas com hub Sion/Cozinhas Sion/DS Sion/Todos os hubs
+      if(hubFiltroHi==='Sion'&&!['Sion','Cozinhas Sion','DS Sion','Todos os hubs',null,undefined].some(v=>hubH.includes(v||'')||hubH===v)) return false;
+      if(hubFiltroHi==='DS Cidade Nova'&&!hubH.includes('Cidade Nova')) return false;
+    }
+    return true;
   });
 
   // Barra de filtro
@@ -3735,8 +3781,17 @@ function renderColHist(){
   const histEsc = JSON.parse(localStorage.getItem(KH)||'[]');
   const histInd = JSON.parse(localStorage.getItem(KIND)||'[]');
 
+  // Mesmo sem histórico de escalas, mostrar colaboradores cadastrados
   if(!histEsc.length){
-    con.innerHTML='<div class="empty"><div class="empty-ico">👤</div><h3>Nenhuma escala publicada</h3><p>Publique escalas e registre confirmações/faltas para ver o histórico dos colaboradores.</p></div>';
+    const colabsAtuais = S.colabs.filter(c=>{
+      if(hubFiltro==='todos') return true;
+      return (c.hub||'Sion')===hubFiltro;
+    });
+    if(!colabsAtuais.length){
+      con.innerHTML='<div class="empty"><div class="empty-ico">👤</div><h3>Nenhum colaborador cadastrado para este hub</h3></div>';
+    } else {
+      con.innerHTML='<div class="empty"><div class="empty-ico">📭</div><h3>Nenhuma escala publicada ainda</h3><p>Publique escalas para ver histórico de desempenho.</p></div>';
+    }
     return;
   }
 
