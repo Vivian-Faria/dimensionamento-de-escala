@@ -415,6 +415,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div class="tab" id="tab-co" onclick="goT('co')">👥 Equipe</div>
     <div class="tab" id="tab-hi" onclick="goT('hi')">📚 Histórico</div>
     <div class="tab" id="tab-ind" onclick="goT('ind')">📈 Indicadores</div>
+    <div class="tab" id="tab-col" onclick="goT('col')">👤 Colaboradores</div>
   </div>
   <div class="panels">
 
@@ -579,6 +580,33 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       </div>
     </div>
 
+    <!-- HISTÓRICO DE COLABORADORES -->
+    <div class="panel" id="panel-col">
+      <div class="sh">
+        <div>
+          <h2>Histórico de Colaboradores</h2>
+          <p>Desempenho, assiduidade e eficiência por colaborador</p>
+        </div>
+        <div class="sh-r" style="gap:8px;flex-wrap:wrap">
+          <select id="colHistHub" class="btn bs sm" style="padding:5px 8px;font-size:11px" onchange="renderColHist()">
+            <option value="todos">Todos os hubs</option>
+            <option value="Sion">Sion</option>
+            <option value="Cidade Nova">Cidade Nova</option>
+          </select>
+          <select id="colHistColab" class="btn bs sm" style="padding:5px 8px;font-size:11px" onchange="renderColHist()">
+            <option value="todos">Todos os colaboradores</option>
+          </select>
+          <select id="colHistPer" class="btn bs sm" style="padding:5px 8px;font-size:11px" onchange="renderColHist()">
+            <option value="999">Todo o período</option>
+            <option value="30">Último mês</option>
+            <option value="60">Últimos 2 meses</option>
+            <option value="90">Últimos 3 meses</option>
+          </select>
+        </div>
+      </div>
+      <div id="colHistCon"></div>
+    </div>
+
   </div>
 </div>
 </div>
@@ -725,6 +753,8 @@ function save(){
     localStorage.setItem(KC,JSON.stringify(S.colabs));
     if(S.matrix)localStorage.setItem(KM,JSON.stringify(S.matrix));
     if(S.escala)localStorage.setItem(KE,JSON.stringify(S.escala));
+    // Persistir hub ativo para sobreviver a recarregamentos
+    if(S.hubAtual!==undefined)localStorage.setItem('orion_v7_hub',JSON.stringify({hubAtual:S.hubAtual,hubFiltro:S._hubFiltroAtual||null}));
   }catch(e){}
 }
 function load(){
@@ -735,6 +765,9 @@ function load(){
     S.colabs=c?JSON.parse(c):JSON.parse(JSON.stringify(COLAB_DEF));
     if(m)S.matrix=JSON.parse(m);
     if(e)S.escala=JSON.parse(e);
+    // Restaurar hub ativo
+    const hubSalvo=localStorage.getItem('orion_v7_hub');
+    if(hubSalvo){try{const hd=JSON.parse(hubSalvo);S.hubAtual=hd.hubAtual;S._hubFiltroAtual=hd.hubFiltro;}catch(e){}}
   }catch(err){S.colabs=JSON.parse(JSON.stringify(COLAB_DEF));}
 }
 
@@ -744,9 +777,10 @@ function load(){
 function goT(n){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
-  document.getElementById('tab-'+n).classList.add('on');
-  document.getElementById('panel-'+n).classList.add('on');
+  document.getElementById('tab-'+n)?.classList.add('on');
+  document.getElementById('panel-'+n)?.classList.add('on');
   if(n==='hi')renderHistorico();
+  if(n==='col')renderColHist();
   if(n==='ind'){
     const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
     if(hist.length){atualizarSelectHubs([]);renderIndicadores();}
@@ -1042,7 +1076,9 @@ function gerarEscala(dados, hubFiltro){
   S.hubAtual = hubs.length === 0 ? null
     : hubs.length === 1 ? nomeHub(hubs[0])
     : hubs.map(nomeHub).join(' + ');
-  S._hubFiltroAtual = hubs.length > 0 ? hubs : undefined;
+  S._hubFiltroAtual = hubs.length > 0 ? hubs : null;
+  // Persistir imediatamente para sobreviver a recarregamentos
+  try{localStorage.setItem('orion_v7_hub',JSON.stringify({hubAtual:S.hubAtual,hubFiltro:S._hubFiltroAtual}));}catch(e){}
 
   const hI=+document.getElementById('cHI').value||9;
   const hO=+document.getElementById('cHO').value||25;
@@ -3686,6 +3722,219 @@ function gerarRelatorioIndicadores(){
   const w=window.open('','_blank','width=1100,height=850');
   w.document.write(html);
   w.document.close();
+}
+
+// ══════════════════════════════════════════════════════
+// HISTÓRICO DE COLABORADORES
+// ══════════════════════════════════════════════════════
+function renderColHist(){
+  const con = document.getElementById('colHistCon');
+  if(!con) return;
+
+  const histEsc = JSON.parse(localStorage.getItem(KH)||'[]');
+  const histInd = JSON.parse(localStorage.getItem(KIND)||'[]');
+
+  if(!histEsc.length){
+    con.innerHTML='<div class="empty"><div class="empty-ico">👤</div><h3>Nenhuma escala publicada</h3><p>Publique escalas e registre confirmações/faltas para ver o histórico dos colaboradores.</p></div>';
+    return;
+  }
+
+  const diasLimite = parseInt(document.getElementById('colHistPer')?.value)||999;
+  const hubFiltro  = document.getElementById('colHistHub')?.value||'todos';
+  const colFiltro  = document.getElementById('colHistColab')?.value||'todos';
+
+  const agora = Date.now();
+  const histFilt = histEsc.filter(h=>{
+    const diff = (agora - new Date(h.segISO).getTime())/(1000*60*60*24);
+    return diff <= diasLimite;
+  });
+
+  // Coletar todos os colaboradores das escalas filtradas
+  const colabsMap = {}; // nome → { hub, dados... }
+  histFilt.forEach(semana=>{
+    (semana.colabs||[]).forEach(c=>{
+      if(!colabsMap[c.nome]) colabsMap[c.nome] = { nome:c.nome, hub:c.hub||'Sion', custo:c.custo||0, passagem:c.passagem||0, semanas:[] };
+    });
+  });
+
+  // Atualizar select de colaboradores
+  const sel = document.getElementById('colHistColab');
+  if(sel){
+    const nomes = Object.keys(colabsMap).sort();
+    const atual = sel.value;
+    sel.innerHTML = '<option value="todos">Todos os colaboradores</option>' + nomes.map(n=>`<option value="${n}"${atual===n?' selected':''} >${n}</option>`).join('');
+  }
+
+  // Para cada semana, extrair dados de cada colaborador
+  histFilt.forEach(semana=>{
+    const confs = semana.confirmacoes||{};
+    const escala = semana.escala||{};
+    const diasO = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+
+    Object.keys(colabsMap).forEach(nome=>{
+      const c = semana.colabs?.find(x=>x.nome===nome);
+      if(!c) return;
+
+      // Turnos escalados
+      const turnosEscalados = [];
+      diasO.forEach(dia=>{
+        let ini=null;
+        for(let h=9;h<=25;h++){
+          const cell=escala[dia]?.[h];
+          const al=cell&&cell.alocados.includes(nome);
+          if(al&&ini===null) ini=h;
+          if(!al&&ini!==null){ turnosEscalados.push({dia,ini,fim:h,horas:h-ini}); ini=null; }
+        }
+        if(ini!==null) turnosEscalados.push({dia,ini,fim:26,horas:26-ini});
+      });
+
+      // Confirmações e faltas
+      const conf = confs[nome]||{};
+      const turnos = conf.turnos||[];
+      const faltou = conf.status==='faltou' || turnos.some(t=>t.faltou);
+      const turnosCumpridos = turnos.filter(t=>!t.faltou).length;
+      const turnosFaltados  = turnos.filter(t=>t.faltou).length;
+      const horasAbatidas   = turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
+
+      // Pedidos no horário do colaborador (dos indicadores)
+      let pedidosSemana = 0, maxPedHora = 0;
+      const indSemana = histInd.find(i=>i.semanaISO===semana.segISO+'/'+semana.domISO);
+      if(indSemana){
+        diasO.forEach(dia=>{
+          turnosEscalados.forEach(t=>{
+            for(let h=t.ini;h<t.fim;h++){
+              // Pedidos nessa hora
+              const chave = semana.matrix?.[dia]?.[String(h).padStart(2,'0')];
+              const ped = chave||0;
+              pedidosSemana += ped;
+              if(ped > maxPedHora) maxPedHora = ped;
+            }
+          });
+        });
+      } else if(semana.matrix){
+        diasO.forEach(dia=>{
+          turnosEscalados.forEach(t=>{
+            for(let h=t.ini;h<t.fim;h++){
+              const ped = semana.matrix?.[dia]?.[String(h).padStart(2,'0')]||0;
+              pedidosSemana += ped;
+              if(ped > maxPedHora) maxPedHora = ped;
+            }
+          });
+        });
+      }
+
+      // Custo desta semana
+      const horasTotal = turnosEscalados.reduce((s,t)=>s+t.horas,0) - horasAbatidas;
+      const diasTrabalhados = new Set(turnosEscalados.map(t=>t.dia)).size;
+      const custoSemana = (horasTotal>0&&c.custo>0?horasTotal*c.custo:0) + (c.passagem||0)*diasTrabalhados;
+
+      colabsMap[nome].semanas.push({
+        semana:semana.semana, segISO:semana.segISO,
+        turnosEscalados:turnosEscalados.length,
+        turnosCumpridos, turnosFaltados, horasAbatidas,
+        pedidosSemana, maxPedHora,
+        custoSemana, horasTotal, diasTrabalhados,
+        faltou,
+      });
+    });
+  });
+
+  // Agregar por colaborador
+  const stats = Object.values(colabsMap).map(c=>{
+    const s = c.semanas;
+    if(!s.length) return null;
+    const totalEscalados  = s.reduce((a,x)=>a+x.turnosEscalados,0);
+    const totalCumpridos  = s.reduce((a,x)=>a+x.turnosCumpridos,0);
+    const totalFaltas     = s.reduce((a,x)=>a+x.turnosFaltados,0);
+    const assiduidade     = totalEscalados>0?((totalEscalados-totalFaltas)/totalEscalados*100):100;
+    const totalPedidos    = s.reduce((a,x)=>a+x.pedidosSemana,0);
+    const maxPedHora      = Math.max(...s.map(x=>x.maxPedHora));
+    const totalCusto      = s.reduce((a,x)=>a+x.custoSemana,0);
+    const totalHoras      = s.reduce((a,x)=>a+x.horasTotal,0);
+    const semanasAtivas   = s.filter(x=>x.turnosEscalados>0).length;
+    const pedPorHora      = totalHoras>0?totalPedidos/totalHoras:0;
+    return { ...c, totalEscalados, totalCumpridos, totalFaltas, assiduidade, totalPedidos, maxPedHora, totalCusto, totalHoras, semanasAtivas, pedPorHora };
+  }).filter(Boolean);
+
+  // Aplicar filtros
+  const statsFilt = stats.filter(c=>{
+    if(hubFiltro!=='todos'&&c.hub!==hubFiltro) return false;
+    if(colFiltro!=='todos'&&c.nome!==colFiltro) return false;
+    return true;
+  }).sort((a,b)=>a.nome.localeCompare(b.nome));
+
+  if(!statsFilt.length){
+    con.innerHTML='<div class="empty"><div class="empty-ico">👤</div><h3>Nenhum dado para os filtros selecionados</h3></div>';
+    return;
+  }
+
+  // Renderizar cards
+  const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626','#0891b2','#be185d'];
+  function badge(label,val,sub,cor){
+    return `<div style="background:var(--card2);border-radius:8px;padding:10px 12px;border-left:3px solid ${cor||'var(--ac)'}">
+      <div style="font-size:9px;color:var(--mu);font-weight:700;text-transform:uppercase;margin-bottom:3px">${label}</div>
+      <div style="font-size:16px;font-weight:900;color:var(--tx)">${val}</div>
+      ${sub?`<div style="font-size:10px;color:var(--mu);margin-top:1px">${sub}</div>`:''}
+    </div>`;
+  }
+  function assiduidadeColor(p){ return p>=95?'#16a34a':p>=80?'#d97706':'#dc2626'; }
+
+  const semanaRows = (c) => c.semanas.slice(0,8).map((s,i)=>`
+    <tr style="background:${i%2===0?'var(--card2)':''}">
+      <td style="padding:5px 8px;font-size:11px">${s.semana}</td>
+      <td style="padding:5px 8px;font-size:11px;text-align:center">${s.turnosEscalados}</td>
+      <td style="padding:5px 8px;font-size:11px;text-align:center;color:${s.turnosFaltados>0?'#dc2626':'var(--mu)'}">${s.turnosFaltados}</td>
+      <td style="padding:5px 8px;font-size:11px;text-align:center">${s.horasTotal.toFixed(1)}h</td>
+      <td style="padding:5px 8px;font-size:11px;text-align:center">${s.pedidosSemana.toLocaleString('pt-BR')}</td>
+      <td style="padding:5px 8px;font-size:11px;text-align:right;font-weight:600">R$ ${s.custoSemana.toFixed(2).replace('.',',')}</td>
+    </tr>`).join('');
+
+  con.innerHTML = statsFilt.map((c,ci)=>{
+    const cor = cores[ci%cores.length];
+    const assidCor = assiduidadeColor(c.assiduidade);
+    return `
+    <div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div style="width:42px;height:42px;border-radius:50%;background:${cor};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#fff;flex-shrink:0">${c.nome.substring(0,2).toUpperCase()}</div>
+        <div>
+          <div style="font-size:16px;font-weight:800">${c.nome}</div>
+          <div style="font-size:11px;color:var(--mu)">${c.hub||'Sion'} · ${c.semanasAtivas} semana${c.semanasAtivas!==1?'s':''} escalado</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-size:20px;font-weight:900;color:${assidCor}">${c.assiduidade.toFixed(1)}%</div>
+          <div style="font-size:10px;color:var(--mu)">assiduidade</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:16px">
+        ${badge('Turnos escalados',c.totalEscalados,'','#2563eb')}
+        ${badge('Turnos cumpridos',c.totalCumpridos,'','#16a34a')}
+        ${badge('Faltas',c.totalFaltas,c.totalFaltas>0?'⚠ atenção':'',c.totalFaltas>0?'#dc2626':'#16a34a')}
+        ${badge('Horas totais',c.totalHoras.toFixed(1)+'h','','#d97706')}
+        ${badge('Pedidos no turno',c.totalPedidos.toLocaleString('pt-BR'),'','#7c3aed')}
+        ${badge('Ped/hora médio',c.pedPorHora.toFixed(1),'pedidos por hora trabalhada','#0891b2')}
+        ${badge('Pico/hora',c.maxPedHora,'máx pedidos numa hora','#be185d')}
+        ${badge('Custo total','R$ '+c.totalCusto.toFixed(2).replace('.',','),'','#374151')}
+        ${c.custo>0?badge('Custo/hora','R$ '+c.custo.toFixed(2).replace('.',','),'','#374151'):''}
+        ${c.passagem>0?badge('Passagem/dia','R$ '+c.passagem.toFixed(2).replace('.',','),'','#374151'):''}
+      </div>
+
+      <details style="margin-top:4px">
+        <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--mu);padding:4px 0">Ver histórico semanal (${c.semanas.length} semanas)</summary>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:11px">
+          <thead><tr style="background:var(--tx);color:var(--bg)">
+            <th style="padding:5px 8px;text-align:left">Semana</th>
+            <th style="padding:5px 8px;text-align:center">Turnos</th>
+            <th style="padding:5px 8px;text-align:center">Faltas</th>
+            <th style="padding:5px 8px;text-align:center">Horas</th>
+            <th style="padding:5px 8px;text-align:center">Pedidos</th>
+            <th style="padding:5px 8px;text-align:right">Custo</th>
+          </tr></thead>
+          <tbody>${semanaRows(c)}</tbody>
+        </table>
+      </details>
+    </div>`;
+  }).join('');
 }
 
 function exportarIndicadores(){
