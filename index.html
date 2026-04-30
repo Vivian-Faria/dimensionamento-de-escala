@@ -1154,15 +1154,24 @@ function preencher(){
 
   DIAS.forEach(d=>{for(let h=hI;h<=hO;h++){if(S.escala[d]?.[h])S.escala[d][h].alocados=[];}});
   // Filtra colaboradores pelo hub da escala atual
-  // S._hubFiltroAtual pode ser null se a escala foi montada antes da feature de hub
-  // Nesse caso, inferir pelo nome exibido em S.hubAtual
   let hubEscala = null;
   if(S._hubFiltroAtual && S._hubFiltroAtual.length > 0){
     hubEscala = S._hubFiltroAtual.length === 1 ? S._hubFiltroAtual[0] : null;
-  } else if(S.hubAtual && S.hubAtual !== 'Todos os hubs'){
-    // Inverter nomeHub para encontrar a chave original
-    const _nomes = {'Cozinhas Sion':'Sem hub','DS Sion':'DS Sion','DS Cidade Nova':'DS Cidade Nova'};
-    hubEscala = _nomes[S.hubAtual] || S.hubAtual;
+  } else {
+    // Tentar restaurar do localStorage (persiste entre recarregamentos)
+    try{
+      const hd=JSON.parse(localStorage.getItem('orion_v7_hub')||'null');
+      if(hd&&hd.hubAtual&&hd.hubAtual!=='Todos os hubs'){
+        if(!S.hubAtual)S.hubAtual=hd.hubAtual;
+        if(!S._hubFiltroAtual)S._hubFiltroAtual=hd.hubFiltro;
+        if(hd.hubFiltro&&hd.hubFiltro.length>0){
+          hubEscala=hd.hubFiltro.length===1?hd.hubFiltro[0]:null;
+        } else {
+          const _nomes={'Cozinhas Sion':'Sem hub','DS Sion':'DS Sion','DS Cidade Nova':'DS Cidade Nova'};
+          hubEscala=_nomes[hd.hubAtual]||hd.hubAtual;
+        }
+      }
+    }catch(e){}
   }
   // Mapear hubs de indicadores → hub de colaborador
   function hubColabDeHub(hubInd){
@@ -3749,20 +3758,32 @@ function renderColHist(){
     return diff <= diasLimite;
   });
 
-  // Coletar todos os colaboradores das escalas filtradas
-  const colabsMap = {}; // nome → { hub, dados... }
+  // Coletar colaboradores: S.colabs é a fonte de verdade para hub/custo
+  // Histórico de escalas pode ter cópias antigas sem hub — não usar para isso
+  const colabsMap = {};
+  // Primeiro, pré-popular com colaboradores atuais
+  S.colabs.forEach(c=>{
+    colabsMap[c.nome] = { nome:c.nome, hub:c.hub||'Sion', custo:c.custo||0, passagem:c.passagem||0, semanas:[] };
+  });
+  // Complementar com colaboradores que aparecem no histórico mas não estão mais no S.colabs
   histFilt.forEach(semana=>{
     (semana.colabs||[]).forEach(c=>{
-      if(!colabsMap[c.nome]) colabsMap[c.nome] = { nome:c.nome, hub:c.hub||'Sion', custo:c.custo||0, passagem:c.passagem||0, semanas:[] };
+      if(!colabsMap[c.nome]){
+        // Hub: preferir S.colabs; se não existir, usar o do histórico
+        const atual = S.colabs.find(x=>x.nome===c.nome);
+        colabsMap[c.nome] = { nome:c.nome, hub:(atual?.hub||c.hub)||'Sion', custo:atual?.custo||c.custo||0, passagem:atual?.passagem||c.passagem||0, semanas:[] };
+      }
     });
   });
 
-  // Atualizar select de colaboradores
+  // Atualizar select de colaboradores filtrado pelo hub selecionado
   const sel = document.getElementById('colHistColab');
   if(sel){
-    const nomes = Object.keys(colabsMap).sort();
+    const nomesHub = Object.values(colabsMap)
+      .filter(c=>hubFiltro==='todos'||c.hub===hubFiltro)
+      .map(c=>c.nome).sort();
     const atual = sel.value;
-    sel.innerHTML = '<option value="todos">Todos os colaboradores</option>' + nomes.map(n=>`<option value="${n}"${atual===n?' selected':''} >${n}</option>`).join('');
+    sel.innerHTML = '<option value="todos">Todos os colaboradores</option>' + nomesHub.map(n=>`<option value="${n}"${atual===n?' selected':''} >${n}</option>`).join('');
   }
 
   // Para cada semana, extrair dados de cada colaborador
@@ -3862,6 +3883,8 @@ function renderColHist(){
     if(colFiltro!=='todos'&&c.nome!==colFiltro) return false;
     return true;
   }).sort((a,b)=>a.nome.localeCompare(b.nome));
+  // Debug log
+  console.log('[ColHist] hubFiltro='+hubFiltro+' total='+stats.length+' filtrados='+statsFilt.length, stats.map(c=>c.nome+':'+c.hub));
 
   if(!statsFilt.length){
     con.innerHTML='<div class="empty"><div class="empty-ico">👤</div><h3>Nenhum dado para os filtros selecionados</h3></div>';
