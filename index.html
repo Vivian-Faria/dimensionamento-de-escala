@@ -537,7 +537,15 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <h3>📅 Histórico semanal</h3>
           <div style="display:flex;gap:8px;align-items:center">
             <span style="font-size:11px;color:var(--mu)" id="indTabelaMeta"></span>
-            <button class="btn bs sm" onclick="exportarIndicadores()">⬇ Exportar CSV</button>
+            <div style="display:flex;align-items:center;gap:8px">
+              <select id="indPeriodo" class="btn bs sm" style="padding:5px 8px;font-size:11px" onchange="renderIndicadores()">
+                <option value="semanal">Semanal</option>
+                <option value="mensal">Mensal</option>
+                <option value="trimestral">Trimestral</option>
+              </select>
+              <button class="btn bs sm" onclick="exportarIndicadores()">⬇ CSV</button>
+              <button class="btn bs sm" onclick="gerarRelatorioIndicadores()" style="background:var(--ac);color:#0d0d10;font-weight:700">📄 Relatório</button>
+            </div>
           </div>
         </div>
         <div class="card-body" style="padding:0;overflow-x:auto">
@@ -974,7 +982,7 @@ async function montarEscala(hubFiltro){
   gerarEscala(dados, hubFiltro);
 }
 
-async function montarComCache(){const c=verificarCache();if(c.p)gerarEscala(c.p);}
+async function montarComCache(){const c=verificarCache();if(c.p)gerarEscala(c.p,S.hubAtual?S._hubFiltroAtual:undefined);}
 
 function gerarEscala(dados, hubFiltro){
   setLd('Calculando projeção...');
@@ -1003,6 +1011,7 @@ function gerarEscala(dados, hubFiltro){
   S.hubAtual = hubs.length === 0 ? null
     : hubs.length === 1 ? nomeHub(hubs[0])
     : hubs.map(nomeHub).join(' + ');
+  S._hubFiltroAtual = hubs.length > 0 ? hubs : undefined;
 
   const hI=+document.getElementById('cHI').value||9;
   const hO=+document.getElementById('cHO').value||25;
@@ -2701,17 +2710,17 @@ try {
 })();
 
 // B) postMessage — extensão Chrome manda ORION_ESCALA_DATA / ORION_IND_DATA
-// Só processa a primeira mensagem de cada tipo — ignora o reforço posterior
 var _pmEscalaProcessado=false;
 var _pmIndProcessado=false;
 window.addEventListener('message',function(ev){
   if(ev.data&&ev.data.type==='ORION_ESCALA_DATA'&&ev.data.payload&&ev.data.payload.mx){
     if(_pmEscalaProcessado)return;
     _pmEscalaProcessado=true;
+    // NUNCA reseta — uma única montagem automática por sessão
     var payload=ev.data.payload;
     localStorage.setItem('orion_coleta',JSON.stringify(payload));
-    // Só monta automaticamente se não há escala com hub específico já montada
-    if(typeof gerarEscala==='function'&&!S.hubAtual){
+    // Só monta automaticamente se ainda não há escala montada nesta sessão
+    if(typeof gerarEscala==='function'&&!S.escala){
       setTimeout(()=>gerarEscala(payload),400);
       toast('✓ '+payload.total.toLocaleString()+' pedidos recebidos! Montando...','tok');
     }
@@ -2731,8 +2740,8 @@ try{
       localStorage.setItem('orion_coleta',JSON.stringify(e.data.payload));
       window._INBOUND=e.data.payload;
       if(typeof S!=='undefined'&&typeof montarEscala==='function'){
-        setTimeout(()=>gerarEscala(e.data.payload),600);
-        toast('✓ '+e.data.payload.total.toLocaleString()+' pedidos! Montando...','tok');
+        // Só monta se ainda não há escala montada nesta sessão
+        if(!S.escala){ setTimeout(()=>gerarEscala(e.data.payload),600); toast('✓ '+e.data.payload.total.toLocaleString()+' pedidos! Montando...','tok'); }
       }
     }
   };
@@ -3226,6 +3235,136 @@ function limparIndicadores(){
   document.getElementById('indEmp').style.display='block';
   document.getElementById('indBanner').innerHTML='';
   toast('Indicadores apagados.','tok');
+}
+
+function gerarRelatorioIndicadores(){
+  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+  if(!hist.length){toast('Sem dados para gerar relatório.','ter');return;}
+
+  const periodo=document.getElementById('indPeriodo')?.value||'semanal';
+  const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
+  const hubsAtivos=hub instanceof Set?(hub.has('todos')?(hist[0].hubs||[]):[...hub]):[hub];
+  const hubLabel=hubsAtivos.length===0||hub.has('todos')?'Todos os hubs':hubsAtivos.map(nomeHub).join(' + ');
+
+  // Agrupa semanas conforme período
+  function agruparPeriodo(semanas, tipo){
+    if(tipo==='semanal') return semanas.map(s=>({label:s.semana||s.semanaISO,semanas:[s]}));
+    if(tipo==='mensal'){
+      const mp={};
+      semanas.forEach(s=>{
+        const key=s.semana?(s.semana.slice(-5).replace('/','-')):'';
+        // Agrupa por mês/ano usando o campo 'ate'
+        const d=s.ate?new Date(s.ate+'T00:00:00'):null;
+        const k=d?`${d.getMonth()+1}/${d.getFullYear()}`:'Outros';
+        const nome=d?d.toLocaleString('pt-BR',{month:'long',year:'numeric'}):'Outros';
+        if(!mp[k])mp[k]={label:nome,semanas:[]};
+        mp[k].semanas.push(s);
+      });
+      return Object.values(mp);
+    }
+    if(tipo==='trimestral'){
+      const tp={};
+      semanas.forEach(s=>{
+        const d=s.ate?new Date(s.ate+'T00:00:00'):null;
+        if(!d)return;
+        const q=Math.ceil((d.getMonth()+1)/3);
+        const k=`T${q}/${d.getFullYear()}`;
+        if(!tp[k])tp[k]={label:k,semanas:[]};
+        tp[k].semanas.push(s);
+      });
+      return Object.values(tp);
+    }
+    return semanas.map(s=>({label:s.semana,semanas:[s]}));
+  }
+
+  function calcGrupo(semanas){
+    const vendas=semanas.flatMap(s=>s.vendas||[]);
+    const cancels=semanas.flatMap(s=>s.cancelamentos||[]);
+    return calcularMetricasSemana(vendas,cancels,hub);
+  }
+
+  const grupos=agruparPeriodo(hist,periodo);
+
+  // Montar HTML do relatório
+  const linhas=grupos.map(g=>{
+    const m=calcGrupo(g.semanas);
+    return `<tr>
+      <td>${g.label}</td>
+      <td>${m.volume.toLocaleString('pt-BR')}</td>
+      <td>${m.cancelamentos}</td>
+      <td>${m.pctCancel.toFixed(2)}%</td>
+      <td>${fmtTempo(m.tPreparoMed)}</td>
+      <td>${fmtTempo(m.tColetaMed)}</td>
+      <td>${fmtTempo(m.tDespachoMed)}</td>
+    </tr>`;
+  }).join('');
+
+  // Distribuição por hub para o relatório
+  const distRows = hubsAtivos.length>1 ? hubsAtivos.map(h=>{
+    const mH=calcularMetricasSemana(hist[0].vendas,hist[0].cancelamentos,new Set([h]));
+    return `<tr><td>${nomeHub(h)}</td><td>${mH.volume.toLocaleString('pt-BR')}</td><td>${hist[0].vendas.length>0?(mH.volume/hist[0].vendas.length*100).toFixed(1)+'%':'-'}</td></tr>`;
+  }).join('') : '';
+
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="UTF-8">
+  <title>Relatório Indicadores — ${hubLabel}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',sans-serif;background:#fff;color:#111;padding:32px;max-width:900px;margin:0 auto}
+    h1{font-size:22px;font-weight:800;margin-bottom:4px}
+    .sub{font-size:13px;color:#666;margin-bottom:24px}
+    .badge{display:inline-block;background:#d1fae5;color:#065f46;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;margin-left:8px}
+    h2{font-size:14px;font-weight:700;color:#374151;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.05em}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:24px}
+    th{background:#111;color:#fff;padding:8px 10px;text-align:left;font-weight:600}
+    td{padding:7px 10px;border-bottom:1px solid #e5e7eb}
+    tr:last-child td{border-bottom:none}
+    tr:nth-child(even) td{background:#f9fafb}
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+    .kpi{border:1px solid #e5e7eb;border-radius:8px;padding:12px}
+    .kpi-l{font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:600;margin-bottom:4px}
+    .kpi-v{font-size:20px;font-weight:800;color:#111}
+    .footer{margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;display:flex;justify-content:space-between}
+    @media print{body{padding:16px}button{display:none!important}.no-print{display:none}}
+  </style>
+  </head><body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+    <div>
+      <h1>Indicadores Operacionais <span class="badge">${hubLabel}</span></h1>
+      <div class="sub">Período: ${({semanal:'Semanal',mensal:'Mensal',trimestral:'Trimestral'})[periodo]} · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+    </div>
+    <button class="no-print" onclick="window.print()" style="background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">🖨 Imprimir / Salvar PDF</button>
+  </div>
+
+  ${(()=>{const m=calcGrupo(hist);return`
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-l">📦 Volume Total</div><div class="kpi-v">${m.volume.toLocaleString('pt-BR')}</div></div>
+    <div class="kpi"><div class="kpi-l">❌ Cancelamentos</div><div class="kpi-v">${m.cancelamentos} (${m.pctCancel.toFixed(1)}%)</div></div>
+    <div class="kpi"><div class="kpi-l">🧑‍🍳 T. Preparo médio</div><div class="kpi-v">${fmtTempo(m.tPreparoMed)}</div></div>
+    <div class="kpi"><div class="kpi-l">🏁 T. Despacho médio</div><div class="kpi-v">${fmtTempo(m.tDespachoMed)}</div></div>
+  </div>`;})()}
+
+  ${distRows?`<h2>Distribuição por hub</h2>
+  <table><thead><tr><th>Hub</th><th>Pedidos</th><th>% do total</th></tr></thead><tbody>${distRows}</tbody></table>`:''}
+
+  <h2>Histórico ${({semanal:'semanal',mensal:'mensal',trimestral:'trimestral'})[periodo]}</h2>
+  <table>
+    <thead><tr>
+      <th>Período</th><th>Pedidos</th><th>Cancelamentos</th><th>% Cancel.</th>
+      <th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+  </table>
+
+  <div class="footer">
+    <span>Órion · Escala — Relatório gerado automaticamente</span>
+    <span>${new Date().toLocaleDateString('pt-BR')}</span>
+  </div>
+  </body></html>`;
+
+  const w=window.open('','_blank','width=960,height=800');
+  w.document.write(html);
+  w.document.close();
 }
 
 function exportarIndicadores(){
