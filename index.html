@@ -1256,6 +1256,10 @@ function preencher(){
   const _p2d=v=>String(v).padStart(2,'0');
   const _segISODisp=_segDisp.getFullYear()+'-'+_p2d(_segDisp.getMonth()+1)+'-'+_p2d(_segDisp.getDate());
   const _dispSemana = JSON.parse(localStorage.getItem('orion_v7_disp_'+_segISODisp)||'{}');
+  // Debug: mostrar quantas respostas foram recebidas
+  const _nRespostas = Object.keys(_dispSemana).length;
+  if(_nRespostas > 0) console.log('[Preencher] Disponibilidade recebida de', _nRespostas, 'colaboradores:', JSON.stringify(_dispSemana));
+  else console.log('[Preencher] Nenhuma disponibilidade encontrada para a chave:', 'orion_v7_disp_'+_segISODisp);
 
   // Pré-calcular quais dias cada colaborador 12x36 trabalha nesta semana
   // Lógica: colaboradores 12x36 do mesmo hub alternam dias entre si
@@ -1346,9 +1350,12 @@ function preencher(){
         if(!c.dias.includes(dia))return false;
         // 12x36: só trabalha nos dias calculados para esta semana
         if(c.tipoContrato==='12x36'&&diasTrabalho12x36[c.nome]&&!diasTrabalho12x36[c.nome].has(dia))return false;
-        // Disponibilidade declarada: respeitar dias indisponíveis informados pelo colaborador
+        // Disponibilidade declarada pelo colaborador
         const _dispColab = _dispSemana[c.nome];
-        if(_dispColab&&_dispColab.diasIndisponiveis&&_dispColab.diasIndisponiveis.includes(dia))return false;
+        if(_dispColab && Array.isArray(_dispColab.diasIndisponiveis) && _dispColab.diasIndisponiveis.includes(dia)){
+          console.log('[Preencher] Bloqueando', c.nome, 'em', dia, '(marcou indisponivel)');
+          return false;
+        }
         const dispH=c.dispDia?.[dia]||{horaIn:c.horaIn,horaOut:c.horaOut};
         if(h<dispH.horaIn||h>=dispH.horaOut)return false;
         if(hrs[c.id]>=(c.maxH||8))return false;
@@ -4203,418 +4210,137 @@ function renderDispMode(){
 
 function selecionarNomeDisp(nome){
   const d = window._dispDados;
-  if(!d){ return; }
-  // Dados do colaborador no link
-  const colab = d.colabs ? d.colabs.find(c=>c.nome===nome) : null;
-  window._dispNomeSel = nome;
-  renderTelaDisp(nome, d.seg, d.segBR, d.domBR, colab, d.expira);
+  if(!d) return;
+  // colabDados: buscar no S.colabs (estamos na mesma origin/device do gestor)
+  // ou no d.colabs se foi incluído no link
+  let colabDados = null;
+  if(d.colabs) colabDados = d.colabs.find(function(c){return c.nome===nome;});
+  if(!colabDados && typeof S !== 'undefined' && S.colabs)
+    colabDados = S.colabs.find(function(c){return c.nome===nome;});
+  renderTelaDisp(nome, d.seg, d.segBR, d.domBR, colabDados, d.expira);
 }
 
 function renderTelaDisp(nome, seg, segBR, domBR, colabDados, expira){
   const DIAS_SEMANA = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const DIAS_NOMES = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
-  const fH2 = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
 
-  // Calcular dias disponíveis do colaborador (baseado no cadastro)
-  const diasDisp = colabDados ? colabDados.dias || [] : DIAS_SEMANA;
-  const horaIn = colabDados ? colabDados.horaIn || 9 : 9;
-  const horaOut = colabDados ? colabDados.horaOut || 23 : 23;
+  // Dias que o colaborador trabalha (do cadastro, se disponível)
+  const diasDisp = colabDados && colabDados.dias ? colabDados.dias : DIAS_SEMANA;
 
-  // Dias disponíveis = dias do cadastro
-  const diasDisponiveis = DIAS_SEMANA.filter(d => diasDisp.includes(d));
+  document.body.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif';
 
-  // Preview dos dias de trabalho (antes de marcar indisponibilidade)
-  const previewHtml = diasDisponiveis.length
-    ? '<div style="background:rgba(200,241,53,.08);border:1px solid rgba(200,241,53,.2);border-radius:10px;padding:12px 16px;margin-bottom:16px"><div style="font-size:10px;font-weight:700;color:#c8f135;text-transform:uppercase;margin-bottom:8px">Seus dias de trabalho cadastrados</div>'
-      + diasDisponiveis.map(d=>'<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;color:#d1fae5"><span>'+DIAS_NOMES[d]+'</span><span style="color:#9ca3af">'+fH2(horaIn)+' - '+fH2(horaOut)+'</span></div>').join('')
-      + '<div style="font-size:10px;color:#9ca3af;margin-top:8px">Marque abaixo os dias que nao pode comparecer</div></div>'
-    : '';
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:380px;width:100%';
+
+  // Header
+  const header = document.createElement('div');
+  header.style.cssText = 'text-align:center;margin-bottom:24px';
+  header.innerHTML = '<h2 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:4px">Ola, '+nome+'!</h2>'
+    + '<p style="color:#9ca3af;font-size:13px">Semana '+segBR+' - '+domBR+'</p>'
+    + '<p style="color:#f87171;font-size:12px;margin-top:6px;font-weight:600">Marque os dias que NAO pode trabalhar</p>';
+  card.appendChild(header);
 
   // Timer se tiver expiração
-  const timerHtml = expira
-    ? '<div id="disp-timer2" style="text-align:center;margin-bottom:14px"><span id="disp-timer2-val" style="font-size:13px;color:#9ca3af;font-family:monospace">--:--</span> restantes</div>'
-    : '';
-
-  document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:400px;width:100%">'
-    + '<div style="text-align:center;margin-bottom:20px">'
-    + '<h2 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:4px">Ola, '+nome+'!</h2>'
-    + '<p style="color:#9ca3af;font-size:13px">Semana '+segBR+' - '+domBR+'</p></div>'
-    + timerHtml
-    + previewHtml
-    + '<div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Dias que NAO posso trabalhar:</div>'
-    + '<div id="disp-dias" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">'
-    + DIAS_SEMANA.map(function(dia){
-        const disponivel = diasDisponiveis.includes(dia);
-        if(!disponivel) return ''; // não mostrar dias que já não trabalha
-        return '<label style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px 16px;cursor:pointer" onclick="toggleDispDiaModal(this)">'
-          + '<div style="width:20px;height:20px;border-radius:5px;border:2px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0" class="disp-chk"></div>'
-          + '<span style="color:#f3f4f6;font-size:13px;font-weight:600">'+DIAS_NOMES[dia]+'</span>'
-          + '<span style="color:#6b7280;font-size:11px;margin-left:auto">'+fH2(horaIn)+'-'+fH2(horaOut)+'</span>'
-          + '<input type="checkbox" data-dia="'+dia+'" style="display:none"></label>';
-      }).join('')
-    + '</div>'
-    + '<button onclick="enviarDisponibilidade(\'' + nome.replace(/'/g,"\'") + '\',\'' + seg + '\')" style="width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar disponibilidade</button>'
-    + '<p style="text-align:center;color:#6b7280;font-size:11px;margin-top:10px">Se nao marcar nada, voce esta disponivel em todos os dias listados</p>'
-    + '</div></div>';
-
-  // Timer
   if(expira){
-    var tick2 = function(){
-      var el = document.getElementById('disp-timer2-val');
+    const timerDiv = document.createElement('div');
+    timerDiv.style.cssText = 'text-align:center;margin-bottom:16px';
+    timerDiv.innerHTML = '<span id="td-timer" style="font-size:13px;color:#9ca3af;font-family:monospace">--:--</span> restantes';
+    card.appendChild(timerDiv);
+    var tick = function(){
+      var el = document.getElementById('td-timer');
       if(!el) return;
       var resto = Math.max(0, expira - Date.now());
-      if(resto === 0){ el.textContent = '00:00'; el.style.color='#ef4444'; return; }
-      var min = Math.floor(resto/60000);
-      var sec = Math.floor((resto%60000)/1000);
-      el.textContent = String(min).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
-      el.style.color = resto < 300000 ? '#f87171' : '#9ca3af';
-      setTimeout(tick2, 1000);
+      if(resto===0){ el.textContent='00:00'; el.style.color='#ef4444'; return; }
+      var min = Math.floor(resto/60000), sec = Math.floor((resto%60000)/1000);
+      el.textContent = String(min).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+      el.style.color = resto<300000?'#f87171':'#9ca3af';
+      setTimeout(tick, 1000);
     };
-    tick2();
+    tick();
   }
+
+  // Dias — apenas os que ele trabalha
+  const diasCon = document.createElement('div');
+  diasCon.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-bottom:24px';
+  const selecionados = new Set();
+
+  DIAS_SEMANA.forEach(function(dia){
+    if(!diasDisp.includes(dia)) return; // pular dias que não trabalha
+    const label = document.createElement('div');
+    label.style.cssText = 'display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.08);border-radius:10px;padding:13px 16px;cursor:pointer;transition:.15s;user-select:none';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'width:22px;height:22px;border-radius:6px;border:2px solid rgba(255,255,255,.25);background:transparent;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:.15s';
+
+    const txt = document.createElement('span');
+    txt.style.cssText = 'color:#f3f4f6;font-size:14px;font-weight:600';
+    txt.textContent = DIAS_NOMES[dia];
+
+    label.appendChild(box);
+    label.appendChild(txt);
+
+    var ativo = false;
+    label.addEventListener('click', function(){
+      ativo = !ativo;
+      if(ativo){
+        selecionados.add(dia);
+        box.style.background = '#ef4444';
+        box.style.borderColor = '#ef4444';
+        box.innerHTML = '<svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 6.5l3.5 3.5 5.5-5.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>';
+        label.style.borderColor = 'rgba(239,68,68,.5)';
+        label.style.background = 'rgba(239,68,68,.1)';
+      } else {
+        selecionados.delete(dia);
+        box.style.background = 'transparent';
+        box.style.borderColor = 'rgba(255,255,255,.25)';
+        box.innerHTML = '';
+        label.style.borderColor = 'rgba(255,255,255,.08)';
+        label.style.background = 'rgba(255,255,255,.05)';
+      }
+    });
+
+    diasCon.appendChild(label);
+  });
+  card.appendChild(diasCon);
+
+  // Botão confirmar
+  const btn = document.createElement('button');
+  btn.style.cssText = 'width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit';
+  btn.textContent = 'Confirmar';
+  btn.addEventListener('click', function(){
+    enviarDisponibilidade(nome, seg, Array.from(selecionados));
+  });
+  card.appendChild(btn);
+
+  const nota = document.createElement('p');
+  nota.style.cssText = 'text-align:center;color:#6b7280;font-size:11px;margin-top:10px';
+  nota.textContent = 'Se nao marcar nada, voce esta disponivel a semana toda';
+  card.appendChild(nota);
+
+  wrap.appendChild(card);
+  document.body.appendChild(wrap);
 }
 
-function enviarDisponibilidade(nome, segISO){
-  const dias = [...document.querySelectorAll('#disp-dias input[type=checkbox]:checked')].map(c=>c.dataset.dia);
-  
-  // Salvar diretamente no localStorage — estamos na mesma origem
+function enviarDisponibilidade(nome, segISO, dias){
+  if(!Array.isArray(dias)) dias = [];
   try{
     const key = 'orion_v7_disp_' + segISO;
     const atual = JSON.parse(localStorage.getItem(key)||'{}');
     atual[nome] = { diasIndisponiveis: dias, ts: Date.now() };
     localStorage.setItem(key, JSON.stringify(atual));
   }catch(e){}
-
-  // Mostrar confirmação
-  const diasTxt = dias.length === 0 ? 'Voce esta disponivel a semana toda!' : 'Dias indisponiveis: ' + dias.join(', ');
-  document.body.innerHTML = `
-    <div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:'DM Sans',sans-serif">
-      <div style="text-align:center;color:#fff;max-width:360px">
-        <div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:36px">✓</div>
-        <h2 style="font-size:22px;font-weight:800;margin-bottom:10px">Disponibilidade salva!</h2>
-        <p style="color:#9ca3af;font-size:14px;margin-bottom:28px">${diasTxt}</p>
-        <p style="color:#6b7280;font-size:12px">Pode fechar esta pagina. Obrigado!</p>
-      </div>
-    </div>`;
-}
-
-// Disponibilidade salva direto no localStorage — receptor de hash removido
-
-// ── Modal de envio WhatsApp
-function abrirEnvioWhatsApp(){
-  const colabs = S.colabs;
-  if(!colabs.length){ toast('Cadastre colaboradores primeiro.','ter'); return; }
-
-  // Calcular semana projetada
-  const {seg,dom} = proximaSemana();
-  const p2 = v=>String(v).padStart(2,'0');
-  const fi = d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
-  const fb = d=>p2(d.getDate())+'/'+p2(d.getMonth()+1);
-  const segISO = fi(seg), domISO = fi(dom);
-  const segBR = fb(seg), domBR = fb(dom);
-
-  // Verificar disponibilidades já recebidas
-  const dispKey = 'orion_v7_disp_' + segISO;
-  const dispRecebidas = JSON.parse(localStorage.getItem(dispKey)||'{}');
-  const nRecebidas = Object.keys(dispRecebidas).length;
-
-  // Colaboradores do hub ativo
-  const hubColab = getHubColabAtual();
-  const colabsFiltrados = hubColab
-    ? colabs.filter(c=>(c.hub||'Sion')===hubColab)
-    : colabs;
-
-  // Gerar link de disponibilidade para cada colaborador
-  function linkDisp(c){
-    const dados = { nome:c.nome, hub:c.hub||'Sion', seg:segISO, dom:domISO, segBR, domBR };
-    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
-    return location.origin + location.pathname + '#disp=' + b64;
-  }
-
-  // Verificar se há escala montada para envio
-  const temEscala = !!S.escala;
-
-  const modal = document.createElement('div');
-  modal.id = 'wpp-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:0;max-width:560px;width:100%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
-      <div style="padding:18px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <h3 style="font-size:16px;font-weight:800;margin:0">💬 Envio via WhatsApp</h3>
-          <p style="font-size:11px;color:var(--mu);margin:2px 0 0">Semana ${segBR} – ${domBR}</p>
-        </div>
-        <button onclick="document.getElementById('wpp-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--mu)">✕</button>
-      </div>
-
-      <!-- Tabs -->
-      <div style="display:flex;border-bottom:1px solid var(--brd)">
-        <button id="wpp-tab-disp" onclick="wppTab('disp')" style="flex:1;padding:10px;border:none;background:var(--ac);color:var(--bg);font-weight:700;font-size:12px;cursor:pointer;border-radius:0">
-          📋 Coletar disponibilidade ${nRecebidas>0?'<span style="background:#16a34a;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px">'+nRecebidas+' ✓</span>':''}
-        </button>
-        <button id="wpp-tab-escala" onclick="wppTab('escala')" style="flex:1;padding:10px;border:none;background:var(--card2);font-weight:600;font-size:12px;cursor:pointer;border-radius:0;color:${temEscala?'var(--tx)':'var(--mu)'}">
-          📅 Enviar escala ${temEscala?'':'(monte a escala primeiro)'}
-        </button>
-      </div>
-
-      <!-- Conteúdo -->
-      <div style="overflow-y:auto;flex:1">
-        <!-- Tab Disponibilidade -->
-        <div id="wpp-panel-disp" style="padding:16px">
-          <p style="font-size:12px;color:var(--mu);margin-bottom:14px">Envie o link para cada colaborador marcar os dias que <strong>não pode</strong> trabalhar. Receba as respostas antes de montar a escala.</p>
-
-          <!-- Botão enviar para todos no grupo -->
-          <div style="background:rgba(37,211,102,.1);border:1px solid rgba(37,211,102,.3);border-radius:10px;padding:12px;margin-bottom:14px">
-            <div style="font-size:12px;font-weight:700;margin-bottom:8px">📢 Enviar para o grupo (recomendado)</div>
-            <p style="font-size:11px;color:var(--mu);margin-bottom:8px">Uma mensagem para o grupo com links individuais para cada um</p>
-            <button onclick="enviarParaGrupo('${segISO}','${segBR}','${domBR}')" style="background:#25d366;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;font-size:12px;cursor:pointer;width:100%">
-              💬 Abrir WhatsApp com mensagem do grupo
-            </button>
-          </div>
-
-          <!-- Links individuais -->
-          <div style="font-size:11px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Links individuais</div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${colabsFiltrados.map(c=>{
-              const recebeu = dispRecebidas[c.nome];
-              const dias = recebeu?.diasIndisponiveis||[];
-              return `<div style="display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:8px;padding:9px 12px">
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:12px;font-weight:700">${c.nome}</div>
-                  ${recebeu
-                    ? `<div style="font-size:10px;color:#16a34a">✅ Respondeu${dias.length?': não pode '+dias.join(', '):': disponível toda a semana'}</div>`
-                    : '<div style="font-size:10px;color:var(--mu)">Aguardando resposta...</div>'
-                  }
-                </div>
-                ${recebeu
-                  ? '<span style="font-size:18px">✅</span>'
-                  : `<button onclick="abrirWppColab('${c.nome}','${linkDisp(c).replace(/'/g,"\'")}','disp','${segBR}','${domBR}')" style="background:#25d366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">💬 Enviar</button>`
-                }
-              </div>`;
-            }).join('')}
-          </div>
-        </div>
-
-        <!-- Tab Escala -->
-        <div id="wpp-panel-escala" style="display:none;padding:16px">
-          ${!temEscala
-            ? '<div style="text-align:center;padding:30px;color:var(--mu)"><div style="font-size:40px;margin-bottom:12px">⚡</div><p>Monte a escala primeiro para enviar os horários.</p></div>'
-            : `<p style="font-size:12px;color:var(--mu);margin-bottom:14px">Envie os horários da semana para cada colaborador.</p>
-              <div style="background:rgba(37,211,102,.1);border:1px solid rgba(37,211,102,.3);border-radius:10px;padding:12px;margin-bottom:14px">
-                <div style="font-size:12px;font-weight:700;margin-bottom:8px">📢 Escala completa para o grupo</div>
-                <button onclick="enviarEscalaGrupo()" style="background:#25d366;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;font-size:12px;cursor:pointer;width:100%">
-                  💬 Enviar escala completa no grupo
-                </button>
-              </div>
-              <div style="font-size:11px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Horários individuais</div>
-              <div style="display:flex;flex-direction:column;gap:6px">
-                ${colabsFiltrados.map(c=>{
-                  const turnos = getTurnosColab(c.nome);
-                  return `<div style="display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:8px;padding:9px 12px">
-                    <div style="flex:1;min-width:0">
-                      <div style="font-size:12px;font-weight:700">${c.nome}</div>
-                      <div style="font-size:10px;color:var(--mu)">${turnos.length?turnos.length+' turno(s) na semana':'Sem turnos'}</div>
-                    </div>
-                    ${turnos.length
-                      ? `<button onclick="abrirWppColab('${c.nome}','','escala','${segBR}','${domBR}')" style="background:#25d366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">💬 Enviar</button>`
-                      : '<span style="font-size:10px;color:var(--mu)">Sem turnos</span>'
-                    }
-                  </div>`;
-                }).join('')}
-              </div>`
-          }
-        </div>
-      </div>
-    </div>`;
-
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e=>{ if(e.target===modal) modal.remove(); });
-}
-
-function wppTab(tab){
-  document.getElementById('wpp-panel-disp').style.display = tab==='disp'?'block':'none';
-  document.getElementById('wpp-panel-escala').style.display = tab==='escala'?'block':'none';
-  document.getElementById('wpp-tab-disp').style.cssText = 'flex:1;padding:10px;border:none;cursor:pointer;border-radius:0;font-weight:'+(tab==='disp'?'700':'600')+';font-size:12px;background:'+(tab==='disp'?'var(--ac);color:var(--bg)':'var(--card2);color:var(--tx)');
-  document.getElementById('wpp-tab-escala').style.cssText = 'flex:1;padding:10px;border:none;cursor:pointer;border-radius:0;font-weight:'+(tab==='escala'?'700':'600')+';font-size:12px;background:'+(tab==='escala'?'var(--ac);color:var(--bg)':'var(--card2);color:var(--tx)');
-}
-
-function getTurnosColab(nome){
-  if(!S.escala) return [];
-  const DIAS = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const turnos = [];
-  DIAS.forEach(dia=>{
-    let ini=null;
-    for(let h=9;h<=25;h++){
-      const al = S.escala[dia]?.[h]?.alocados.includes(nome);
-      if(al&&ini===null) ini=h;
-      if(!al&&ini!==null){ turnos.push({dia,ini,fim:h}); ini=null; }
-    }
-    if(ini!==null) turnos.push({dia,ini,fim:26});
-  });
-  return turnos;
-}
-
-function msgEscalaColab(nome, segBR, domBR){
-  const turnos = getTurnosColab(nome);
-  const DIAS_EXT = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
-  const linhas = turnos.map(t=>'  - ' + DIAS_EXT[t.dia] + ': ' + fH(t.ini) + '-' + fH(t.fim) + ' (' + (t.fim-t.ini) + 'h)').join('\n');
-  return 'Ola ' + nome + '!\n\nSua escala da semana ' + segBR + '-' + domBR + ':\n\n' + (linhas||'  Voce nao tem turnos esta semana.') + '\n\nQualquer duvida, me chame!';
-}
-
-function abrirWppColab(nome, link, tipo, segBR, domBR){
-  let msg;
-  if(tipo==='disp'){
-    // Link único com seleção de nome
-    const {seg:_s,dom:_d} = proximaSemana();
-    const _p2=v=>String(v).padStart(2,'0');
-    const _segISO=_s.getFullYear()+'-'+_p2(_s.getMonth()+1)+'-'+_p2(_s.getDate());
-    const _domISO=_d.getFullYear()+'-'+_p2(_d.getMonth()+1)+'-'+_p2(_d.getDate());
-    const linkU = gerarLinkUnico(_segISO, segBR, domBR);
-    msg = 'Ola ' + nome + '!\n\nPor favor, informe sua disponibilidade para a semana ' + segBR + '-' + domBR + ':\n\n' + linkU + '\n\nClique no link, selecione seu nome e marque os dias que nao pode trabalhar. Obrigado!';
-  } else {
-    msg = msgEscalaColab(nome, segBR, domBR);
-  }
-  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-}
-
-function gerarLinkUnico(segISO, segBR, domBR){
-  const hubColab = getHubColabAtual();
-  const colabs = hubColab
-    ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
-    : S.colabs;
-  const nomes = colabs.map(c=>c.nome);
-  // Incluir timestamp de expiração (1h a partir de agora) e dados mínimos dos colaboradores
-  const colabsMin = colabs.map(c=>({
-    nome: c.nome,
-    horaIn: c.horaIn, horaOut: c.horaOut,
-    dias: c.dias,
-    tipoContrato: c.tipoContrato||'hora'
-  }));
-  const expira = Date.now() + 60*60*1000; // 1 hora
-  const dados = { tipo:'grupo', seg:segISO, segBR, domBR, nomes, colabs:colabsMin, expira };
-  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
-  return location.origin + location.pathname + '#disp=' + b64;
-}
-
-function enviarParaGrupo(segISO, segBR, domBR){
-  const link = gerarLinkUnico(segISO, segBR, domBR);
-  const msg = 'Oi pessoal!\n\nPor favor, confirmem disponibilidade para a semana ' + segBR + '-' + domBR + ' ate quinta-feira.\n\nClique no link, selecione seu nome e marque os dias que nao pode trabalhar:\n\n' + link + '\n\nObrigado!';
-  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-}
-
-function enviarEscalaGrupo(){
-  const {seg,dom} = proximaSemana();
-  const p2=v=>String(v).padStart(2,'0');
-  const fb=d=>p2(d.getDate())+'/'+p2(d.getMonth()+1);
-  const segBR=fb(seg), domBR=fb(dom);
-  const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const DIAS_EXT={Seg:'Seg',Ter:'Ter',Qua:'Qua',Qui:'Qui',Sex:'Sex',Sab:'Sáb',Dom:'Dom'};
-
-  const hubColab = getHubColabAtual();
-  const colabs = hubColab
-    ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
-    : S.colabs;
-
-  const linhas = colabs.map(c=>{
-    const turnos = getTurnosColab(c.nome);
-    if(!turnos.length) return null;
-    const slots = turnos.map(t=>`${DIAS_EXT[t.dia]} ${fH(t.ini)}-${fH(t.fim)}`).join(' | ');
-    return `*${c.nome}:* ${slots}`;
-  }).filter(Boolean).join('\n');
-
-  const msg = '*Escala ' + segBR + '-' + domBR + '*\n\n' + linhas + '\n\nDuvidas ou impossibilidades, me avisem!';
-  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-}
-
-
-// ══════════════════════════════════════════════════════════════════
-// FEATURE 2: CONFIRMAÇÃO INDIVIDUAL POR TURNO
-// ══════════════════════════════════════════════════════════════════
-
-function abrirEnvioConfirmacao(histId){
-  const hist = JSON.parse(localStorage.getItem(KH)||'[]');
-  const entrada = hist.find(h=>h.id===histId);
-  if(!entrada){ toast('Escala não encontrada.','ter'); return; }
-
-  const DIAS = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const fHl = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
-
-  // Extrair turnos por colaborador
-  const turnosPorColab = {};
-  DIAS.forEach(dia=>{
-    for(let h=9;h<=25;h++){
-      const cell = entrada.escala[dia]?.[h];
-      if(!cell) continue;
-      (cell.alocados||[]).forEach(nome=>{
-        if(!turnosPorColab[nome]) turnosPorColab[nome] = [];
-        // Agrupar em blocos consecutivos
-        const lista = turnosPorColab[nome];
-        const ult = lista[lista.length-1];
-        if(ult && ult.dia===dia && ult.fim===h) ult.fim = h+1;
-        else lista.push({dia, ini:h, fim:h+1});
-      });
-    }
-  });
-
-  const colabs = Object.keys(turnosPorColab).sort();
-
-  // Gerar links de confirmação
-  function gerarLinkConf(nome){
-    const turnos = turnosPorColab[nome]||[];
-    const segBR = entrada.semana.split(' – ')[0] || entrada.semana.slice(0,5);
-    const domBR = entrada.semana.split(' – ')[1] || entrada.semana.slice(-5);
-    const dados = {
-      tipo: 'confirmacao',
-      histId,
-      nome,
-      turnos,
-      segBR,
-      domBR,
-      semana: entrada.semana
-    };
-    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
-    return location.origin + location.pathname + '#disp=' + b64;
-  }
-
-  // Modal de envio
-  const modal = document.createElement('div');
-  modal.id = 'conf-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
-
-  const linhasColab = colabs.map(nome=>{
-    const confs = entrada.confirmacoes?.[nome]||{};
-    const turnos = turnosPorColab[nome]||[];
-    const confStatus = confs.turnos ? confs.turnos.filter(t=>!t.faltou).length + '/' + turnos.length + ' confirmados' : 'Aguardando';
-    return `<div style="display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:8px;padding:9px 12px">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700">${nome}</div>
-        <div style="font-size:10px;color:var(--mu)">${turnos.length} turno(s) · ${confStatus}</div>
-      </div>
-      <button onclick="enviarConfWpp('${nome}','${gerarLinkConf(nome).replace(/'/g,"\'")}','${entrada.semana.replace(/'/g,"\'")}')" style="background:#25d366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Enviar</button>
-    </div>`;
-  }).join('');
-
-  modal.innerHTML = `<div style="background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:0;max-width:500px;width:100%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">
-    <div style="padding:16px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <h3 style="font-size:15px;font-weight:800;margin:0">Confirmacoes de turno</h3>
-        <p style="font-size:11px;color:var(--mu);margin:2px 0 0">Escala ${entrada.semana}</p>
-      </div>
-      <button onclick="document.getElementById('conf-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--mu)">x</button>
-    </div>
-    <div style="overflow-y:auto;flex:1;padding:14px;display:flex;flex-direction:column;gap:8px">
-      <p style="font-size:11px;color:var(--mu);margin-bottom:4px">Envie o link para cada colaborador confirmar seus turnos individualmente.</p>
-      ${linhasColab}
-    </div>
-  </div>`;
-
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e=>{ if(e.target===modal) modal.remove(); });
-}
-
-function enviarConfWpp(nome, link, semana){
-  const msg = 'Ola ' + nome + '!\n\nSua escala da semana ' + semana + ' esta disponivel para confirmacao.\n\nAcesse o link para ver seus turnos e confirmar cada um:\n\n' + link + '\n\nObrigado!';
-  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+  const diasTxt = dias.length===0 ? 'Voce esta disponivel a semana toda!' : 'Indisponivel: ' + dias.join(', ');
+  document.body.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif';
+  wrap.innerHTML = '<div style="text-align:center;color:#fff;max-width:360px">'
+    + '<div style="width:68px;height:68px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:22px;font-weight:900;color:#fff">OK</div>'
+    + '<h2 style="font-size:20px;font-weight:800;margin-bottom:8px">Disponibilidade salva!</h2>'
+    + '<p style="color:#9ca3af;font-size:13px;margin-bottom:16px">'+diasTxt+'</p>'
+    + '<p style="color:#6b7280;font-size:12px">Pode fechar esta pagina. Obrigado!</p></div>';
+  document.body.appendChild(wrap);
 }
 
 // ── Receptor do hash #disp= para confirmação
