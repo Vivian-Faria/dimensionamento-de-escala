@@ -4157,19 +4157,52 @@ function renderDispMode(){
   if(!window._DISP_MODE) return;
   const d = window._DISP_MODE;
   const DIAS_SEMANA = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const DIAS_NOMES = {Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado',Dom:'Domingo'};
+  const DIAS_NOMES = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
 
-  // Sobrescrever a UI com a página de disponibilidade
+  // Modo grupo: colaborador escolhe o nome primeiro
+  if(d.tipo === 'grupo' && d.nomes && d.nomes.length){
+    document.body.innerHTML = `
+      <div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:'DM Sans',sans-serif">
+        <div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:420px;width:100%">
+          <div style="text-align:center;margin-bottom:24px">
+            <div style="font-size:36px;margin-bottom:10px">👋</div>
+            <h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:6px">Disponibilidade ${d.segBR}–${d.domBR}</h2>
+            <p style="color:#9ca3af;font-size:13px">Selecione seu nome para continuar</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${d.nomes.map(nome=>`
+              <button onclick="selecionarNomeDisp('${nome.replace(/'/g,"\\'")}','${d.seg}','${d.segBR}','${d.domBR}')"
+                style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 18px;color:#f3f4f6;font-size:14px;font-weight:600;cursor:pointer;text-align:left;transition:.15s;font-family:inherit"
+                onmouseover="this.style.background='rgba(200,241,53,.15)';this.style.borderColor='rgba(200,241,53,.4)'"
+                onmouseout="this.style.background='rgba(255,255,255,.05)';this.style.borderColor='rgba(255,255,255,.1)'">
+                ${nome}
+              </button>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Modo individual: mostra os dias
+  renderTelaDisp(d.nome, d.seg, d.segBR, d.domBR);
+}
+
+function selecionarNomeDisp(nome, seg, segBR, domBR){
+  renderTelaDisp(nome, seg, segBR, domBR);
+}
+
+function renderTelaDisp(nome, seg, segBR, domBR){
+  const DIAS_SEMANA = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const DIAS_NOMES = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
   document.body.innerHTML = `
     <div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:'DM Sans',sans-serif">
       <div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:400px;width:100%">
         <div style="text-align:center;margin-bottom:24px">
           <div style="font-size:32px;margin-bottom:8px">📅</div>
-          <h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Olá, ${d.nome}!</h2>
-          <p style="color:#9ca3af;font-size:13px">Semana <strong style="color:#c8f135">${d.segBR} – ${d.domBR}</strong></p>
-          <p style="color:#9ca3af;font-size:12px;margin-top:4px">Marque os dias que você <strong style="color:#f87171">NÃO pode</strong> trabalhar</p>
+          <h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Ola, ${nome}!</h2>
+          <p style="color:#9ca3af;font-size:13px">Semana <strong style="color:#c8f135">${segBR} - ${domBR}</strong></p>
+          <p style="color:#9ca3af;font-size:12px;margin-top:4px">Marque os dias que voce <strong style="color:#f87171">NAO pode</strong> trabalhar</p>
         </div>
-
         <div id="disp-dias" style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
           ${DIAS_SEMANA.map(dia=>`
             <label style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 16px;cursor:pointer;transition:.15s" onclick="toggleDispDiaModal(this)">
@@ -4179,11 +4212,10 @@ function renderDispMode(){
             </label>
           `).join('')}
         </div>
-
-        <button onclick="enviarDisponibilidade('${d.nome}','${d.seg}')" style="width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
-          ✅ Confirmar disponibilidade
+        <button onclick="enviarDisponibilidade('${nome.replace(/'/g,"\\'")}','${seg}')" style="width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
+          Confirmar disponibilidade
         </button>
-        <p style="text-align:center;color:#6b7280;font-size:11px;margin-top:12px">Se não marcar nenhum dia, você está disponível a semana toda</p>
+        <p style="text-align:center;color:#6b7280;font-size:11px;margin-top:12px">Se nao marcar nenhum dia, voce esta disponivel a semana toda</p>
       </div>
     </div>`;
 }
@@ -4400,35 +4432,42 @@ function getTurnosColab(nome){
 
 function msgEscalaColab(nome, segBR, domBR){
   const turnos = getTurnosColab(nome);
-  const DIAS_EXT = {Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado',Dom:'Domingo'};
-  const linhas = turnos.map(t=>`  • ${DIAS_EXT[t.dia]}: ${fH(t.ini)}–${fH(t.fim)} (${t.fim-t.ini}h)`).join('\n');
-  return `Olá ${nome}! 👋\n\nSua escala da semana ${segBR}–${domBR}:\n\n${linhas||'  Você não tem turnos esta semana.'}\n\nQualquer dúvida, me chame! 🙏`;
+  const DIAS_EXT = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
+  const linhas = turnos.map(t=>'  - ' + DIAS_EXT[t.dia] + ': ' + fH(t.ini) + '-' + fH(t.fim) + ' (' + (t.fim-t.ini) + 'h)').join('\n');
+  return 'Ola ' + nome + '!\n\nSua escala da semana ' + segBR + '-' + domBR + ':\n\n' + (linhas||'  Voce nao tem turnos esta semana.') + '\n\nQualquer duvida, me chame!';
 }
 
 function abrirWppColab(nome, link, tipo, segBR, domBR){
   let msg;
   if(tipo==='disp'){
-    msg = `Olá ${nome}! 👋\n\nPor favor, informe sua disponibilidade para a semana ${segBR}–${domBR}:\n\n👉 ${link}\n\nBasta clicar no link e marcar os dias que você *não pode* trabalhar. Obrigado! 🙏`;
+    // Link único com seleção de nome
+    const {seg:_s,dom:_d} = proximaSemana();
+    const _p2=v=>String(v).padStart(2,'0');
+    const _segISO=_s.getFullYear()+'-'+_p2(_s.getMonth()+1)+'-'+_p2(_s.getDate());
+    const _domISO=_d.getFullYear()+'-'+_p2(_d.getMonth()+1)+'-'+_p2(_d.getDate());
+    const linkU = gerarLinkUnico(_segISO, segBR, domBR);
+    msg = 'Ola ' + nome + '!\n\nPor favor, informe sua disponibilidade para a semana ' + segBR + '-' + domBR + ':\n\n' + linkU + '\n\nClique no link, selecione seu nome e marque os dias que nao pode trabalhar. Obrigado!';
   } else {
     msg = msgEscalaColab(nome, segBR, domBR);
   }
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
-function enviarParaGrupo(segISO, segBR, domBR){
+function gerarLinkUnico(segISO, segBR, domBR){
+  // Link único onde o colaborador escolhe o nome e depois marca disponibilidade
   const hubColab = getHubColabAtual();
   const colabs = hubColab
     ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
     : S.colabs;
+  const nomes = colabs.map(c=>c.nome);
+  const dados = { tipo:'grupo', seg:segISO, segBR, domBR, nomes };
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+  return location.origin + location.pathname + '#disp=' + b64;
+}
 
-  const linksIndiv = colabs.map(c=>{
-    const dados = { nome:c.nome, hub:c.hub||'Sion', seg:segISO, segBR, domBR, dom:'' };
-    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
-    const link = location.origin + location.pathname + '#disp=' + b64;
-    return `• ${c.nome}: ${link}`;
-  }).join('\n');
-
-  const msg = `Oi pessoal! 👋\n\nPor favor, confirmem a disponibilidade para a semana ${segBR}–${domBR} até quinta-feira.\n\nCliquem no link com o seu nome e marquem os dias que vocês *não podem* trabalhar:\n\n${linksIndiv}\n\nObrigado! 🙏`;
+function enviarParaGrupo(segISO, segBR, domBR){
+  const link = gerarLinkUnico(segISO, segBR, domBR);
+  const msg = 'Oi pessoal!\n\nPor favor, confirmem disponibilidade para a semana ' + segBR + '-' + domBR + ' ate quinta-feira.\n\nClique no link, selecione seu nome e marque os dias que nao pode trabalhar:\n\n' + link + '\n\nObrigado!';
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
@@ -4452,7 +4491,7 @@ function enviarEscalaGrupo(){
     return `*${c.nome}:* ${slots}`;
   }).filter(Boolean).join('\n');
 
-  const msg = `📅 *Escala ${segBR}–${domBR}*\n\n${linhas}\n\nDúvidas ou impossibilidades, me avisem! 🙏`;
+  const msg = '*Escala ' + segBR + '-' + domBR + '*\n\n' + linhas + '\n\nDuvidas ou impossibilidades, me avisem!';
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
