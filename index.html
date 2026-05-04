@@ -2711,7 +2711,9 @@ function renderHistorico(filtro){
           ${confRows}
         </div>
         <div class="hist-actions" style="padding:10px 18px;border-top:1px solid var(--brd)">
-          <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">🔍 Ver escala completa</button>
+          <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">Ver escala completa</button>
+          <button class="btn bs sm" style="background:rgba(37,211,102,.15);color:#25d366;border-color:#25d366" onclick="abrirEnvioConfirmacao('${h.id}')">Enviar confirmacoes</button>
+          <button class="btn bs sm" style="background:rgba(37,99,235,.15);color:#60a5fa;border-color:#3b82f6" onclick="abrirLinkLeilao('${h.id}')">Leilao de horarios</button>
           <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
           <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
         </div>
@@ -4140,14 +4142,14 @@ function renderColHist(){
 // SISTEMA DE DISPONIBILIDADE E ENVIO WHATSAPP
 // ══════════════════════════════════════════════════════════════════
 
-// ── Verificar se a URL tem #disp= (página de disponibilidade do colaborador)
+// ── Verificar se a URL tem #disp= (disponibilidade ou confirmação)
 (function(){
   try{
     const h = location.hash;
     if(!h.startsWith('#disp=')) return;
     const b64 = decodeURIComponent(h.slice(6));
     const dados = JSON.parse(decodeURIComponent(escape(atob(b64))));
-    window._DISP_MODE = dados; // {nome, hub, seg, dom, segBR, domBR}
+    window._DISP_MODE = dados;
     history.replaceState(null,'',location.pathname);
   }catch(e){}
 })();
@@ -4156,125 +4158,147 @@ function renderColHist(){
 function renderDispMode(){
   if(!window._DISP_MODE) return;
   const d = window._DISP_MODE;
-  const DIAS_SEMANA = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const DIAS_NOMES = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
+  window._dispDados = d;
 
-  // Modo grupo: colaborador escolhe o nome primeiro
-  if(d.tipo === 'grupo' && d.nomes && d.nomes.length){
-    document.body.innerHTML = `
-      <div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:'DM Sans',sans-serif">
-        <div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:420px;width:100%">
-          <div style="text-align:center;margin-bottom:24px">
-            <div style="font-size:36px;margin-bottom:10px">👋</div>
-            <h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:6px">Disponibilidade ${d.segBR}–${d.domBR}</h2>
-            <p style="color:#9ca3af;font-size:13px">Selecione seu nome para continuar</p>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            ${d.nomes.map(nome=>`
-              <button onclick="selecionarNomeDisp('${nome.replace(/'/g,"\\'")}','${d.seg}','${d.segBR}','${d.domBR}')"
-                style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 18px;color:#f3f4f6;font-size:14px;font-weight:600;cursor:pointer;text-align:left;transition:.15s;font-family:inherit"
-                onmouseover="this.style.background='rgba(200,241,53,.15)';this.style.borderColor='rgba(200,241,53,.4)'"
-                onmouseout="this.style.background='rgba(255,255,255,.05)';this.style.borderColor='rgba(255,255,255,.1)'">
-                ${nome}
-              </button>`).join('')}
-          </div>
-        </div>
-      </div>`;
+  // Verificar expiração
+  if(d.expira && Date.now() > d.expira){
+    document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="text-align:center;color:#fff;max-width:320px"><div style="font-size:52px;margin-bottom:16px">⏰</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px">Link expirado</h2><p style="color:#9ca3af;font-size:13px">O prazo de resposta encerrou. Fale com seu gestor.</p></div></div>';
     return;
   }
 
-  // Modo individual: mostra os dias
-  renderTelaDisp(d.nome, d.seg, d.segBR, d.domBR);
+  // Modo grupo: seleção de nome
+  if(d.tipo === 'grupo' && d.nomes && d.nomes.length){
+    const restante = d.expira ? Math.max(0, d.expira - Date.now()) : null;
+    const timerHtml = restante !== null
+      ? '<div id="disp-timer" style="background:rgba(255,255,255,.05);border-radius:10px;padding:10px 16px;text-align:center;margin-bottom:20px"><div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:600;margin-bottom:4px">Tempo para responder</div><div id="disp-timer-val" style="font-size:22px;font-weight:900;color:#c8f135;font-family:monospace">--:--</div></div>'
+      : '';
+
+    const btns = d.nomes.map(function(nome){
+      return '<button onclick="selecionarNomeDisp(\'' + nome.replace(/'/g,"\'") + '\')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 18px;color:#f3f4f6;font-size:14px;font-weight:600;cursor:pointer;text-align:left;width:100%;font-family:inherit;margin-bottom:6px" onmouseover="this.style.background=\'rgba(200,241,53,.15)\'" onmouseout="this.style.background=\'rgba(255,255,255,.05)\'">'+nome+'</button>';
+    }).join('');
+
+    document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:420px;width:100%"><div style="text-align:center;margin-bottom:20px"><h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Disponibilidade '+d.segBR+'-'+d.domBR+'</h2><p style="color:#9ca3af;font-size:13px">Selecione seu nome</p></div>'+timerHtml+'<div>'+btns+'</div></div></div>';
+
+    // Timer countdown
+    if(d.expira){
+      var tick = function(){
+        var el = document.getElementById('disp-timer-val');
+        if(!el) return;
+        var resto = Math.max(0, d.expira - Date.now());
+        if(resto === 0){ el.textContent = '00:00'; el.style.color = '#ef4444'; return; }
+        var min = Math.floor(resto/60000);
+        var sec = Math.floor((resto%60000)/1000);
+        el.textContent = String(min).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+        el.style.color = resto < 300000 ? '#f87171' : resto < 600000 ? '#fbbf24' : '#c8f135';
+        setTimeout(tick, 1000);
+      };
+      tick();
+    }
+    return;
+  }
+
+  // Modo individual
+  renderTelaDisp(d.nome, d.seg, d.segBR, d.domBR, d.colabs ? d.colabs.find(function(c){return c.nome===d.nome;}) : null, d.expira);
 }
 
-function selecionarNomeDisp(nome, seg, segBR, domBR){
-  renderTelaDisp(nome, seg, segBR, domBR);
+function selecionarNomeDisp(nome){
+  const d = window._dispDados;
+  if(!d){ return; }
+  // Dados do colaborador no link
+  const colab = d.colabs ? d.colabs.find(c=>c.nome===nome) : null;
+  window._dispNomeSel = nome;
+  renderTelaDisp(nome, d.seg, d.segBR, d.domBR, colab, d.expira);
 }
 
-function renderTelaDisp(nome, seg, segBR, domBR){
+function renderTelaDisp(nome, seg, segBR, domBR, colabDados, expira){
   const DIAS_SEMANA = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const DIAS_NOMES = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
-  document.body.innerHTML = `
-    <div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:'DM Sans',sans-serif">
-      <div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:400px;width:100%">
-        <div style="text-align:center;margin-bottom:24px">
-          <div style="font-size:32px;margin-bottom:8px">📅</div>
-          <h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Ola, ${nome}!</h2>
-          <p style="color:#9ca3af;font-size:13px">Semana <strong style="color:#c8f135">${segBR} - ${domBR}</strong></p>
-          <p style="color:#9ca3af;font-size:12px;margin-top:4px">Marque os dias que voce <strong style="color:#f87171">NAO pode</strong> trabalhar</p>
-        </div>
-        <div id="disp-dias" style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
-          ${DIAS_SEMANA.map(dia=>`
-            <label style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 16px;cursor:pointer;transition:.15s" onclick="toggleDispDiaModal(this)">
-              <div style="width:22px;height:22px;border-radius:6px;border:2px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;background:transparent;transition:.15s" class="disp-chk"></div>
-              <span style="color:#f3f4f6;font-size:14px;font-weight:600">${DIAS_NOMES[dia]}</span>
-              <input type="checkbox" data-dia="${dia}" style="display:none">
-            </label>
-          `).join('')}
-        </div>
-        <button onclick="enviarDisponibilidade('${nome.replace(/'/g,"\\'")}','${seg}')" style="width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
-          Confirmar disponibilidade
-        </button>
-        <p style="text-align:center;color:#6b7280;font-size:11px;margin-top:12px">Se nao marcar nenhum dia, voce esta disponivel a semana toda</p>
-      </div>
-    </div>`;
-}
+  const fH2 = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
 
-function toggleDispDiaModal(label){
-  const chk = label.querySelector('input[type=checkbox]');
-  const box = label.querySelector('.disp-chk');
-  chk.checked = !chk.checked;
-  if(chk.checked){
-    box.style.background = '#ef4444';
-    box.style.borderColor = '#ef4444';
-    box.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
-    label.style.borderColor = 'rgba(239,68,68,.4)';
-    label.style.background = 'rgba(239,68,68,.08)';
-  } else {
-    box.style.background = 'transparent';
-    box.style.borderColor = 'rgba(255,255,255,.2)';
-    box.innerHTML = '';
-    label.style.borderColor = 'rgba(255,255,255,.08)';
-    label.style.background = 'rgba(255,255,255,.05)';
+  // Calcular dias disponíveis do colaborador (baseado no cadastro)
+  const diasDisp = colabDados ? colabDados.dias || [] : DIAS_SEMANA;
+  const horaIn = colabDados ? colabDados.horaIn || 9 : 9;
+  const horaOut = colabDados ? colabDados.horaOut || 23 : 23;
+
+  // Dias disponíveis = dias do cadastro
+  const diasDisponiveis = DIAS_SEMANA.filter(d => diasDisp.includes(d));
+
+  // Preview dos dias de trabalho (antes de marcar indisponibilidade)
+  const previewHtml = diasDisponiveis.length
+    ? '<div style="background:rgba(200,241,53,.08);border:1px solid rgba(200,241,53,.2);border-radius:10px;padding:12px 16px;margin-bottom:16px"><div style="font-size:10px;font-weight:700;color:#c8f135;text-transform:uppercase;margin-bottom:8px">Seus dias de trabalho cadastrados</div>'
+      + diasDisponiveis.map(d=>'<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;color:#d1fae5"><span>'+DIAS_NOMES[d]+'</span><span style="color:#9ca3af">'+fH2(horaIn)+' - '+fH2(horaOut)+'</span></div>').join('')
+      + '<div style="font-size:10px;color:#9ca3af;margin-top:8px">Marque abaixo os dias que nao pode comparecer</div></div>'
+    : '';
+
+  // Timer se tiver expiração
+  const timerHtml = expira
+    ? '<div id="disp-timer2" style="text-align:center;margin-bottom:14px"><span id="disp-timer2-val" style="font-size:13px;color:#9ca3af;font-family:monospace">--:--</span> restantes</div>'
+    : '';
+
+  document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:400px;width:100%">'
+    + '<div style="text-align:center;margin-bottom:20px">'
+    + '<h2 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:4px">Ola, '+nome+'!</h2>'
+    + '<p style="color:#9ca3af;font-size:13px">Semana '+segBR+' - '+domBR+'</p></div>'
+    + timerHtml
+    + previewHtml
+    + '<div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Dias que NAO posso trabalhar:</div>'
+    + '<div id="disp-dias" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">'
+    + DIAS_SEMANA.map(function(dia){
+        const disponivel = diasDisponiveis.includes(dia);
+        if(!disponivel) return ''; // não mostrar dias que já não trabalha
+        return '<label style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px 16px;cursor:pointer" onclick="toggleDispDiaModal(this)">'
+          + '<div style="width:20px;height:20px;border-radius:5px;border:2px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0" class="disp-chk"></div>'
+          + '<span style="color:#f3f4f6;font-size:13px;font-weight:600">'+DIAS_NOMES[dia]+'</span>'
+          + '<span style="color:#6b7280;font-size:11px;margin-left:auto">'+fH2(horaIn)+'-'+fH2(horaOut)+'</span>'
+          + '<input type="checkbox" data-dia="'+dia+'" style="display:none"></label>';
+      }).join('')
+    + '</div>'
+    + '<button onclick="enviarDisponibilidade(\'' + nome.replace(/'/g,"\'") + '\',\'' + seg + '\')" style="width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Confirmar disponibilidade</button>'
+    + '<p style="text-align:center;color:#6b7280;font-size:11px;margin-top:10px">Se nao marcar nada, voce esta disponivel em todos os dias listados</p>'
+    + '</div></div>';
+
+  // Timer
+  if(expira){
+    var tick2 = function(){
+      var el = document.getElementById('disp-timer2-val');
+      if(!el) return;
+      var resto = Math.max(0, expira - Date.now());
+      if(resto === 0){ el.textContent = '00:00'; el.style.color='#ef4444'; return; }
+      var min = Math.floor(resto/60000);
+      var sec = Math.floor((resto%60000)/1000);
+      el.textContent = String(min).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+      el.style.color = resto < 300000 ? '#f87171' : '#9ca3af';
+      setTimeout(tick2, 1000);
+    };
+    tick2();
   }
 }
 
 function enviarDisponibilidade(nome, segISO){
   const dias = [...document.querySelectorAll('#disp-dias input[type=checkbox]:checked')].map(c=>c.dataset.dia);
-  const payload = { nome, segISO, diasIndisponiveis: dias, ts: Date.now() };
-  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-  // Abre a plataforma com os dados de disponibilidade via hash
-  const url = location.origin + location.pathname + '#disponibilidade=' + b64;
-  // Redireciona para mensagem de confirmação
+  
+  // Salvar diretamente no localStorage — estamos na mesma origem
+  try{
+    const key = 'orion_v7_disp_' + segISO;
+    const atual = JSON.parse(localStorage.getItem(key)||'{}');
+    atual[nome] = { diasIndisponiveis: dias, ts: Date.now() };
+    localStorage.setItem(key, JSON.stringify(atual));
+  }catch(e){}
+
+  // Mostrar confirmação
+  const diasTxt = dias.length === 0 ? 'Voce esta disponivel a semana toda!' : 'Dias indisponiveis: ' + dias.join(', ');
   document.body.innerHTML = `
     <div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:'DM Sans',sans-serif">
-      <div style="text-align:center;color:#fff">
-        <div style="font-size:56px;margin-bottom:16px">✅</div>
-        <h2 style="font-size:22px;font-weight:800;margin-bottom:8px">Disponibilidade enviada!</h2>
-        <p style="color:#9ca3af;font-size:14px;margin-bottom:24px">${dias.length===0?'Você está disponível a semana toda 🎉':'Dias indisponíveis: '+dias.join(', ')}</p>
-        <a href="${url}" style="background:#c8f135;color:#0d0d10;border-radius:10px;padding:12px 24px;font-weight:700;text-decoration:none;font-size:14px">Ver na plataforma</a>
+      <div style="text-align:center;color:#fff;max-width:360px">
+        <div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:36px">✓</div>
+        <h2 style="font-size:22px;font-weight:800;margin-bottom:10px">Disponibilidade salva!</h2>
+        <p style="color:#9ca3af;font-size:14px;margin-bottom:28px">${diasTxt}</p>
+        <p style="color:#6b7280;font-size:12px">Pode fechar esta pagina. Obrigado!</p>
       </div>
     </div>`;
 }
 
-// ── Receptor de disponibilidade via hash
-(function(){
-  try{
-    const h = location.hash;
-    if(!h.startsWith('#disponibilidade=')) return;
-    const b64 = decodeURIComponent(h.slice(17));
-    const d = JSON.parse(decodeURIComponent(escape(atob(b64))));
-    if(d && d.nome && d.segISO){
-      // Salvar no localStorage
-      const key = 'orion_v7_disp_' + d.segISO;
-      const atual = JSON.parse(localStorage.getItem(key)||'{}');
-      atual[d.nome] = { diasIndisponiveis: d.diasIndisponiveis||[], ts: d.ts };
-      localStorage.setItem(key, JSON.stringify(atual));
-      history.replaceState(null,'',location.pathname);
-      window._DISP_RECEBIDA = d;
-    }
-  }catch(e){}
-})();
+// Disponibilidade salva direto no localStorage — receptor de hash removido
 
 // ── Modal de envio WhatsApp
 function abrirEnvioWhatsApp(){
@@ -4454,13 +4478,20 @@ function abrirWppColab(nome, link, tipo, segBR, domBR){
 }
 
 function gerarLinkUnico(segISO, segBR, domBR){
-  // Link único onde o colaborador escolhe o nome e depois marca disponibilidade
   const hubColab = getHubColabAtual();
   const colabs = hubColab
     ? S.colabs.filter(c=>(c.hub||'Sion')===hubColab)
     : S.colabs;
   const nomes = colabs.map(c=>c.nome);
-  const dados = { tipo:'grupo', seg:segISO, segBR, domBR, nomes };
+  // Incluir timestamp de expiração (1h a partir de agora) e dados mínimos dos colaboradores
+  const colabsMin = colabs.map(c=>({
+    nome: c.nome,
+    horaIn: c.horaIn, horaOut: c.horaOut,
+    dias: c.dias,
+    tipoContrato: c.tipoContrato||'hora'
+  }));
+  const expira = Date.now() + 60*60*1000; // 1 hora
+  const dados = { tipo:'grupo', seg:segISO, segBR, domBR, nomes, colabs:colabsMin, expira };
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
   return location.origin + location.pathname + '#disp=' + b64;
 }
@@ -4495,6 +4526,301 @@ function enviarEscalaGrupo(){
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// FEATURE 2: CONFIRMAÇÃO INDIVIDUAL POR TURNO
+// ══════════════════════════════════════════════════════════════════
+
+function abrirEnvioConfirmacao(histId){
+  const hist = JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada = hist.find(h=>h.id===histId);
+  if(!entrada){ toast('Escala não encontrada.','ter'); return; }
+
+  const DIAS = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const fHl = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
+
+  // Extrair turnos por colaborador
+  const turnosPorColab = {};
+  DIAS.forEach(dia=>{
+    for(let h=9;h<=25;h++){
+      const cell = entrada.escala[dia]?.[h];
+      if(!cell) continue;
+      (cell.alocados||[]).forEach(nome=>{
+        if(!turnosPorColab[nome]) turnosPorColab[nome] = [];
+        // Agrupar em blocos consecutivos
+        const lista = turnosPorColab[nome];
+        const ult = lista[lista.length-1];
+        if(ult && ult.dia===dia && ult.fim===h) ult.fim = h+1;
+        else lista.push({dia, ini:h, fim:h+1});
+      });
+    }
+  });
+
+  const colabs = Object.keys(turnosPorColab).sort();
+
+  // Gerar links de confirmação
+  function gerarLinkConf(nome){
+    const turnos = turnosPorColab[nome]||[];
+    const segBR = entrada.semana.split(' – ')[0] || entrada.semana.slice(0,5);
+    const domBR = entrada.semana.split(' – ')[1] || entrada.semana.slice(-5);
+    const dados = {
+      tipo: 'confirmacao',
+      histId,
+      nome,
+      turnos,
+      segBR,
+      domBR,
+      semana: entrada.semana
+    };
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+    return location.origin + location.pathname + '#disp=' + b64;
+  }
+
+  // Modal de envio
+  const modal = document.createElement('div');
+  modal.id = 'conf-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  const linhasColab = colabs.map(nome=>{
+    const confs = entrada.confirmacoes?.[nome]||{};
+    const turnos = turnosPorColab[nome]||[];
+    const confStatus = confs.turnos ? confs.turnos.filter(t=>!t.faltou).length + '/' + turnos.length + ' confirmados' : 'Aguardando';
+    return `<div style="display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:8px;padding:9px 12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700">${nome}</div>
+        <div style="font-size:10px;color:var(--mu)">${turnos.length} turno(s) · ${confStatus}</div>
+      </div>
+      <button onclick="enviarConfWpp('${nome}','${gerarLinkConf(nome).replace(/'/g,"\'")}','${entrada.semana.replace(/'/g,"\'")}')" style="background:#25d366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Enviar</button>
+    </div>`;
+  }).join('');
+
+  modal.innerHTML = `<div style="background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:0;max-width:500px;width:100%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h3 style="font-size:15px;font-weight:800;margin:0">Confirmacoes de turno</h3>
+        <p style="font-size:11px;color:var(--mu);margin:2px 0 0">Escala ${entrada.semana}</p>
+      </div>
+      <button onclick="document.getElementById('conf-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--mu)">x</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding:14px;display:flex;flex-direction:column;gap:8px">
+      <p style="font-size:11px;color:var(--mu);margin-bottom:4px">Envie o link para cada colaborador confirmar seus turnos individualmente.</p>
+      ${linhasColab}
+    </div>
+  </div>`;
+
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e=>{ if(e.target===modal) modal.remove(); });
+}
+
+function enviarConfWpp(nome, link, semana){
+  const msg = 'Ola ' + nome + '!\n\nSua escala da semana ' + semana + ' esta disponivel para confirmacao.\n\nAcesse o link para ver seus turnos e confirmar cada um:\n\n' + link + '\n\nObrigado!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+
+// ── Receptor do hash #disp= para confirmação
+// (adicionado ao receptor existente via _DISP_MODE)
+// Quando tipo='confirmacao', renderizar tela de confirmação de turnos
+function renderConfirmacaoMode(d){
+  const DIAS_NOMES = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
+  const fHc = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
+  const confKey = 'orion_v7_conf_' + d.histId + '_' + d.nome.replace(/[^a-z0-9]/gi,'_');
+  let confsExist = JSON.parse(localStorage.getItem(confKey)||'{}');
+
+  function renderTela(){
+    const container = document.createElement('div');
+    container.style.cssText = 'min-height:100vh;background:#0d0d10;padding:20px;font-family:sans-serif;max-width:440px;margin:0 auto';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'text-align:center;margin-bottom:24px;padding-top:16px';
+    header.innerHTML = '<h2 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:4px">Seus turnos - '+d.semana+'</h2><p style="color:#9ca3af;font-size:13px">'+d.nome+' · Confirme cada turno</p>';
+    container.appendChild(header);
+
+    d.turnos.forEach(function(t){
+      const key = t.dia+'_'+t.ini+'_'+t.fim;
+      const conf = confsExist[key];
+      const card = document.createElement('div');
+      card.style.cssText = 'border-radius:10px;padding:14px 16px;margin-bottom:8px;border:1px solid '+(conf===true?'rgba(22,163,74,.5)':conf===false?'rgba(239,68,68,.5)':'rgba(255,255,255,.1)')+';background:'+(conf===true?'rgba(22,163,74,.15)':conf===false?'rgba(239,68,68,.15)':'rgba(255,255,255,.04)');
+      
+      const info = document.createElement('div');
+      info.innerHTML = '<div style="color:#fff;font-size:14px;font-weight:700">'+DIAS_NOMES[t.dia]+'</div><div style="color:#9ca3af;font-size:12px">'+fHc(t.ini)+' - '+fHc(t.fim)+'</div>';
+      
+      const btns = document.createElement('div');
+      btns.style.cssText = 'display:flex;gap:6px;margin-top:10px';
+      
+      const btnSim = document.createElement('button');
+      btnSim.textContent = 'Confirmo';
+      btnSim.style.cssText = 'flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-weight:700;font-size:13px;background:'+(conf===true?'#16a34a':'rgba(22,163,74,.2)')+';color:'+(conf===true?'#fff':'#86efac');
+      btnSim.onclick = function(){ confsExist[key]=true; localStorage.setItem(confKey,JSON.stringify(confsExist)); renderTela(); };
+      
+      const btnNao = document.createElement('button');
+      btnNao.textContent = 'Nao posso';
+      btnNao.style.cssText = 'flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-weight:700;font-size:13px;background:'+(conf===false?'#dc2626':'rgba(239,68,68,.2)')+';color:'+(conf===false?'#fff':'#fca5a5');
+      btnNao.onclick = function(){ confsExist[key]=false; localStorage.setItem(confKey,JSON.stringify(confsExist)); renderTela(); };
+      
+      btns.appendChild(btnSim);
+      btns.appendChild(btnNao);
+      card.appendChild(info);
+      card.appendChild(btns);
+      container.appendChild(card);
+    });
+
+    const todos = d.turnos.every(function(t){ return confsExist[t.dia+'_'+t.ini+'_'+t.fim]!==undefined; });
+    if(todos){
+      const btnFim = document.createElement('button');
+      btnFim.textContent = 'Enviar confirmacoes';
+      btnFim.style.cssText = 'width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;font-family:inherit';
+      btnFim.onclick = finalizarConfirmacao;
+      container.appendChild(btnFim);
+    } else {
+      const p = document.createElement('p');
+      p.style.cssText = 'text-align:center;color:#6b7280;font-size:11px;margin-top:12px';
+      p.textContent = 'Responda todos os turnos para finalizar';
+      container.appendChild(p);
+    }
+
+    document.body.innerHTML = '';
+    document.body.appendChild(container);
+  }
+
+  function finalizarConfirmacao(){
+    const resultado = {
+      nome: d.nome, histId: d.histId,
+      turnos: d.turnos.map(function(t){
+        const key = t.dia+'_'+t.ini+'_'+t.fim;
+        return Object.assign({},t,{confirmado:confsExist[key]===true,recusado:confsExist[key]===false});
+      }),
+      ts: Date.now()
+    };
+    const resKey = 'orion_v7_confres_' + d.histId;
+    const atual = JSON.parse(localStorage.getItem(resKey)||'{}');
+    atual[d.nome] = resultado;
+    localStorage.setItem(resKey, JSON.stringify(atual));
+
+    const recusados = resultado.turnos.filter(function(t){return t.recusado;});
+    if(recusados.length){
+      const leilaoKey = 'orion_v7_leilao_' + d.histId;
+      const leilao = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+      recusados.forEach(function(t){
+        if(!leilao.find(function(l){return l.dia===t.dia&&l.ini===t.ini&&l.fim===t.fim;}))
+          leilao.push(Object.assign({},t,{ofertadoPor:d.nome,pegoPor:null}));
+      });
+      localStorage.setItem(leilaoKey, JSON.stringify(leilao));
+    }
+
+    const linkLeilao = location.origin + location.pathname + '#leilao=' + d.histId;
+    const div = document.createElement('div');
+    div.style.cssText = 'min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif';
+    div.innerHTML = '<div style="text-align:center;color:#fff;max-width:360px"><div style="font-size:44px;margin-bottom:16px">✅</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px">Confirmacoes salvas!</h2>'
+      + (recusados.length ? '<p style="color:#fbbf24;font-size:13px;margin-bottom:16px">'+recusados.length+' turno(s) recusado(s) foram para o leilao.</p><a href="'+linkLeilao+'" style="display:inline-block;background:#2563eb;color:#fff;border-radius:10px;padding:10px 20px;font-weight:700;text-decoration:none;font-size:13px;margin-bottom:10px">Ver leilao de horarios</a><br>' : '<p style="color:#9ca3af;font-size:13px;margin-bottom:16px">Todos os turnos confirmados!</p>')
+      + '<p style="color:#6b7280;font-size:12px;margin-top:10px">Pode fechar esta pagina. Obrigado!</p></div>';
+    document.body.innerHTML = '';
+    document.body.appendChild(div);
+  }
+
+  renderTela();
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// FEATURE 3: LEILÃO DE HORÁRIOS
+// ══════════════════════════════════════════════════════════════════
+
+// Receptor do hash #leilao=histId
+(function(){
+  try{
+    const h = location.hash;
+    if(!h.startsWith('#leilao=')) return;
+    window._LEILAO_HIST_ID = decodeURIComponent(h.slice(8));
+    history.replaceState(null,'',location.pathname);
+  }catch(e){}
+})();
+
+function renderLeilaoMode(){
+  if(!window._LEILAO_HIST_ID) return;
+  const histId = window._LEILAO_HIST_ID;
+  const leilaoKey = 'orion_v7_leilao_' + histId;
+  const hist = JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada = hist.find(h=>h.id===histId);
+  const semana = entrada ? entrada.semana : '?';
+  const DIAS_NOMES = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
+  const fHl = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
+
+  function renderPagina(){
+    const leilao = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+    const disponiveis = leilao.filter(t=>!t.pegoPor);
+    const tomados = leilao.filter(t=>t.pegoPor);
+
+    const cards = disponiveis.length
+      ? disponiveis.map(function(t,i){
+          return '<div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px;margin-bottom:10px">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'
+            + '<div>'
+            + '<div style="color:#fff;font-size:15px;font-weight:700">'+DIAS_NOMES[t.dia]+' - '+fHl(t.ini)+' ate '+fHl(t.fim)+'</div>'
+            + '<div style="color:#9ca3af;font-size:12px;margin-top:2px">'+((t.fim>=24?t.fim-24:t.fim)-(t.ini>=24?t.ini-24:t.ini)||t.fim-t.ini)+'h · Ofertado por '+t.ofertadoPor+'</div>'
+            + '</div>'
+            + '<button onclick="pegarTurnoLeilao('+i+')" style="background:#c8f135;color:#0d0d10;border:none;border-radius:8px;padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer">Pegar este turno</button>'
+            + '</div></div>';
+        }).join('')
+      : '<div style="text-align:center;padding:30px;color:#6b7280"><div style="font-size:40px;margin-bottom:10px">ok</div><p>Nenhum turno disponivel no momento.</p></div>';
+
+    const tomadosHtml = tomados.length
+      ? '<div style="margin-top:20px"><div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Ja pegados</div>'
+        + tomados.map(t=>'<div style="background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.2);border-radius:10px;padding:12px 16px;margin-bottom:6px;display:flex;justify-content:space-between"><span style="color:#d1fae5;font-size:13px">'+DIAS_NOMES[t.dia]+' '+fHl(t.ini)+'-'+fHl(t.fim)+'</span><span style="color:#86efac;font-size:12px;font-weight:700">'+t.pegoPor+'</span></div>').join('')
+        + '</div>'
+      : '';
+
+    document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;padding:20px;font-family:sans-serif;max-width:480px;margin:0 auto">'
+      + '<div style="text-align:center;padding:20px 0 24px">'
+      + '<div style="font-size:28px;margin-bottom:8px">⚡</div>'
+      + '<h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Leilao de Horarios</h2>'
+      + '<p style="color:#9ca3af;font-size:13px">Semana '+semana+'</p>'
+      + (disponiveis.length ? '<p style="color:#c8f135;font-size:12px;font-weight:600;margin-top:6px">'+disponiveis.length+' turno(s) disponivel(is)</p>' : '')
+      + '</div>'
+      + cards + tomadosHtml + '</div>';
+
+    window.pegarTurnoLeilao = function(idx){
+      const nome = prompt('Qual o seu nome?');
+      if(!nome || !nome.trim()) return;
+      const leilaoAtual = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+      const turno = leilaoAtual.filter(t=>!t.pegoPor)[idx];
+      if(!turno){ alert('Turno ja foi pego por outro colaborador. Atualizando...'); renderPagina(); return; }
+      turno.pegoPor = nome.trim();
+      turno.pegadoEm = Date.now();
+      // Atualizar no leilão
+      const idxGlobal = leilaoAtual.findIndex(t=>t.dia===turno.dia&&t.ini===turno.ini&&t.fim===turno.fim&&!t.pegoPor);
+      if(idxGlobal>=0){ leilaoAtual[idxGlobal] = turno; localStorage.setItem(leilaoKey, JSON.stringify(leilaoAtual)); }
+      // Salvar nas confirmações do colaborador
+      const resKey = 'orion_v7_confres_' + histId;
+      const confs = JSON.parse(localStorage.getItem(resKey)||'{}');
+      if(!confs[nome.trim()]) confs[nome.trim()] = {nome:nome.trim(), histId, turnos:[], ts:Date.now()};
+      confs[nome.trim()].turnos.push(Object.assign({}, turno, {confirmado:true, recusado:false, deLeilao:true}));
+      localStorage.setItem(resKey, JSON.stringify(confs));
+      renderPagina();
+    };
+  }
+
+  renderPagina();
+}
+
+// Botão de leilão na plataforma (para gestor enviar link do leilão)
+function abrirLinkLeilao(histId){
+  const link = location.origin + location.pathname + '#leilao=' + histId;
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = '<div style="background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:24px;max-width:420px;width:100%;text-align:center">'
+    + '<div style="font-size:28px;margin-bottom:12px">⚡</div>'
+    + '<h3 style="font-size:16px;font-weight:800;margin-bottom:8px">Link do Leilao de Horarios</h3>'
+    + '<p style="font-size:12px;color:var(--mu);margin-bottom:16px">Envie este link no grupo para que os colaboradores possam pegar os turnos disponiveis.</p>'
+    + '<input value="'+link+'" readonly style="width:100%;background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:10px;font-size:11px;color:var(--tx);margin-bottom:12px">'
+    + '<div style="display:flex;gap:8px;justify-content:center">'
+    + '<button onclick="navigator.clipboard.writeText(\'' + link.replace(/'/g,"\'") + '\').then(()=>toast(\'Link copiado!\',\'tok\'))" style="background:var(--ac);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-weight:700;font-size:12px;cursor:pointer">Copiar link</button>'
+    + '<button onclick="window.open(\'https://wa.me/?text=\'+encodeURIComponent(\'Acesse o leilao de horarios da semana: ' + link.replace(/'/g,"\'") + '\'),\'_blank\')" style="background:#25d366;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;font-size:12px;cursor:pointer">Enviar WA</button>'
+    + '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:1px solid var(--brd);border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;color:var(--mu)">Fechar</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+}
+
 function exportarIndicadores(){
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
   if(!hist.length){toast('Nenhum dado para exportar.','ter');return;}
@@ -4527,14 +4853,15 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
-// Modo disponibilidade: se acessado via link #disp=, renderizar página especial
-if(window._DISP_MODE){ renderDispMode(); }
-// Notificar disponibilidade recebida
-if(window._DISP_RECEBIDA){
-  const dr=window._DISP_RECEBIDA;
-  const dias=dr.diasIndisponiveis||[];
-  toast('✅ Disponibilidade de '+dr.nome+' recebida'+(dias.length?' (indisponível: '+dias.join(',')+')':'')+'!','tok');
+// Modo disponibilidade
+if(window._DISP_MODE){
+  const d = window._DISP_MODE;
+  if(d.tipo === 'confirmacao') renderConfirmacaoMode(d);
+  else renderDispMode();
 }
+// Modo leilão
+if(window._LEILAO_HIST_ID){ renderLeilaoMode(); }
+// Disponibilidade salva diretamente no localStorage pelo colaborador
 
 // Inicialização — processa dados recebidos via hash ou postMessage
 {
