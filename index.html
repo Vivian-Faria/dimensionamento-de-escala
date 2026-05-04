@@ -4620,7 +4620,31 @@ function _criarLinhaWpp(nome, tipo, info, ok){
   d.style.cssText='display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:8px;padding:9px 12px';
   d.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">'+nome+'</div>'
     +'<div style="font-size:10px;color:'+(ok?'#16a34a':'var(--mu)')+'">'+info+'</div></div>';
-  if(ok){
+  if(ok && tipo==='disp'){
+    const wrap=document.createElement('div');
+    wrap.style.cssText='display:flex;align-items:center;gap:6px';
+    const s=document.createElement('span');
+    s.style.cssText='color:#16a34a;font-weight:700;font-size:13px';
+    s.textContent='ok';
+    const bLimpar=document.createElement('button');
+    bLimpar.style.cssText='background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:3px 8px;font-size:10px;font-weight:600;cursor:pointer';
+    bLimpar.textContent='Limpar';
+    bLimpar.title='Apagar disponibilidade registrada de '+nome;
+    bLimpar.dataset.nome=nome;
+    bLimpar.onclick=function(){
+      const ctx=window._wppCtx||{};
+      const key='orion_v7_disp_'+(ctx.segISO||'');
+      const atual=JSON.parse(localStorage.getItem(key)||'{}');
+      delete atual[this.dataset.nome];
+      localStorage.setItem(key,JSON.stringify(atual));
+      toast('Disponibilidade de '+this.dataset.nome+' apagada.','tok');
+      document.getElementById('wpp-modal')?.remove();
+      abrirEnvioWhatsApp();
+    };
+    wrap.appendChild(s);
+    wrap.appendChild(bLimpar);
+    d.appendChild(wrap);
+  } else if(ok){
     const s=document.createElement('span');
     s.style.cssText='color:#16a34a;font-weight:700;font-size:13px';
     s.textContent='ok';
