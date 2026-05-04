@@ -3748,14 +3748,27 @@ function gerarRelatorioIndicadores(){
   }).join('');
 
   // Distribuição por hub (quando múltiplos)
-  const mTotal=calcGrupo(hist);
+  // mTotal = apenas semanas do mês em vigência
+  const _agora=new Date(), _mes=_agora.getMonth(), _ano=_agora.getFullYear();
+  const _histMes=hist.filter(s=>{ if(!s.ate)return true; const d=new Date(s.ate+'T00:00:00'); return d.getMonth()===_mes&&d.getFullYear()===_ano; });
+  const mTotal=calcGrupo(_histMes.length>0?_histMes:hist);
   const cppGlobal = custoEscalaRel && mTotal.volume > 0 ? custoEscalaRel / mTotal.volume : null;
   // Hubs Sion: DS Sion + Cozinhas Sion
   const HUBS_SION_REL = ['DS Sion', 'Sem hub'];
   const hubsSionAtivos = hubsAtivos.filter(h => HUBS_SION_REL.includes(h));
   const temSionUnificado = hubsSionAtivos.length === 2;
-  const todasVendasRel = hist.flatMap(s=>s.vendas||[]);
-  const todosCancelsRel = hist.flatMap(s=>s.cancelamentos||[]);
+  // Filtrar apenas o mês em vigência para o totalizador
+  const agora = new Date();
+  const mesAtual = agora.getMonth(); // 0-indexed
+  const anoAtual = agora.getFullYear();
+  const histMesVigente = hist.filter(s=>{
+    if(!s.ate) return true;
+    const d = new Date(s.ate+'T00:00:00');
+    return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
+  });
+  const fonteDados = histMesVigente.length > 0 ? histMesVigente : hist;
+  const todasVendasRel = fonteDados.flatMap(s=>s.vendas||[]);
+  const todosCancelsRel = fonteDados.flatMap(s=>s.cancelamentos||[]);
 
   const distRows = hubsAtivos.length > 1 ? (()=>{
     const cores = ['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
@@ -4547,6 +4560,386 @@ function abrirLinkLeilao(histId){
   modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// WHATSAPP — ENVIO DE DISPONIBILIDADE E ESCALA
+// ══════════════════════════════════════════════════════════════════
+
+function getTurnosColab(nome){
+  if(!S.escala) return [];
+  const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const turnos=[];
+  DIAS.forEach(dia=>{
+    let ini=null;
+    for(let h=9;h<=25;h++){
+      const al=S.escala[dia]?.[h]?.alocados.includes(nome);
+      if(al&&ini===null) ini=h;
+      if(!al&&ini!==null){turnos.push({dia,ini,fim:h});ini=null;}
+    }
+    if(ini!==null) turnos.push({dia,ini,fim:26});
+  });
+  return turnos;
+}
+
+function msgEscalaColab(nome,segBR,domBR){
+  const turnos=getTurnosColab(nome);
+  const DN={Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
+  const linhas=turnos.map(t=>'  - '+DN[t.dia]+': '+fH(t.ini)+'-'+fH(t.fim)+' ('+(t.fim-t.ini)+'h)').join('\n');
+  return 'Ola '+nome+'!\n\nSua escala da semana '+segBR+'-'+domBR+':\n\n'+(linhas||'  Sem turnos esta semana.')+'\n\nDuvidas, me chame!';
+}
+
+function gerarLinkUnico(segISO,segBR,domBR){
+  const hubColab=getHubColabAtual();
+  const colabs=hubColab?S.colabs.filter(c=>(c.hub||'Sion')===hubColab):S.colabs;
+  const nomes=colabs.map(c=>c.nome);
+  const expira=Date.now()+60*60*1000;
+  const dados={tipo:'grupo',seg:segISO,segBR,domBR,nomes,expira};
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+  return location.origin+location.pathname+'#disp='+b64;
+}
+
+function enviarEscalaGrupo(){
+  const {seg,dom}=proximaSemana();
+  const p2=v=>String(v).padStart(2,'0');
+  const fb=d=>p2(d.getDate())+'/'+p2(d.getMonth()+1);
+  const segBR=fb(seg),domBR=fb(dom);
+  const hubColab=getHubColabAtual();
+  const colabs=hubColab?S.colabs.filter(c=>(c.hub||'Sion')===hubColab):S.colabs;
+  const DN={Seg:'Seg',Ter:'Ter',Qua:'Qua',Qui:'Qui',Sex:'Sex',Sab:'Sab',Dom:'Dom'};
+  const linhas=colabs.map(c=>{
+    const t=getTurnosColab(c.nome);
+    if(!t.length)return null;
+    return '*'+c.nome+':* '+t.map(x=>DN[x.dia]+' '+fH(x.ini)+'-'+fH(x.fim)).join(' | ');
+  }).filter(Boolean).join('\n');
+  const msg='*Escala '+segBR+'-'+domBR+'*\n\n'+linhas+'\n\nDuvidas, me avisem!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+
+function _criarLinhaWpp(nome, tipo, info, ok){
+  const d=document.createElement('div');
+  d.style.cssText='display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:8px;padding:9px 12px';
+  d.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">'+nome+'</div>'
+    +'<div style="font-size:10px;color:'+(ok?'#16a34a':'var(--mu)')+'">'+info+'</div></div>';
+  if(ok){
+    const s=document.createElement('span');
+    s.style.cssText='color:#16a34a;font-weight:700;font-size:13px';
+    s.textContent='ok';
+    d.appendChild(s);
+  } else {
+    const b=document.createElement('button');
+    b.style.cssText='background:#25d366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer';
+    b.textContent='Enviar';
+    b.dataset.nome=nome;
+    b.dataset.tipo=tipo;
+    b.onclick=function(){ if(this.dataset.tipo==='disp') enviarDispIndiv(this.dataset.nome); else enviarEscalaIndiv(this.dataset.nome); };
+    d.appendChild(b);
+  }
+  return d;
+}
+
+function abrirEnvioWhatsApp(){
+  const colabs=S.colabs;
+  if(!colabs.length){toast('Cadastre colaboradores primeiro.','ter');return;}
+  const {seg,dom}=proximaSemana();
+  const p2=v=>String(v).padStart(2,'0');
+  const fi=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+  const fb=d=>p2(d.getDate())+'/'+p2(d.getMonth()+1);
+  const segISO=fi(seg),domBR=fb(dom),segBR=fb(seg);
+  const dispKey='orion_v7_disp_'+segISO;
+  const dispRecebidas=JSON.parse(localStorage.getItem(dispKey)||'{}');
+  const nRecebidas=Object.keys(dispRecebidas).length;
+  const hubColab=getHubColabAtual();
+  const colabsFilt=hubColab?colabs.filter(c=>(c.hub||'Sion')===hubColab):colabs;
+  const temEscala=!!S.escala;
+  // Guardar dados na closure para funções de envio
+  window._wppCtx={segISO,segBR,domBR};
+
+  // Construir modal via DOM (evita problemas de aspas)
+  const modal=document.createElement('div');
+  modal.id='wpp-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  const card=document.createElement('div');
+  card.style.cssText='background:var(--card);border:1px solid var(--brd);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column';
+
+  // Header
+  const hdr=document.createElement('div');
+  hdr.style.cssText='padding:16px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between';
+  hdr.innerHTML='<div><h3 style="font-size:15px;font-weight:800;margin:0">WhatsApp</h3><p style="font-size:11px;color:var(--mu);margin:2px 0 0">Semana '+segBR+'-'+domBR+'</p></div>';
+  const btnX=document.createElement('button');
+  btnX.style.cssText='background:none;border:none;font-size:20px;cursor:pointer;color:var(--mu)';
+  btnX.textContent='×';
+  btnX.onclick=function(){modal.remove();};
+  hdr.appendChild(btnX);
+  card.appendChild(hdr);
+
+  // Tabs
+  const tabs=document.createElement('div');
+  tabs.style.cssText='display:flex;border-bottom:1px solid var(--brd)';
+  const tdDisp=document.createElement('button');
+  tdDisp.id='wt-disp';
+  tdDisp.style.cssText='flex:1;padding:10px;border:none;cursor:pointer;font-size:12px;font-weight:700;background:var(--ac);color:var(--bg);border-radius:0';
+  tdDisp.textContent='Disponibilidade'+(nRecebidas>0?' ('+nRecebidas+' ok)':'');
+  tdDisp.onclick=function(){wppTab('disp');};
+  const tdEsc=document.createElement('button');
+  tdEsc.id='wt-esc';
+  tdEsc.style.cssText='flex:1;padding:10px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:var(--card2);color:var(--tx);border-radius:0';
+  tdEsc.textContent='Enviar escala';
+  tdEsc.onclick=function(){wppTab('esc');};
+  tabs.appendChild(tdDisp); tabs.appendChild(tdEsc);
+  card.appendChild(tabs);
+
+  // Corpo scrollável
+  const body=document.createElement('div');
+  body.style.cssText='overflow-y:auto;flex:1';
+
+  // Painel disponibilidade
+  const panelDisp=document.createElement('div');
+  panelDisp.id='wp-disp';
+  panelDisp.style.cssText='padding:14px;display:flex;flex-direction:column;gap:6px';
+
+  // Botão grupo disp
+  const grpDisp=document.createElement('div');
+  grpDisp.style.cssText='background:rgba(37,211,102,.1);border:1px solid rgba(37,211,102,.3);border-radius:10px;padding:12px;margin-bottom:6px';
+  grpDisp.innerHTML='<div style="font-size:12px;font-weight:700;margin-bottom:6px">Enviar para o grupo</div>';
+  const btnGrpDisp=document.createElement('button');
+  btnGrpDisp.style.cssText='width:100%;background:#25d366;color:#fff;border:none;border-radius:8px;padding:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit';
+  btnGrpDisp.textContent='Enviar link de disponibilidade no grupo';
+  btnGrpDisp.onclick=function(){enviarDispGrupo(segISO,segBR,domBR);};
+  grpDisp.appendChild(btnGrpDisp);
+  panelDisp.appendChild(grpDisp);
+
+  // Linhas individuais disponibilidade
+  colabsFilt.forEach(function(c){
+    const rec=dispRecebidas[c.nome];
+    const dias=rec?.diasIndisponiveis||[];
+    const info=rec?('Respondeu'+(dias.length?': nao pode '+dias.join(', '):': disponivel')):'Aguardando...';
+    panelDisp.appendChild(_criarLinhaWpp(c.nome,'disp',info,!!rec));
+  });
+  body.appendChild(panelDisp);
+
+  // Painel escala
+  const panelEsc=document.createElement('div');
+  panelEsc.id='wp-esc';
+  panelEsc.style.cssText='padding:14px;display:none;flex-direction:column;gap:6px';
+
+  if(!temEscala){
+    panelEsc.innerHTML='<div style="text-align:center;padding:20px;color:var(--mu)">Monte a escala primeiro.</div>';
+  } else {
+    const grpEsc=document.createElement('div');
+    grpEsc.style.cssText='background:rgba(37,211,102,.1);border:1px solid rgba(37,211,102,.3);border-radius:10px;padding:12px;margin-bottom:6px';
+    const btnGrpEsc=document.createElement('button');
+    btnGrpEsc.style.cssText='width:100%;background:#25d366;color:#fff;border:none;border-radius:8px;padding:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit';
+    btnGrpEsc.textContent='Enviar escala completa no grupo';
+    btnGrpEsc.onclick=enviarEscalaGrupo;
+    grpEsc.appendChild(btnGrpEsc);
+    panelEsc.appendChild(grpEsc);
+    colabsFilt.forEach(function(c){
+      const t=getTurnosColab(c.nome);
+      panelEsc.appendChild(_criarLinhaWpp(c.nome,'esc',t.length+' turno(s)',false));
+    });
+  }
+  body.appendChild(panelEsc);
+  card.appendChild(body);
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+  modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
+}
+
+
+function wppTab(tab){
+  const disp=document.getElementById('wp-disp');
+  const esc=document.getElementById('wp-esc');
+  const td=document.getElementById('wt-disp');
+  const te=document.getElementById('wt-esc');
+  if(!disp||!esc) return;
+  disp.style.display=tab==='disp'?'flex':'none';
+  esc.style.display=tab==='esc'?'flex':'none';
+  if(td) td.style.cssText='flex:1;padding:10px;border:none;cursor:pointer;font-size:12px;border-radius:0;font-weight:'+(tab==='disp'?'700':'600')+';background:'+(tab==='disp'?'var(--ac);color:var(--bg)':'var(--card2);color:var(--tx)');
+  if(te) te.style.cssText='flex:1;padding:10px;border:none;cursor:pointer;font-size:12px;border-radius:0;font-weight:'+(tab==='esc'?'700':'600')+';background:'+(tab==='esc'?'var(--ac);color:var(--bg)':'var(--card2);color:var(--tx)');
+}
+
+function enviarDispGrupo(segISO,segBR,domBR){
+  const link=gerarLinkUnico(segISO,segBR,domBR);
+  const msg='Oi pessoal!\n\nConfirmem disponibilidade para '+segBR+'-'+domBR+' ate quinta.\n\nClique no link, selecione seu nome e marque os dias que NAO pode trabalhar:\n\n'+link+'\n\nObrigado!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+
+function enviarDispIndiv(nome){
+  const m=document.getElementById('wpp-modal');
+  const segISO=m?._segISO||'';
+  const segBR=m?._segBR||'';
+  const domBR=m?._domBR||'';
+  const link=gerarLinkUnico(segISO,segBR,domBR);
+  const msg='Ola '+nome+'!\n\nInforme disponibilidade para '+segBR+'-'+domBR+':\n\n'+link+'\n\nSelecione seu nome no link e marque os dias que NAO pode. Obrigado!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+
+function enviarEscalaIndiv(nome){
+  const m=document.getElementById('wpp-modal');
+  const segBR=m?._segBR||'';
+  const domBR=m?._domBR||'';
+  const msg=msgEscalaColab(nome,segBR,domBR);
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ENVIO DE CONFIRMAÇÕES DE TURNO (HISTÓRICO)
+// ══════════════════════════════════════════════════════════════════
+
+function abrirEnvioConfirmacao(histId){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada=hist.find(h=>h.id===histId);
+  if(!entrada){toast('Escala nao encontrada.','ter');return;}
+  const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  // Extrair turnos por colaborador
+  const turnosPorColab={};
+  DIAS.forEach(dia=>{
+    for(let h=9;h<=25;h++){
+      const cell=entrada.escala[dia]?.[h];
+      if(!cell)continue;
+      (cell.alocados||[]).forEach(nome=>{
+        if(!turnosPorColab[nome])turnosPorColab[nome]=[];
+        const lista=turnosPorColab[nome];
+        const ult=lista[lista.length-1];
+        if(ult&&ult.dia===dia&&ult.fim===h)ult.fim=h+1;
+        else lista.push({dia,ini:h,fim:h+1});
+      });
+    }
+  });
+  const colabs=Object.keys(turnosPorColab).sort();
+  function gerarLinkConf(nome){
+    const turnos=turnosPorColab[nome]||[];
+    const dados={tipo:'confirmacao',histId,nome,turnos,semana:entrada.semana};
+    const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+    return location.origin+location.pathname+'#disp='+b64;
+  }
+  const modal=document.createElement('div');
+  modal.id='conf-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  // Montar linhas via DOM para evitar problemas de aspas
+  const semanaEsc=entrada.semana;
+  const linhasColab=colabs.map(nome=>{
+    const confs=entrada.confirmacoes?.[nome]||{};
+    const t=turnosPorColab[nome]||[];
+    const st=confs.turnos?confs.turnos.filter(x=>!x.faltou).length+'/'+t.length+' conf.':'Aguardando';
+    const link=gerarLinkConf(nome);
+    const div=document.createElement('div');
+    div.style.cssText='display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:8px;padding:9px 12px';
+    div.innerHTML='<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">'+nome+'</div>'
+      +'<div style="font-size:10px;color:var(--mu)">'+t.length+' turno(s) · '+st+'</div></div>';
+    const btn=document.createElement('button');
+    btn.style.cssText='background:#25d366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap';
+    btn.textContent='Enviar';
+    btn.addEventListener('click',function(){ enviarConfWpp(nome,link,semanaEsc); });
+    div.appendChild(btn);
+    return div.outerHTML;
+  }).join('');
+  // Modal via DOM
+  const mCard=document.createElement('div');
+  mCard.style.cssText='background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:0;max-width:480px;width:100%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column';
+  const mHdr=document.createElement('div');
+  mHdr.style.cssText='padding:16px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between';
+  mHdr.innerHTML='<div><h3 style="font-size:15px;font-weight:800;margin:0">Confirmacoes de turno</h3><p style="font-size:11px;color:var(--mu);margin:2px 0 0">'+entrada.semana+'</p></div>';
+  const mBtnX=document.createElement('button');
+  mBtnX.style.cssText='background:none;border:none;font-size:20px;cursor:pointer;color:var(--mu)';
+  mBtnX.textContent='×';
+  mBtnX.onclick=function(){modal.remove();};
+  mHdr.appendChild(mBtnX);
+  mCard.appendChild(mHdr);
+  const mBody=document.createElement('div');
+  mBody.style.cssText='overflow-y:auto;flex:1;padding:14px;display:flex;flex-direction:column;gap:8px';
+  const mP=document.createElement('p');
+  mP.style.cssText='font-size:11px;color:var(--mu);margin-bottom:4px';
+  mP.textContent='Envie o link para cada colaborador confirmar seus turnos.';
+  mBody.appendChild(mP);
+  mBody.innerHTML+=linhasColab;
+  mCard.appendChild(mBody);
+  modal.appendChild(mCard);
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+}
+
+
+function enviarConfWpp(nome,link,semana){
+  const msg='Ola '+nome+'!\n\nSua escala da semana '+semana+' aguarda confirmacao.\n\nAcesse e confirme cada turno:\n\n'+link+'\n\nObrigado!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FERIADOS E DATAS ESPECIAIS BRASIL
+// ══════════════════════════════════════════════════════════════════
+const FERIADOS_BR = [
+  // Feriados nacionais fixos (MM-DD)
+  {tipo:'fixo', mes:1,  dia:1,  nome:'Ano Novo',         reforco:true},
+  {tipo:'fixo', mes:2,  dia:12, nome:'Carnaval',          reforco:true},
+  {tipo:'fixo', mes:2,  dia:13, nome:'Carnaval',          reforco:true},
+  {tipo:'fixo', mes:4,  dia:18, nome:'Sexta Santa',       reforco:false},
+  {tipo:'fixo', mes:4,  dia:21, nome:'Tiradentes',        reforco:false},
+  {tipo:'fixo', mes:5,  dia:1,  nome:'Dia do Trabalho',   reforco:false},
+  {tipo:'fixo', mes:5,  dia:11, nome:'Dia das Maes',      reforco:true},  // 2º domingo de maio
+  {tipo:'fixo', mes:6,  dia:12, nome:'Dia dos Namorados', reforco:true},
+  {tipo:'fixo', mes:8,  dia:10, nome:'Dia dos Pais',      reforco:true},  // 2º domingo de agosto
+  {tipo:'fixo', mes:9,  dia:7,  nome:'Independencia',     reforco:false},
+  {tipo:'fixo', mes:10, dia:12, nome:'Feriado Nacional',  reforco:false},
+  {tipo:'fixo', mes:11, dia:2,  nome:'Finados',           reforco:false},
+  {tipo:'fixo', mes:11, dia:15, nome:'Proclamacao Republica', reforco:false},
+  {tipo:'fixo', mes:12, dia:25, nome:'Natal',             reforco:true},
+  {tipo:'fixo', mes:12, dia:31, nome:'Reveillon',         reforco:true},
+];
+
+// Calcular datas especiais baseadas em regra (ex: 2º domingo)
+function calcDataEspecial(ano, mes, nSemana, diaSemana){
+  // diaSemana: 0=Dom, 1=Seg...
+  const d=new Date(ano, mes-1, 1);
+  let count=0;
+  while(d.getMonth()===mes-1){
+    if(d.getDay()===diaSemana) count++;
+    if(count===nSemana) return {mes:d.getMonth()+1, dia:d.getDate()};
+    d.setDate(d.getDate()+1);
+  }
+  return null;
+}
+
+function getDataEspeciaisAno(ano){
+  const datas=[...FERIADOS_BR];
+  // Dia das Mães = 2º domingo de maio
+  const dm=calcDataEspecial(ano,5,2,0);
+  if(dm) datas.push({tipo:'calc',mes:dm.mes,dia:dm.dia,nome:'Dia das Maes',reforco:true});
+  // Dia dos Pais = 2º domingo de agosto
+  const dp=calcDataEspecial(ano,8,2,0);
+  if(dp) datas.push({tipo:'calc',mes:dp.mes,dia:dp.dia,nome:'Dia dos Pais',reforco:true});
+  return datas;
+}
+
+function verificarFeriadosSemana(seg, dom){
+  const ano=seg.getFullYear();
+  const especiais=getDataEspeciaisAno(ano);
+  const alertas=[];
+  for(let d=new Date(seg); d<=dom; d.setDate(d.getDate()+1)){
+    const m=d.getMonth()+1, dia=d.getDate();
+    const match=especiais.find(f=>f.mes===m&&f.dia===dia);
+    if(match) alertas.push({data:new Date(d), nome:match.nome, reforco:match.reforco});
+  }
+  return alertas;
+}
+
+function exibirAlertasFeriados(){
+  try{
+    const {seg,dom}=proximaSemana();
+    const alertas=verificarFeriadosSemana(seg,dom);
+    if(!alertas.length) return;
+    const p2=v=>String(v).padStart(2,'0');
+    const fb=d=>p2(d.getDate())+'/'+p2(d.getMonth()+1);
+    const DIAS_NOMES=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
+    alertas.forEach(a=>{
+      const ico=a.reforco?'🎉':'📅';
+      const msg=ico+' '+a.nome+' em '+fb(a.data)+' ('+DIAS_NOMES[a.data.getDay()]+')'+(a.reforco?' — considere reforcar a escala!':'');
+      setTimeout(()=>toast(msg,'twa'), 800);
+    });
+  }catch(e){}
+}
+
 function exportarIndicadores(){
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
   if(!hist.length){toast('Nenhum dado para exportar.','ter');return;}
@@ -4579,6 +4972,7 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
+setTimeout(exibirAlertasFeriados, 1500); // alertas de feriados na semana projetada
 // Modo disponibilidade
 if(window._DISP_MODE){
   const d = window._DISP_MODE;
@@ -4652,5 +5046,6 @@ if(!window._INBOUND&&!window._INBOUND_IND){
   }
 }
 </script>
+</body>
 </body>
 </html>
