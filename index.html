@@ -2677,6 +2677,22 @@ function renderHistorico(filtro){
       </div>`;
     }).join('');
 
+    // Calcular feriados/datas comemorativas que caem na semana desta escala
+    const _feriadosSemana = (()=>{
+      try{
+        const _seg = new Date(h.segISO+'T00:00:00');
+        const _dom = new Date(h.domISO+'T00:00:00');
+        return verificarFeriadosSemana(_seg, _dom);
+      }catch(e){ return []; }
+    })();
+    const _feriadoBadge = _feriadosSemana.map(f=>{
+      const p2=v=>String(v).padStart(2,'0');
+      const d=f.data;
+      const dStr=p2(d.getDate())+'/'+p2(d.getMonth()+1);
+      const cor=f.reforco?'background:#fef3c7;color:#92400e;border:1px solid #fde68a':'background:#f3f4f6;color:#374151;border:1px solid #e5e7eb';
+      return `<span style="${cor};border-radius:8px;padding:2px 8px;font-size:10px;font-weight:600">${f.reforco?'🎉':'📅'} ${f.nome} (${dStr})</span>`;
+    }).join('');
+
     return`<div class="hist-card" style="padding:0;overflow:hidden">
       <!-- CABEÇALHO CLICÁVEL (sempre visível) -->
       <div class="hist-head" onclick="toggleHistCard('${h.id}')" style="cursor:pointer;padding:14px 18px;user-select:none">
@@ -2685,6 +2701,7 @@ function renderHistorico(filtro){
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <div class="hist-semana">${h.semana}</div>
             ${hubLabel?`<span style="background:#dbeafe;color:#1e40af;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">${nomeHub(hubLabel)}</span>`:''}
+            ${_feriadoBadge}
           </div>
           <div style="font-size:10px;color:var(--mu);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">
             <span>${(h.resumo.totalPed||0).toLocaleString('pt-BR')} ped.</span>
@@ -4199,18 +4216,19 @@ function renderDispMode(){
 
     document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:420px;width:100%"><div style="text-align:center;margin-bottom:20px"><h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Disponibilidade '+d.segBR+'-'+d.domBR+'</h2><p style="color:#9ca3af;font-size:13px">Selecione seu nome</p></div>'+timerHtml+'<div>'+btns+'</div></div></div>';
 
-    // Timer countdown
+    // Timer countdown — cancelar anterior se existir
     if(d.expira){
+      if(window._dispTimerId) clearTimeout(window._dispTimerId);
       var tick = function(){
         var el = document.getElementById('disp-timer-val');
         if(!el) return;
         var resto = Math.max(0, d.expira - Date.now());
-        if(resto === 0){ el.textContent = '00:00'; el.style.color = '#ef4444'; return; }
+        if(resto === 0){ el.textContent = '00:00'; el.style.color='#ef4444'; return; }
         var min = Math.floor(resto/60000);
         var sec = Math.floor((resto%60000)/1000);
         el.textContent = String(min).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
         el.style.color = resto < 300000 ? '#f87171' : resto < 600000 ? '#fbbf24' : '#c8f135';
-        setTimeout(tick, 1000);
+        window._dispTimerId = setTimeout(tick, 1000);
       };
       tick();
     }
@@ -4259,17 +4277,19 @@ function renderTelaDisp(nome, seg, segBR, domBR, colabDados, expira){
   if(expira){
     const timerDiv = document.createElement('div');
     timerDiv.style.cssText = 'text-align:center;margin-bottom:16px';
-    timerDiv.innerHTML = '<span id="td-timer" style="font-size:13px;color:#9ca3af;font-family:monospace">--:--</span> restantes';
+    timerDiv.innerHTML = '<span id="td-timer" style="font-size:16px;font-weight:700;color:#c8f135;font-family:monospace">--:--</span><span style="font-size:12px;color:#9ca3af"> restantes</span>';
     card.appendChild(timerDiv);
+    // Cancelar timer anterior se existir
+    if(window._dispTimerId) clearTimeout(window._dispTimerId);
     var tick = function(){
       var el = document.getElementById('td-timer');
-      if(!el) return;
+      if(!el) return; // elemento removido, parar
       var resto = Math.max(0, expira - Date.now());
       if(resto===0){ el.textContent='00:00'; el.style.color='#ef4444'; return; }
       var min = Math.floor(resto/60000), sec = Math.floor((resto%60000)/1000);
       el.textContent = String(min).padStart(2,'0')+':'+String(sec).padStart(2,'0');
-      el.style.color = resto<300000?'#f87171':'#9ca3af';
-      setTimeout(tick, 1000);
+      el.style.color = resto<300000?'#f87171':resto<600000?'#fbbf24':'#c8f135';
+      window._dispTimerId = setTimeout(tick, 1000);
     };
     tick();
   }
@@ -4996,7 +5016,6 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
-setTimeout(exibirAlertasFeriados, 1500); // alertas de feriados na semana projetada
 // Modo disponibilidade
 if(window._DISP_MODE){
   const d = window._DISP_MODE;
