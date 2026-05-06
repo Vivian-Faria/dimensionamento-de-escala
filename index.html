@@ -265,6 +265,31 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 .conf-btn.faltou{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
 .conf-btn.pendente{background:#fef3c7;color:#92400e;border-color:#fde68a}
 
+/* ── CUSTOS MANUAIS CPP */
+.cpp-manual-panel{background:var(--card);border:1px solid var(--brd);border-radius:12px;margin-bottom:16px;box-shadow:var(--shadow)}
+.cpp-manual-hdr{padding:12px 16px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.cpp-manual-hdr h4{font-size:13px;font-weight:700;margin:0}
+.cpp-manual-body{padding:14px 16px}
+.cpp-semana-sel{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.cpp-semana-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--brd);background:var(--card2);cursor:pointer;font-family:var(--fn);font-weight:600;transition:.15s;color:var(--mu)}
+.cpp-semana-btn.on{background:var(--tx);color:#fff;border-color:var(--tx)}
+.cpp-custo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:14px}
+.cpp-custo-item{background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:10px}
+.cpp-custo-label{font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.cpp-custo-input{display:flex;align-items:center;gap:6px}
+.cpp-custo-input span{font-size:12px;color:var(--mu);font-weight:600}
+.cpp-custo-input input{background:var(--card);border:1px solid var(--brd);border-radius:6px;padding:5px 8px;font-size:12px;font-family:var(--mo);color:var(--tx);width:100%;outline:none}
+.cpp-custo-input input:focus{border-color:var(--ac);box-shadow:0 0 0 2px var(--acd)}
+.cpp-resultado{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.cpp-res-item{text-align:center}
+.cpp-res-val{font-size:16px;font-weight:900;font-family:var(--mo);color:var(--ac)}
+.cpp-res-val.destaque{font-size:19px;color:#065f46}
+.cpp-res-label{font-size:10px;color:#166534;margin-top:2px;font-weight:600}
+
+/* ── DISPONIBILIDADE TIMER E STATUS */
+.disp-timer-badge{display:inline-flex;align-items:center;gap:6px;background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700}
+.disp-status-ok{background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:600}
+
 /* Filtro histórico */
 .hist-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:14px 0 10px}
 .hist-filter-btn{font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid var(--brd);background:var(--card);cursor:pointer;font-family:var(--fn);font-weight:600;transition:.15s}
@@ -550,6 +575,43 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 
       <!-- STATUS COLETA -->
       <div id="indBanner" style="margin-bottom:16px"></div>
+
+      <!-- CUSTOS MANUAIS CPP -->
+      <div class="cpp-manual-panel" id="cppManualPanel" style="display:none">
+        <div class="cpp-manual-hdr">
+          <div>
+            <h4>💰 Custos adicionais para CPP</h4>
+            <p style="font-size:11px;color:var(--mu);margin-top:2px">Informe custos que não são calculados automaticamente pela escala</p>
+          </div>
+          <div id="cppManualSemanas" class="cpp-semana-sel"></div>
+        </div>
+        <div class="cpp-manual-body">
+          <div class="cpp-custo-grid">
+            <div class="cpp-custo-item">
+              <div class="cpp-custo-label">🧹 Limpeza Fixo</div>
+              <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppLimpezaFixo" placeholder="0,00" oninput="recalcularCppManual()"></div>
+            </div>
+            <div class="cpp-custo-item">
+              <div class="cpp-custo-label">🧽 Freela Limpeza</div>
+              <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppFreela" placeholder="0,00" oninput="recalcularCppManual()"></div>
+            </div>
+            <div class="cpp-custo-item">
+              <div class="cpp-custo-label">🎧 Atendimento</div>
+              <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppAtendimento" placeholder="0,00" oninput="recalcularCppManual()"></div>
+            </div>
+            <div class="cpp-custo-item">
+              <div class="cpp-custo-label">➕ Outros</div>
+              <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppOutros" placeholder="0,00" oninput="recalcularCppManual()"></div>
+            </div>
+          </div>
+          <div class="cpp-resultado" id="cppResultado">
+            <div class="cpp-res-item"><div class="cpp-res-val" id="cppResEscala">—</div><div class="cpp-res-label">Custo escala</div></div>
+            <div class="cpp-res-item"><div class="cpp-res-val" id="cppResAdicionais">—</div><div class="cpp-res-label">Adicionais</div></div>
+            <div class="cpp-res-item"><div class="cpp-res-val destaque" id="cppResCppSem">—</div><div class="cpp-res-label">CPP s/ adicionais</div></div>
+            <div class="cpp-res-item"><div class="cpp-res-val destaque" style="color:#065f46" id="cppResCppCom">—</div><div class="cpp-res-label">CPP c/ adicionais</div></div>
+          </div>
+        </div>
+      </div>
 
       <!-- DISTRIBUIÇÃO POR HUB (aparece quando 2+ hubs selecionados) -->
       <div id="indDistHub" style="margin-bottom:4px"></div>
@@ -2736,7 +2798,7 @@ function renderHistorico(filtro){
         </div>
         <div class="hist-actions" style="padding:10px 18px;border-top:1px solid var(--brd)">
           <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">Ver escala completa</button>
-          <button class="btn bs sm" style="background:rgba(37,211,102,.15);color:#25d366;border-color:#25d366" onclick="abrirEnvioConfirmacao('${h.id}')">Enviar confirmacoes</button>
+          <button class="btn bs sm" style="background:rgba(37,211,102,.15);color:#25d366;border-color:#25d366" onclick="abrirFluxoWppHistorico('${h.id}')">📲 WhatsApp</button>
           <button class="btn bs sm" style="background:rgba(37,99,235,.15);color:#60a5fa;border-color:#3b82f6" onclick="abrirLinkLeilao('${h.id}')">Leilao de horarios</button>
           <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
           <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
@@ -3305,6 +3367,99 @@ function getCustoEscalaSemana(semanaISO){
   }catch(e){ return null; }
 }
 
+// ══════════════════════════════════════════════════════
+// CUSTOS MANUAIS CPP
+// ══════════════════════════════════════════════════════
+const KIND_CPP_MANUAL = 'orion_v7_cpp_manual';
+
+function getCppManualSemana(semanaISO){
+  try{
+    const d=JSON.parse(localStorage.getItem(KIND_CPP_MANUAL)||'{}');
+    return d[semanaISO]||{limpezaFixo:0,freela:0,atendimento:0,outros:0};
+  }catch(e){return{limpezaFixo:0,freela:0,atendimento:0,outros:0};}
+}
+
+function setCppManualSemana(semanaISO, dados){
+  try{
+    const d=JSON.parse(localStorage.getItem(KIND_CPP_MANUAL)||'{}');
+    d[semanaISO]=dados;
+    localStorage.setItem(KIND_CPP_MANUAL,JSON.stringify(d));
+  }catch(e){}
+}
+
+function getCppManualTotal(semanaISO){
+  const d=getCppManualSemana(semanaISO);
+  return (d.limpezaFixo||0)+(d.freela||0)+(d.atendimento||0)+(d.outros||0);
+}
+
+let _cppManualSemanaAtiva='';
+
+function inicializarCppManual(){
+  const hist=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
+  if(!hist.length){document.getElementById('cppManualPanel').style.display='none';return;}
+  document.getElementById('cppManualPanel').style.display='block';
+
+  // Botões de semanas disponíveis
+  const semanas=hist.slice(0,6);
+  if(!_cppManualSemanaAtiva||!semanas.find(s=>s.semanaISO===_cppManualSemanaAtiva)){
+    _cppManualSemanaAtiva=semanas[0].semanaISO;
+  }
+  const sel=document.getElementById('cppManualSemanas');
+  sel.innerHTML=semanas.map(s=>{
+    const lbl=s.deBR+'–'+s.ateBR;
+    return`<button class="cpp-semana-btn${s.semanaISO===_cppManualSemanaAtiva?' on':''}" onclick="selecionarSemanaManual('${s.semanaISO}')">${lbl}</button>`;
+  }).join('');
+
+  // Carregar valores salvos
+  const d=getCppManualSemana(_cppManualSemanaAtiva);
+  document.getElementById('cppLimpezaFixo').value=d.limpezaFixo||'';
+  document.getElementById('cppFreela').value=d.freela||'';
+  document.getElementById('cppAtendimento').value=d.atendimento||'';
+  document.getElementById('cppOutros').value=d.outros||'';
+  recalcularCppManual();
+}
+
+function selecionarSemanaManual(semanaISO){
+  _cppManualSemanaAtiva=semanaISO;
+  inicializarCppManual();
+}
+
+function recalcularCppManual(){
+  if(!_cppManualSemanaAtiva) return;
+  const lf=parseFloat(document.getElementById('cppLimpezaFixo').value)||0;
+  const fr=parseFloat(document.getElementById('cppFreela').value)||0;
+  const at=parseFloat(document.getElementById('cppAtendimento').value)||0;
+  const ot=parseFloat(document.getElementById('cppOutros').value)||0;
+  const total=lf+fr+at+ot;
+
+  // Salvar
+  setCppManualSemana(_cppManualSemanaAtiva,{limpezaFixo:lf,freela:fr,atendimento:at,outros:ot});
+
+  // Buscar custo escala + volume
+  const custoEscala=getCustoEscalaSemana(_cppManualSemanaAtiva)||0;
+  const hist=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
+  const sem=hist.find(s=>s.semanaISO===_cppManualSemanaAtiva);
+  const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
+  const volume=sem?calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub).volume:0;
+
+  const fmtR=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
+  const fmtCpp=v=>volume>0?'R$ '+(v/volume).toFixed(2).replace('.',','):'—';
+
+  document.getElementById('cppResEscala').textContent=fmtR(custoEscala);
+  document.getElementById('cppResAdicionais').textContent=fmtR(total);
+  document.getElementById('cppResCppSem').textContent=fmtCpp(custoEscala);
+  document.getElementById('cppResCppCom').textContent=fmtCpp(custoEscala+total);
+
+  // Destacar resultado com adicionais em cor especial
+  const elCom=document.getElementById('cppResCppCom');
+  elCom.style.color=total>0?'#dc2626':'#065f46';
+
+  // Re-renderizar indicadores para atualizar KPI CPP
+  _cppManualDirty=true;
+  if(!_cppManualDebounce) _cppManualDebounce=setTimeout(()=>{_cppManualDebounce=null;renderIndicadores();},400);
+}
+let _cppManualDirty=false, _cppManualDebounce=null;
+
 function coletarIndicadores(){
   // A coleta direta via fetch falha por CORS (plataforma ≠ Orion).
   // Solução idêntica à da escala: bookmarklet roda no Orion (mesma origem),
@@ -3511,9 +3666,17 @@ function renderIndicadores(){
 
   // CPP: custo total da escala ÷ volume de pedidos do hub selecionado
   const custoEscala = getCustoEscalaSemana(semanaAtual.semanaISO);
+  const custoManualTotal = getCppManualTotal(semanaAtual.semanaISO);
+  const custoTotal = (custoEscala||0) + custoManualTotal;
   const cpp = custoEscala && m.volume > 0 ? custoEscala / m.volume : null;
+  const cppComAdicionais = custoTotal > 0 && m.volume > 0 ? custoTotal / m.volume : null;
+  const temAdicionais = custoManualTotal > 0;
+
+  // Inicializar painel de custos manuais
+  setTimeout(()=>inicializarCppManual(), 50);
 
   // KPI Cards
+  const fmtCpp = v => v !== null ? `R$ ${v.toFixed(2).replace('.',',')}` : '—';
   const kpis=[
     {icon:'📦',label:'Volume de pedidos',val:m.volume.toLocaleString('pt-BR'),prev:mAnt?mAnt.volume:null,unit:'',big:true,hiMelhor:true},
     {icon:'❌',label:'Cancelamentos',val:m.cancelamentos,prev:mAnt?mAnt.cancelamentos:null,unit:'',big:false,hiMelhor:false},
@@ -3521,7 +3684,8 @@ function renderIndicadores(){
     {icon:'🧑‍🍳',label:'Tempo médio preparo',val:fmtTempo(m.tPreparoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tPreparoMed,prevRaw:mAnt?mAnt.tPreparoMed:null},
     {icon:'🛵',label:'Tempo médio coleta',val:fmtTempo(m.tColetaMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tColetaMed,prevRaw:mAnt?mAnt.tColetaMed:null},
     {icon:'🏁',label:'Tempo médio despacho',val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null},
-    {icon:'💰',label:'CPP (custo/pedido)',val:cpp!==null?`R$ ${cpp.toFixed(2).replace('.',',')}`:'-',prev:null,unit:'',big:false,raw:cpp},
+    {icon:'💰',label:'CPP s/ adicionais',val:fmtCpp(cpp),prev:null,unit:'',big:false,raw:cpp,extraHtml: temAdicionais&&cpp!==null?`<div style="font-size:9px;color:#6b7280;margin-top:1px">Só escala</div>`:''},
+    ...(temAdicionais?[{icon:'💸',label:'CPP c/ adicionais',val:fmtCpp(cppComAdicionais),prev:null,unit:'',big:false,raw:cppComAdicionais,destaque:true,extraHtml:`<div style="font-size:9px;color:#dc2626;margin-top:1px">+R$ ${custoManualTotal.toFixed(2).replace('.',',')} adicionais</div>`}]:[]),
   ];
 
   // Painel de distribuição por hub (só aparece quando 2+ hubs selecionados)
@@ -3576,16 +3740,19 @@ function renderIndicadores(){
       const bg=melhorou?'#dcfce7':'#fee2e2';
       varHtml=`<div style="margin-top:4px;font-size:10px;font-weight:600;color:${cor};background:${bg};border-radius:4px;padding:2px 6px;display:inline-block">${pct>=0?'+':''}${pct.toFixed(1)}% vs sem. ant.</div>`;
     }
-    return`<div class="sc" style="text-align:center">
+    const borderColor=k.destaque?'border:2px solid #dc2626':'';
+    const bgColor=k.destaque?'background:#fff5f5':'';
+    return`<div class="sc" style="text-align:center;${borderColor};${bgColor}">
       <div class="sc-l">${k.icon} ${k.label}</div>
-      <div class="sc-v" style="font-size:${k.big?'20':'17'}px">${k.val}</div>
+      <div class="sc-v" style="font-size:${k.big?'20':'17'}px;${k.destaque?'color:#dc2626':''}">${k.val}</div>
+      ${k.extraHtml||''}
       ${varHtml}
     </div>`;
   }).join('');
 
   // Tabela histórica
   const semanas=hist.slice().reverse(); // ordem cronológica
-  const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP'];
+  const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
 
   let histEscMap={};
   try{
@@ -3597,7 +3764,7 @@ function renderIndicadores(){
   }catch(e){}
 
   // Cabeçalho da tabela
-  const thead=`<thead><tr>${cols.map(c=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">${c}</th>`).join('')}</tr></thead>`;
+  const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
 
   // Calcula médias mensais agrupando por mês
   const porMes={};
@@ -3619,10 +3786,12 @@ function renderIndicadores(){
       const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
       // Encontra CPP da escala para essa semana
       const cppSem=histEscMap[sem.de]||null;
-      return{sem,mt,cppSem};
+      const adicionalSem=getCppManualTotal(sem.semanaISO||'');
+      const cppComAdicional=cppSem!==null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
+      return{sem,mt,cppSem,adicionalSem,cppComAdicional};
     });
 
-    metricas.forEach(({sem,mt,cppSem},i)=>{
+    metricas.forEach(({sem,mt,cppSem,adicionalSem,cppComAdicional},i)=>{
       const prev=i>0?metricas[i-1].mt:null;
       function celVar(atual,ant,hiMelhor=false,fmt=v=>v){
         if(ant===null||ant===undefined||atual===null)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)}</td>`;
@@ -3632,6 +3801,7 @@ function renderIndicadores(){
         const estudo=pct>=0?`+${pct.toFixed(1)}%`:`${pct.toFixed(1)}%`;
         return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)} <span style="font-size:10px;color:${cor};font-weight:600">${estudo}</span></td>`;
       }
+      const cppAdicBg=adicionalSem>0?'background:#fff7ed':'';
       tbody+=`<tr style="border-bottom:1px solid var(--brd)">
         <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap">${sem.deBR}–${sem.ateBR}</td>
         ${celVar(mt.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))}
@@ -3641,6 +3811,8 @@ function renderIndicadores(){
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tColetaMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cppSem!==null?'R$ '+cppSem.toFixed(2).replace('.',','):'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);${cppAdicBg}">${adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700;${cppComAdicional!==null&&adicionalSem>0?'color:#dc2626':''}">${cppComAdicional!==null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—'}</td>
       </tr>`;
     });
 
@@ -3770,6 +3942,21 @@ function gerarRelatorioIndicadores(){
   const _histMes=hist.filter(s=>{ if(!s.ate)return true; const d=new Date(s.ate+'T00:00:00'); return d.getMonth()===_mes&&d.getFullYear()===_ano; });
   const mTotal=calcGrupo(_histMes.length>0?_histMes:hist);
   const cppGlobal = custoEscalaRel && mTotal.volume > 0 ? custoEscalaRel / mTotal.volume : null;
+  // CPP com adicionais para o relatório (soma todos os adicionais das semanas filtradas)
+  const adicionaisTotalRel = fonteDados.reduce((s,sem)=>s+getCppManualTotal(sem.semanaISO||''),0);
+  const cppGlobalComAd = (custoEscalaRel||0)+adicionaisTotalRel > 0 && mTotal.volume > 0 ? ((custoEscalaRel||0)+adicionaisTotalRel)/mTotal.volume : null;
+  // Detalhamento adicionais para o relatório
+  const adicionaisDetalhes = (()=>{
+    const totais={limpezaFixo:0,freela:0,atendimento:0,outros:0};
+    fonteDados.forEach(sem=>{
+      const d=getCppManualSemana(sem.semanaISO||'');
+      totais.limpezaFixo+=(d.limpezaFixo||0);
+      totais.freela+=(d.freela||0);
+      totais.atendimento+=(d.atendimento||0);
+      totais.outros+=(d.outros||0);
+    });
+    return totais;
+  })();
   // Hubs Sion: DS Sion + Cozinhas Sion
   const HUBS_SION_REL = ['DS Sion', 'Sem hub'];
   const hubsSionAtivos = hubsAtivos.filter(h => HUBS_SION_REL.includes(h));
@@ -3899,11 +4086,37 @@ function gerarRelatorioIndicadores(){
       <div class="kpi-s">${mTotal.amostras?.despacho||0} amostras</div>
     </div>
     <div class="kpi">
-      <div class="kpi-l">💰 CPP</div>
+      <div class="kpi-l">💰 CPP s/ adicionais</div>
       <div class="kpi-v">${cppGlobal!==null?'R$ '+cppGlobal.toFixed(2).replace('.',','):'—'}</div>
-      <div class="kpi-s">custo/pedido</div>
+      <div class="kpi-s">custo escala / pedido</div>
     </div>
+    ${adicionaisTotalRel>0?`<div class="kpi" style="border:2px solid #dc2626;background:#fff5f5">
+      <div class="kpi-l" style="color:#dc2626">💸 CPP c/ adicionais</div>
+      <div class="kpi-v" style="color:#dc2626">${cppGlobalComAd!==null?'R$ '+cppGlobalComAd.toFixed(2).replace('.',','):'—'}</div>
+      <div class="kpi-s" style="color:#dc2626">+R$ ${adicionaisTotalRel.toFixed(2).replace('.',',')} adicionais</div>
+    </div>`:''}
   </div>
+
+  ${adicionaisTotalRel>0?`
+  <h2>Composição dos custos adicionais (CPP)</h2>
+  <div class="legenda">Estes valores foram inseridos manualmente e não são calculados automaticamente pela escala. São distribuídos sobre o volume de pedidos do período para calcular o CPP completo.</div>
+  <table>
+    <thead><tr><th>Item</th><th>Valor total</th><th>Impacto no CPP (R$/pedido)</th><th>% do CPP adicional</th></tr></thead>
+    <tbody>
+      ${[['🧹 Limpeza Fixo',adicionaisDetalhes.limpezaFixo],['🧽 Freela Limpeza',adicionaisDetalhes.freela],['🎧 Atendimento',adicionaisDetalhes.atendimento],['➕ Outros',adicionaisDetalhes.outros]].filter(([,v])=>v>0).map(([l,v])=>`<tr>
+        <td style="font-weight:600">${l}</td>
+        <td>R$ ${v.toFixed(2).replace('.',',')}</td>
+        <td>${mTotal.volume>0?'R$ '+(v/mTotal.volume).toFixed(2).replace('.',','):'—'}</td>
+        <td style="font-weight:700;color:#dc2626">${adicionaisTotalRel>0?(v/adicionaisTotalRel*100).toFixed(1)+'%':'—'}</td>
+      </tr>`).join('')}
+      <tr style="background:#fee2e2;font-weight:800">
+        <td>TOTAL ADICIONAIS</td>
+        <td>R$ ${adicionaisTotalRel.toFixed(2).replace('.',',')}</td>
+        <td>${mTotal.volume>0?'R$ '+(adicionaisTotalRel/mTotal.volume).toFixed(2).replace('.',','):'—'}</td>
+        <td>100%</td>
+      </tr>
+    </tbody>
+  </table>`:''}
 
   ${distRows?`
   <h2>Distribuição por hub</h2>
@@ -4203,6 +4416,18 @@ function renderDispMode(){
     return;
   }
 
+  // Modo disponibilidade do histórico (indisponibilidade)
+  if(d.tipo === 'grupo_hist_disp' && d.nomes && d.nomes.length){
+    renderTelaDispHistGrupo(d);
+    return;
+  }
+
+  // Modo confirmação de escala em grupo
+  if(d.tipo === 'confirmacao_grupo' && d.nomes && d.nomes.length){
+    renderTelaConfirmacaoGrupo(d);
+    return;
+  }
+
   // Modo grupo: seleção de nome
   if(d.tipo === 'grupo' && d.nomes && d.nomes.length){
     const restante = d.expira ? Math.max(0, d.expira - Date.now()) : null;
@@ -4249,6 +4474,200 @@ function selecionarNomeDisp(nome){
   if(!colabDados && typeof S !== 'undefined' && S.colabs)
     colabDados = S.colabs.find(function(c){return c.nome===nome;});
   renderTelaDisp(nome, d.seg, d.segBR, d.domBR, colabDados, d.expira);
+}
+
+// ── Tela de indisponibilidade para semana do histórico
+function renderTelaDispHistGrupo(d){
+  const DIAS_SEMANA=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const DIAS_NOMES={Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado',Dom:'Domingo'};
+  const restante = d.expira ? Math.max(0, d.expira - Date.now()) : null;
+  const timerHtml = restante !== null
+    ? '<div id="disp-timer" style="background:rgba(255,255,255,.05);border-radius:10px;padding:10px 16px;text-align:center;margin-bottom:20px"><div style="font-size:10px;color:#9ca3af;text-transform:uppercase;font-weight:600;margin-bottom:4px">Tempo para responder</div><div id="disp-timer-val" style="font-size:22px;font-weight:900;color:#c8f135;font-family:monospace">--:--</div></div>'
+    : '';
+
+  const btns = d.nomes.map(function(nome){
+    return '<button onclick="selecionarNomeDispHist(\'' + nome.replace(/'/g,"\'") + '\')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 18px;color:#f3f4f6;font-size:14px;font-weight:600;cursor:pointer;text-align:left;width:100%;font-family:inherit;margin-bottom:6px" onmouseover="this.style.background=\'rgba(200,241,53,.15)\'" onmouseout="this.style.background=\'rgba(255,255,255,.05)\'">'+nome+'</button>';
+  }).join('');
+
+  document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:420px;width:100%"><div style="text-align:center;margin-bottom:20px"><div style="font-size:36px;margin-bottom:8px">📅</div><h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Semana '+d.semana+'</h2><p style="color:#f87171;font-size:13px;font-weight:600">Marque os dias que NÃO pode trabalhar</p><p style="color:#9ca3af;font-size:12px;margin-top:4px">Selecione seu nome</p></div>'+timerHtml+'<div>'+btns+'</div></div></div>';
+
+  if(d.expira){
+    if(window._dispTimerId) clearTimeout(window._dispTimerId);
+    var tick=function(){
+      var el=document.getElementById('disp-timer-val');
+      if(!el)return;
+      var resto=Math.max(0,d.expira-Date.now());
+      if(resto===0){el.textContent='00:00';el.style.color='#ef4444';return;}
+      var min=Math.floor(resto/60000),sec=Math.floor((resto%60000)/1000);
+      el.textContent=String(min).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+      el.style.color=resto<300000?'#f87171':resto<600000?'#fbbf24':'#c8f135';
+      window._dispTimerId=setTimeout(tick,1000);
+    };
+    tick();
+  }
+}
+
+window.selecionarNomeDispHist = function(nome){
+  const d=window._DISP_MODE||window._dispDados;
+  if(!d)return;
+  _renderTelaDispHistIndiv(nome,d);
+};
+
+function _renderTelaDispHistIndiv(nome, d){
+  const DIAS_SEMANA=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const DIAS_NOMES={Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado',Dom:'Domingo'};
+
+  document.body.innerHTML='';
+  const wrap=document.createElement('div');
+  wrap.style.cssText='min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif';
+  const card=document.createElement('div');
+  card.style.cssText='background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:380px;width:100%';
+
+  const header=document.createElement('div');
+  header.style.cssText='text-align:center;margin-bottom:24px';
+  header.innerHTML='<h2 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:4px">Olá, '+nome+'!</h2>'
+    +'<p style="color:#9ca3af;font-size:13px">Semana '+d.semana+'</p>'
+    +'<p style="color:#f87171;font-size:12px;margin-top:6px;font-weight:600">Marque os dias que NÃO pode trabalhar</p>';
+  card.appendChild(header);
+
+  const diasCon=document.createElement('div');
+  diasCon.style.cssText='display:flex;flex-direction:column;gap:8px;margin-bottom:24px';
+  const selecionados=new Set();
+
+  DIAS_SEMANA.forEach(function(dia){
+    const label=document.createElement('div');
+    label.style.cssText='display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.08);border-radius:10px;padding:13px 16px;cursor:pointer;transition:.15s;user-select:none';
+    const box=document.createElement('div');
+    box.style.cssText='width:22px;height:22px;border-radius:6px;border:2px solid rgba(255,255,255,.25);background:transparent;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:.15s';
+    const txt=document.createElement('span');
+    txt.style.cssText='color:#f3f4f6;font-size:14px;font-weight:600';
+    txt.textContent=DIAS_NOMES[dia];
+    label.appendChild(box);label.appendChild(txt);
+    var ativo=false;
+    label.addEventListener('click',function(){
+      ativo=!ativo;
+      if(ativo){
+        selecionados.add(dia);
+        box.style.background='#ef4444';box.style.borderColor='#ef4444';
+        box.innerHTML='<svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 6.5l3.5 3.5 5.5-5.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>';
+        label.style.borderColor='rgba(239,68,68,.5)';label.style.background='rgba(239,68,68,.1)';
+      } else {
+        selecionados.delete(dia);
+        box.style.background='transparent';box.style.borderColor='rgba(255,255,255,.25)';box.innerHTML='';
+        label.style.borderColor='rgba(255,255,255,.08)';label.style.background='rgba(255,255,255,.05)';
+      }
+    });
+    diasCon.appendChild(label);
+  });
+  card.appendChild(diasCon);
+
+  // Botão enviar
+  const btnEnv=document.createElement('button');
+  btnEnv.style.cssText='width:100%;background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
+  btnEnv.textContent='Confirmar disponibilidade';
+  btnEnv.onclick=function(){
+    const dispKey='orion_v7_disp_hist_'+d.histId;
+    const atual=JSON.parse(localStorage.getItem(dispKey)||'{}');
+    atual[nome]={nome,diasIndisponiveis:[...selecionados],ts:Date.now()};
+    localStorage.setItem(dispKey,JSON.stringify(atual));
+    card.innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">✅</div>'
+      +'<h3 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:8px">Obrigado, '+nome+'!</h3>'
+      +(selecionados.size>0?'<p style="color:#9ca3af;font-size:13px">Registrado que você <strong style="color:#f87171">não pode</strong> trabalhar em: '+[...selecionados].join(', ')+'</p>'
+      :'<p style="color:#86efac;font-size:13px">Você está disponível toda a semana! 🎉</p>')
+      +'<p style="color:#6b7280;font-size:12px;margin-top:16px">Pode fechar esta página.</p></div>';
+  };
+  card.appendChild(btnEnv);
+  wrap.appendChild(card);
+  document.body.appendChild(wrap);
+}
+
+// ── Tela de confirmação de escala em grupo
+function renderTelaConfirmacaoGrupo(d){
+  const btns=d.nomes.map(function(nome){
+    return '<button onclick="selecionarNomeConfirmacao(\'' + nome.replace(/'/g,"\'") + '\')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 18px;color:#f3f4f6;font-size:14px;font-weight:600;cursor:pointer;text-align:left;width:100%;font-family:inherit;margin-bottom:6px" onmouseover="this.style.background=\'rgba(200,241,53,.15)\'" onmouseout="this.style.background=\'rgba(255,255,255,.05)\'">'+nome+'</button>';
+  }).join('');
+
+  document.body.innerHTML='<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:420px;width:100%"><div style="text-align:center;margin-bottom:20px"><div style="font-size:36px;margin-bottom:8px">📋</div><h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Confirmar horários</h2><p style="color:#9ca3af;font-size:13px">Semana '+d.semana+'</p><p style="color:#9ca3af;font-size:13px;margin-top:4px">Selecione seu nome</p></div><div>'+btns+'</div></div></div>';
+}
+
+window.selecionarNomeConfirmacao = function(nome){
+  const d=window._DISP_MODE||window._dispDados;
+  if(!d||!d.turnosPorColab)return;
+  const turnos=d.turnosPorColab[nome]||[];
+  if(!turnos.length){
+    document.body.innerHTML='<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="text-align:center;color:#fff"><div style="font-size:48px;margin-bottom:16px">😕</div><p style="color:#9ca3af">Você não tem turnos nesta escala.</p></div></div>';
+    return;
+  }
+  _renderTelaConfirmacaoIndiv(nome,d,turnos);
+};
+
+function _renderTelaConfirmacaoIndiv(nome,d,turnos){
+  const DIAS_NOMES={Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado',Dom:'Domingo'};
+  const fHl=h=>{if(h>=24)h-=24;return String(h).padStart(2,'0')+':00';};
+
+  document.body.innerHTML='';
+  const wrap=document.createElement('div');
+  wrap.style.cssText='min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif';
+  const card=document.createElement('div');
+  card.style.cssText='background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:400px;width:100%';
+
+  card.innerHTML='<div style="text-align:center;margin-bottom:20px"><h2 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:4px">Olá, '+nome+'!</h2><p style="color:#9ca3af;font-size:13px">Semana '+d.semana+'</p><p style="color:#c8f135;font-size:12px;margin-top:6px;font-weight:600">Confirme ou marque falta em cada turno</p></div>';
+
+  const faltas=new Set();
+  const turnosDiv=document.createElement('div');
+  turnosDiv.style.cssText='display:flex;flex-direction:column;gap:8px;margin-bottom:20px';
+
+  turnos.forEach(function(t,i){
+    const row=document.createElement('div');
+    row.style.cssText='background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px';
+    row.innerHTML='<div><div style="color:#fff;font-size:14px;font-weight:700">'+(DIAS_NOMES[t.dia]||t.dia)+'</div><div style="color:#9ca3af;font-size:12px;margin-top:2px">'+fHl(t.ini)+' – '+fHl(t.fim)+'</div></div>';
+    const btnConf=document.createElement('button');
+    btnConf.style.cssText='background:rgba(22,163,74,.25);color:#86efac;border:1px solid #16a34a;border-radius:7px;padding:6px 12px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;transition:.15s';
+    btnConf.textContent='✅ Confirmado';
+    btnConf.addEventListener('click',function(){
+      faltas.delete(i);
+      btnConf.style.background='rgba(22,163,74,.25)';btnConf.style.color='#86efac';btnConf.style.borderColor='#16a34a';btnConf.textContent='✅ Confirmado';
+      btnFalta.style.background='rgba(255,255,255,.05)';btnFalta.style.color='#9ca3af';btnFalta.style.borderColor='rgba(255,255,255,.1)';btnFalta.textContent='Faltei';
+      row.style.borderColor='rgba(22,163,74,.4)';
+    });
+    const btnFalta=document.createElement('button');
+    btnFalta.style.cssText='background:rgba(255,255,255,.05);color:#9ca3af;border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:6px 12px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;transition:.15s';
+    btnFalta.textContent='Faltei';
+    btnFalta.addEventListener('click',function(){
+      faltas.add(i);
+      btnFalta.style.background='rgba(239,68,68,.25)';btnFalta.style.color='#f87171';btnFalta.style.borderColor='#ef4444';btnFalta.textContent='⚠ Faltei';
+      btnConf.style.background='rgba(255,255,255,.05)';btnConf.style.color='#9ca3af';btnConf.style.borderColor='rgba(255,255,255,.1)';btnConf.textContent='Confirmado?';
+      row.style.borderColor='rgba(239,68,68,.4)';
+    });
+    const btnsDiv=document.createElement('div');
+    btnsDiv.style.cssText='display:flex;gap:6px';
+    btnsDiv.appendChild(btnConf);btnsDiv.appendChild(btnFalta);
+    row.appendChild(btnsDiv);
+    turnosDiv.appendChild(row);
+  });
+  card.appendChild(turnosDiv);
+
+  const btnEnv=document.createElement('button');
+  btnEnv.style.cssText='width:100%;background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
+  btnEnv.textContent='Enviar confirmação';
+  btnEnv.onclick=function(){
+    // Salvar confirmação no localStorage
+    const resKey='orion_v7_confres_'+d.histId;
+    const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
+    const turnosResult=turnos.map(function(t,i){
+      return Object.assign({},t,{confirmado:!faltas.has(i),faltou:faltas.has(i),horasAbatidas:faltas.has(i)?(t.fim-t.ini):0});
+    });
+    confs[nome]={nome,histId:d.histId,turnos:turnosResult,status:faltas.size>0?'tem_falta':'confirmado',ts:Date.now()};
+    localStorage.setItem(resKey,JSON.stringify(confs));
+    card.innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">'+(faltas.size>0?'⚠':'✅')+'</div>'
+      +'<h3 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:8px">Obrigado, '+nome+'!</h3>'
+      +(faltas.size>0?'<p style="color:#f87171;font-size:13px">'+faltas.size+' turno(s) marcado(s) como falta.</p>'
+      :'<p style="color:#86efac;font-size:13px">Todos os turnos confirmados!</p>')
+      +'<p style="color:#6b7280;font-size:12px;margin-top:16px">Pode fechar esta página.</p></div>';
+  };
+  card.appendChild(btnEnv);
+  wrap.appendChild(card);
+  document.body.appendChild(wrap);
 }
 
 function renderTelaDisp(nome, seg, segBR, domBR, colabDados, expira){
@@ -4828,7 +5247,326 @@ function enviarEscalaIndiv(nome){
 }
 
 // ══════════════════════════════════════════════════════════════════
-// ENVIO DE CONFIRMAÇÕES DE TURNO (HISTÓRICO)
+// WHATSAPP HISTÓRICO — FLUXO INTEGRADO DISPONIBILIDADE + CONFIRMAÇÃO
+// ══════════════════════════════════════════════════════════════════
+
+// Estado do timer de disponibilidade por histId
+const _dispTimers = {};
+
+function abrirFluxoWppHistorico(histId){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada=hist.find(h=>h.id===histId);
+  if(!entrada){toast('Escala não encontrada.','ter');return;}
+
+  const modal=document.createElement('div');
+  modal.id='wpp-hist-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  const card=document.createElement('div');
+  card.style.cssText='background:var(--card);border:1px solid var(--brd);border-radius:16px;max-width:540px;width:100%;max-height:88vh;overflow:hidden;display:flex;flex-direction:column';
+
+  // Header
+  const hdr=document.createElement('div');
+  hdr.style.cssText='padding:16px 20px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0';
+  hdr.innerHTML='<div><h3 style="font-size:15px;font-weight:800;margin:0">📲 WhatsApp</h3><p style="font-size:11px;color:var(--mu);margin:2px 0 0">'+entrada.semana+'</p></div>';
+  const btnX=document.createElement('button');
+  btnX.style.cssText='background:none;border:none;font-size:20px;cursor:pointer;color:var(--mu)';
+  btnX.textContent='×';
+  btnX.onclick=()=>modal.remove();
+  hdr.appendChild(btnX);
+  card.appendChild(hdr);
+
+  // Tabs
+  const tabs=document.createElement('div');
+  tabs.style.cssText='display:flex;border-bottom:1px solid var(--brd);flex-shrink:0';
+  ['disp','conf'].forEach((t,i)=>{
+    const btn=document.createElement('button');
+    btn.id='wph-tab-'+t;
+    btn.style.cssText='flex:1;padding:10px;border:none;cursor:pointer;font-size:12px;font-weight:'+(i===0?'700':'600')+';background:'+(i===0?'var(--ac);color:var(--bg)':'var(--card2);color:var(--tx)')+';border-radius:0;font-family:var(--fn)';
+    btn.textContent=i===0?'1️⃣ Disponibilidade':'2️⃣ Confirmar escala';
+    btn.onclick=()=>wphTab(t);
+    tabs.appendChild(btn);
+  });
+  card.appendChild(tabs);
+
+  // Body scrollable
+  const body=document.createElement('div');
+  body.style.cssText='overflow-y:auto;flex:1';
+
+  // === PAINEL 1: DISPONIBILIDADE ===
+  const panelDisp=document.createElement('div');
+  panelDisp.id='wph-disp';
+  panelDisp.style.cssText='padding:16px;display:flex;flex-direction:column;gap:10px';
+  _renderDispPanel(panelDisp, histId, entrada);
+  body.appendChild(panelDisp);
+
+  // === PAINEL 2: CONFIRMAÇÃO DE ESCALA ===
+  const panelConf=document.createElement('div');
+  panelConf.id='wph-conf';
+  panelConf.style.cssText='padding:16px;display:flex;flex-direction:column;gap:10px;display:none';
+  _renderConfPanel(panelConf, histId, entrada);
+  body.appendChild(panelConf);
+
+  card.appendChild(body);
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+}
+
+function wphTab(tab){
+  ['disp','conf'].forEach(t=>{
+    const p=document.getElementById('wph-'+t);
+    const b=document.getElementById('wph-tab-'+t);
+    if(p) p.style.display=t===tab?'flex':'none';
+    if(b){
+      b.style.background=t===tab?'var(--ac)':'var(--card2)';
+      b.style.color=t===tab?'var(--bg)':'var(--tx)';
+      b.style.fontWeight=t===tab?'700':'600';
+    }
+  });
+}
+
+function _renderDispPanel(panel, histId, entrada){
+  const dispKey='orion_v7_disp_hist_'+histId;
+  const dispRecebidas=JSON.parse(localStorage.getItem(dispKey)||'{}');
+  const nRecebidas=Object.keys(dispRecebidas).length;
+  const timerState=_dispTimers[histId]||null;
+  const agora=Date.now();
+  const timerAtivo=timerState&&timerState.expira>agora;
+  const timerExpirado=timerState&&timerState.expira<=agora;
+
+  panel.innerHTML='';
+
+  // Status timer
+  const statusDiv=document.createElement('div');
+  if(timerAtivo){
+    const restante=timerState.expira-agora;
+    const min=Math.floor(restante/60000);
+    const sec=Math.floor((restante%60000)/1000);
+    statusDiv.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:700;color:#92400e">⏳ Link enviado — aguardando respostas</div>
+        <div style="font-size:11px;color:#92400e;margin-top:2px">Tempo restante: <strong id="wph-timer-val">${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}</strong></div>
+        <div style="font-size:11px;color:#92400e;margin-top:2px">${nRecebidas} de ${Object.keys(entrada.confirmacoes||{}).length} colaboradores responderam</div>
+      </div>
+      <button class="btn bd sm" onclick="_cancelarTimerDisp('${histId}')">Cancelar timer</button>
+    </div>`;
+    // Iniciar tick
+    _tickTimerDisp(histId);
+  } else if(timerExpirado){
+    statusDiv.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px">
+      <div style="font-size:12px;font-weight:700;color:#166534">✅ Prazo encerrado — pode montar a escala!</div>
+      <div style="font-size:11px;color:#166534;margin-top:2px">${nRecebidas} colaborador${nRecebidas!==1?'es':'} informou indisponibilidade. Acesse a aba <strong>Escala</strong> para montar considerando estas datas.</div>
+    </div>`;
+  } else {
+    statusDiv.innerHTML=`<div style="background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px 14px">
+      <div style="font-size:12px;font-weight:600;color:var(--tx)">Como funciona:</div>
+      <div style="font-size:11px;color:var(--mu);margin-top:4px;line-height:1.7">
+        1. Clique no botão abaixo para enviar o link de disponibilidade no grupo do WhatsApp<br>
+        2. Os colaboradores têm <strong>1 hora</strong> para informar os dias que não podem trabalhar<br>
+        3. Após 1h, o botão "Montar escala" irá considerar as indisponibilidades
+      </div>
+    </div>`;
+  }
+  panel.appendChild(statusDiv);
+
+  // Botão enviar grupo
+  const grpDiv=document.createElement('div');
+  grpDiv.style.cssText='background:rgba(37,211,102,.08);border:1px solid rgba(37,211,102,.3);border-radius:10px;padding:14px';
+  grpDiv.innerHTML='<div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--tx)">📢 Enviar para o grupo</div>';
+  const btnGrp=document.createElement('button');
+  btnGrp.style.cssText='width:100%;background:#25d366;color:#fff;border:none;border-radius:8px;padding:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--fn)';
+  btnGrp.textContent='Enviar link de indisponibilidade no grupo';
+  btnGrp.onclick=()=>_enviarDispHistGrupo(histId, entrada);
+  grpDiv.appendChild(btnGrp);
+
+  if(timerAtivo||timerExpirado){
+    const info=document.createElement('div');
+    info.style.cssText='font-size:10px;color:var(--mu);margin-top:6px;text-align:center';
+    info.textContent=timerAtivo?'Reenviar link (reinicia o timer)':'Enviar novo link';
+    grpDiv.appendChild(info);
+  }
+  panel.appendChild(grpDiv);
+
+  // Lista de respostas recebidas
+  const colabs=Object.keys(entrada.confirmacoes||{});
+  if(colabs.length){
+    const respostaDiv=document.createElement('div');
+    respostaDiv.style.cssText='background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px';
+    respostaDiv.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Respostas de indisponibilidade</div>';
+    colabs.sort().forEach(nome=>{
+      const resp=dispRecebidas[nome];
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd)';
+      if(resp){
+        const dias=resp.diasIndisponiveis||[];
+        row.innerHTML=`<span style="font-size:12px;font-weight:600;flex:1">${nome}</span>
+          <span style="font-size:10px;background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-weight:600">Respondeu${dias.length>0?' — não pode: '+dias.join(', '):' — disponível todos'}</span>
+          <button style="background:none;border:none;font-size:11px;color:var(--mu);cursor:pointer;padding:0" onclick="_limparRespDisp('${histId}','${nome.replace(/'/g,"\'")}')">✕</button>`;
+      } else {
+        row.innerHTML=`<span style="font-size:12px;font-weight:600;flex:1">${nome}</span>
+          <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-weight:600">Pendente</span>`;
+      }
+      respostaDiv.appendChild(row);
+    });
+    panel.appendChild(respostaDiv);
+  }
+}
+
+function _renderConfPanel(panel, histId, entrada){
+  const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+
+  // Gerar link de confirmação de escala em grupo (mesmo padrão do link de disponibilidade)
+  function gerarLinkConfirmacaoGrupo(){
+    const turnosPorColab={};
+    DIAS.forEach(dia=>{
+      for(let h=9;h<=25;h++){
+        const cell=entrada.escala[dia]?.[h];
+        if(!cell)return;
+        (cell.alocados||[]).forEach(nome=>{
+          if(!turnosPorColab[nome])turnosPorColab[nome]=[];
+          const lista=turnosPorColab[nome];
+          const ult=lista[lista.length-1];
+          if(ult&&ult.dia===dia&&ult.fim===h)ult.fim=h+1;
+          else lista.push({dia,ini:h,fim:h+1});
+        });
+      }
+    });
+    const nomes=Object.keys(turnosPorColab).sort();
+    const dados={tipo:'confirmacao_grupo',histId,nomes,turnosPorColab,semana:entrada.semana};
+    const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+    return location.origin+location.pathname+'#disp='+b64;
+  }
+
+  panel.innerHTML='';
+
+  // Instrução
+  const instrDiv=document.createElement('div');
+  instrDiv.style.cssText='background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px 14px';
+  instrDiv.innerHTML=`<div style="font-size:12px;font-weight:700;margin-bottom:4px">Como funciona:</div>
+    <div style="font-size:11px;color:var(--mu);line-height:1.7">
+      Envie o link de confirmação no grupo do WhatsApp. Cada colaborador abre o link, seleciona seu nome e confirma (ou marca falta em) cada turno da escala.
+    </div>`;
+  panel.appendChild(instrDiv);
+
+  // Botão enviar grupo
+  const grpDiv=document.createElement('div');
+  grpDiv.style.cssText='background:rgba(37,211,102,.08);border:1px solid rgba(37,211,102,.3);border-radius:10px;padding:14px';
+  grpDiv.innerHTML='<div style="font-size:12px;font-weight:700;margin-bottom:8px">📢 Enviar escala para confirmação</div>';
+  const btnGrp=document.createElement('button');
+  btnGrp.style.cssText='width:100%;background:#25d366;color:#fff;border:none;border-radius:8px;padding:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--fn)';
+  btnGrp.textContent='Enviar link de confirmação de horários no grupo';
+  btnGrp.onclick=()=>{
+    const link=gerarLinkConfirmacaoGrupo();
+    const msg='Oi pessoal!\n\nA escala da semana *'+entrada.semana+'* está pronta!\n\nAcesse o link, selecione seu nome e confirme seus horários:\n\n'+link+'\n\nDúvidas, me chame!';
+    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+  };
+  grpDiv.appendChild(btnGrp);
+  panel.appendChild(grpDiv);
+
+  // Status de confirmações
+  const confs=entrada.confirmacoes||{};
+  const colabs=Object.keys(confs).sort();
+  if(colabs.length){
+    const statusDiv=document.createElement('div');
+    statusDiv.style.cssText='background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px';
+    statusDiv.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Status de confirmações</div>';
+    colabs.forEach(nome=>{
+      const c=confs[nome];
+      const st=c.status||'pendente';
+      const turnos=c.turnos||[];
+      const faltou=turnos.some(t=>t.faltou);
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd)';
+      let badge='';
+      if(st==='confirmado'&&!faltou) badge='<span style="font-size:10px;background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-weight:600">✅ Confirmado</span>';
+      else if(faltou) badge='<span style="font-size:10px;background:#fee2e2;color:#991b1b;padding:2px 7px;border-radius:4px;font-weight:600">⚠ Tem falta</span>';
+      else badge='<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-weight:600">⏳ Pendente</span>';
+      row.innerHTML=`<span style="font-size:12px;font-weight:600;flex:1">${nome}</span>${badge}`;
+      statusDiv.appendChild(row);
+    });
+    panel.appendChild(statusDiv);
+  }
+}
+
+function _enviarDispHistGrupo(histId, entrada){
+  const colabs=Object.keys(entrada.confirmacoes||{}).sort();
+  const expira=Date.now()+60*60*1000; // 1 hora
+  const dados={tipo:'grupo_hist_disp',histId,nomes:colabs,expira,semana:entrada.semana};
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+  const link=location.origin+location.pathname+'#disp='+b64;
+  const msg='Oi pessoal!\n\nInformem os dias que *não* podem trabalhar na semana '+entrada.semana+':\n\n'+link+'\n\nVocês têm 1 hora para responder. Obrigado!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+
+  // Registrar timer
+  _dispTimers[histId]={expira};
+  localStorage.setItem('orion_v7_disptimer_'+histId, JSON.stringify({expira}));
+
+  // Re-renderizar painel
+  const panel=document.getElementById('wph-disp');
+  if(panel) _renderDispPanel(panel, histId, entrada);
+  toast('Link enviado! Timer de 1h iniciado.','tok');
+}
+
+function _tickTimerDisp(histId){
+  const el=document.getElementById('wph-timer-val');
+  if(!el){clearTimeout(_dispTimers[histId]?._tick);return;}
+  const state=_dispTimers[histId];
+  if(!state) return;
+  const restante=Math.max(0,state.expira-Date.now());
+  const min=Math.floor(restante/60000);
+  const sec=Math.floor((restante%60000)/1000);
+  el.textContent=String(min).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+  el.style.color=restante<300000?'#dc2626':restante<600000?'#d97706':'#92400e';
+  if(restante>0){
+    state._tick=setTimeout(()=>_tickTimerDisp(histId),1000);
+  } else {
+    // Timer expirou: re-renderizar painel para mostrar status "pode montar"
+    const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+    const entrada=hist.find(h=>h.id===histId);
+    const panel=document.getElementById('wph-disp');
+    if(panel&&entrada) _renderDispPanel(panel,histId,entrada);
+    toast('⏰ Prazo de disponibilidade encerrado! Hora de montar a escala.','twa');
+  }
+}
+
+function _cancelarTimerDisp(histId){
+  if(_dispTimers[histId]?._tick) clearTimeout(_dispTimers[histId]._tick);
+  delete _dispTimers[histId];
+  localStorage.removeItem('orion_v7_disptimer_'+histId);
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada=hist.find(h=>h.id===histId);
+  const panel=document.getElementById('wph-disp');
+  if(panel&&entrada) _renderDispPanel(panel,histId,entrada);
+}
+
+function _limparRespDisp(histId,nome){
+  const dispKey='orion_v7_disp_hist_'+histId;
+  const atual=JSON.parse(localStorage.getItem(dispKey)||'{}');
+  delete atual[nome];
+  localStorage.setItem(dispKey,JSON.stringify(atual));
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada=hist.find(h=>h.id===histId);
+  const panel=document.getElementById('wph-disp');
+  if(panel&&entrada) _renderDispPanel(panel,histId,entrada);
+  toast('Disponibilidade de '+nome+' removida.','tok');
+}
+
+// Carregar timers salvos ao iniciar
+(function _carregarTimers(){
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(!k||!k.startsWith('orion_v7_disptimer_'))continue;
+      const histId=k.replace('orion_v7_disptimer_','');
+      const state=JSON.parse(localStorage.getItem(k)||'null');
+      if(state&&state.expira>Date.now())_dispTimers[histId]=state;
+    }
+  }catch(e){}
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// ENVIO DE CONFIRMAÇÕES DE TURNO (HISTÓRICO) — mantido para compatibilidade
 // ══════════════════════════════════════════════════════════════════
 
 function abrirEnvioConfirmacao(histId){
@@ -5020,6 +5758,8 @@ load();renderCo();atualizarSideRegras();
 if(window._DISP_MODE){
   const d = window._DISP_MODE;
   if(d.tipo === 'confirmacao') renderConfirmacaoMode(d);
+  else if(d.tipo === 'confirmacao_grupo') renderDispMode();
+  else if(d.tipo === 'grupo_hist_disp') renderDispMode();
   else renderDispMode();
 }
 // Modo leilão
