@@ -468,15 +468,52 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
         <div class="sh">
           <div><h2>Projeção da próxima semana</h2><p id="esSub">—</p></div>
           <div class="sh-r">
-            <button class="btn ba" onclick="preencher()">👥 Preencher automaticamente</button>
-            <button class="btn ba sm" id="btnRefazerConfirmada" style="background:#7c3aed;display:none" onclick="refazerEscalaConfirmada()" title="Refaz a escala respeitando as indisponibilidades declaradas pelos colaboradores">🔄 Refazer com disponibilidades</button>
             <button class="btn bs" onclick="inverter12x36()" id="btn12x36" title="Inverte quais dias cada colaborador 12x36 trabalha nesta semana" style="display:none">↔ Inverter 12x36</button>
             <button class="btn bs" onclick="abrirPainelTurnos()">📋 Painel de turnos</button>
-            <button class="btn ba sm" style="background:#2563eb" onclick="publicarEscala()">✅ Publicar escala</button>
-
-            <button class="btn bs sm" onclick="limpar()">↺ Limpar alocação</button>
+            <button class="btn bs sm" onclick="limpar()">↺ Limpar</button>
           </div>
         </div>
+
+        <!-- PAINEL 3 PASSOS -->
+        <div id="painelPassos" style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:stretch">
+
+          <!-- PASSO 1: DISPONIBILIDADE -->
+          <div id="passo1" style="flex:1;min-width:180px;background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.04em">Passo 1</div>
+            <div style="font-size:13px;font-weight:700;color:var(--tx)">📅 Disponibilidade</div>
+            <div style="font-size:11px;color:var(--mu);line-height:1.5;flex:1">Colete os dias que cada colaborador não pode trabalhar antes de montar a escala.</div>
+            <div id="p1Status" style="font-size:11px;color:var(--mu)">Nenhuma resposta ainda</div>
+            <button class="btn ba sm" style="background:#25d366;border-color:#25d366" onclick="abrirDispEscala()">📲 Enviar link de disponibilidade</button>
+            <button class="btn bs sm" id="p1BtnBuscar" onclick="buscarDisponibilidadesEscala()" style="display:none">☁️ Buscar respostas</button>
+          </div>
+
+          <!-- SETA -->
+          <div style="display:flex;align-items:center;font-size:20px;color:var(--mu);padding:0 4px">›</div>
+
+          <!-- PASSO 2: MONTAR ESCALA -->
+          <div id="passo2" style="flex:1;min-width:180px;background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.04em">Passo 2</div>
+            <div style="font-size:13px;font-weight:700;color:var(--tx)">⚙️ Montar escala</div>
+            <div style="font-size:11px;color:var(--mu);line-height:1.5;flex:1">Monte a escala automaticamente respeitando as indisponibilidades coletadas.</div>
+            <div id="p2Status" style="font-size:11px;color:var(--mu)">Aguardando disponibilidades</div>
+            <button class="btn ba sm" onclick="preencher()">👥 Preencher automaticamente</button>
+            <button class="btn ba sm" id="btnRefazerConfirmada" style="background:#7c3aed;display:none" onclick="refazerEscalaConfirmada()">🔄 Refazer com disponibilidades</button>
+          </div>
+
+          <!-- SETA -->
+          <div style="display:flex;align-items:center;font-size:20px;color:var(--mu);padding:0 4px">›</div>
+
+          <!-- PASSO 3: CONFIRMAR + PUBLICAR -->
+          <div id="passo3" style="flex:1;min-width:180px;background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.04em">Passo 3</div>
+            <div style="font-size:13px;font-weight:700;color:var(--tx)">✅ Confirmar escala</div>
+            <div style="font-size:11px;color:var(--mu);line-height:1.5;flex:1">Publique e envie a escala para confirmação. Quem não confirmar em 1h vai para o leilão de horários.</div>
+            <div id="p3Status" style="font-size:11px;color:var(--mu)">Aguardando montagem</div>
+            <button class="btn ba sm" style="background:#2563eb" onclick="publicarEEnviarConfirmacao()">✅ Publicar e enviar para confirmação</button>
+            <button class="btn bs sm" id="p3BtnLeilao" onclick="abrirLeilaoEscalaAtual()" style="display:none">🔖 Ver leilão de horários</button>
+          </div>
+        </div>
+
         <!-- FILTRO DE DIA -->
         <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
           <span style="font-size:10px;color:var(--mu);font-weight:600;margin-right:4px">VER:</span>
@@ -909,7 +946,7 @@ function goT(n){
   document.getElementById('panel-'+n)?.classList.add('on');
   if(n==='hi')renderHistorico();
   if(n==='col')renderColHist();
-  if(n==='es') setTimeout(verificarDisponibilidadesExistentes, 50);
+  if(n==='es') setTimeout(()=>{ verificarDisponibilidadesExistentes(); atualizarPainelPassos(); }, 50);
   if(n==='ind'){
     const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
     if(hist.length){atualizarSelectHubs([]);renderIndicadores();}
@@ -1350,6 +1387,203 @@ function inverter12x36(){
 // REFAZER ESCALA COM DISPONIBILIDADES CONFIRMADAS
 // ═══════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════
+// PAINEL 3 PASSOS — ESCALA DA SEMANA
+// ══════════════════════════════════════════════════════
+
+function atualizarPainelPassos(){
+  const {seg:segProx}=proximaSemana();
+  const p2=v=>String(v).padStart(2,'0');
+  const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+  const disp=JSON.parse(localStorage.getItem('orion_v7_disp_'+segProxISO)||'{}');
+  const nDisp=Object.keys(disp).length;
+  const temEscala=!!S.escala;
+
+  // Passo 1 status
+  const p1=document.getElementById('p1Status');
+  const p1Buscar=document.getElementById('p1BtnBuscar');
+  if(p1){
+    if(nDisp>0){
+      const nIndisp=Object.values(disp).filter(r=>(r.diasIndisponiveis||[]).length>0).length;
+      p1.innerHTML=`<span style="color:#16a34a;font-weight:600">✅ ${nDisp} resposta${nDisp!==1?'s':''} · ${nIndisp} com restrições</span>`;
+      p1.style.color='#16a34a';
+    } else {
+      p1.textContent='Nenhuma resposta ainda';
+      p1.style.color='';
+    }
+  }
+  if(p1Buscar) p1Buscar.style.display=apiConfigurada()?'':'none';
+
+  // Passo 2 status
+  const p2s=document.getElementById('p2Status');
+  if(p2s){
+    if(temEscala&&nDisp>0) p2s.innerHTML='<span style="color:#7c3aed;font-weight:600">🔄 Use "Refazer" para aplicar disponibilidades</span>';
+    else if(temEscala) p2s.innerHTML='<span style="color:#2563eb;font-weight:600">✅ Escala montada</span>';
+    else p2s.textContent='Aguardando disponibilidades';
+  }
+  const btnRef=document.getElementById('btnRefazerConfirmada');
+  if(btnRef) btnRef.style.display=nDisp>0?'':'none';
+
+  // Passo 3 status
+  const p3s=document.getElementById('p3Status');
+  if(p3s){
+    if(temEscala) p3s.innerHTML='<span style="color:#16a34a;font-weight:600">✅ Pronto para publicar</span>';
+    else p3s.textContent='Aguardando montagem';
+  }
+}
+
+function abrirDispEscala(){
+  // Gera link de disponibilidade para a próxima semana usando os colaboradores ativos
+  const {seg,dom}=proximaSemana();
+  const p2=v=>String(v).padStart(2,'0');
+  const segISO=seg.getFullYear()+'-'+p2(seg.getMonth()+1)+'-'+p2(seg.getDate());
+  const domISO=dom.getFullYear()+'-'+p2(dom.getMonth()+1)+'-'+p2(dom.getDate());
+  const segBR=p2(seg.getDate())+'/'+p2(seg.getMonth()+1);
+  const domBR=p2(dom.getDate())+'/'+p2(dom.getMonth()+1);
+  const semana=segBR+'–'+domBR;
+  const nomes=S.colabs.map(c=>c.nome).sort();
+  const expira=Date.now()+60*60*1000; // 1 hora
+
+  const dados={tipo:'grupo_hist_disp',histId:'semana_'+segISO,nomes,expira,semana,semanaISO:segISO,segISO,apiUrl:getApiUrl()};
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+  const link=location.origin+location.pathname+'#disp='+b64;
+  const msg='Oi pessoal! 👋\n\nInformem os dias que *não podem* trabalhar na semana *'+semana+'*:\n\n'+link+'\n\n⚠️ Vocês têm 1 hora para responder. Obrigado!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+
+  // Salvar timer
+  const timerKey='orion_v7_disptimer_semana_'+segISO;
+  localStorage.setItem(timerKey,JSON.stringify({expira,segISO}));
+
+  // Mostrar botão buscar
+  const btn=document.getElementById('p1BtnBuscar');
+  if(btn) btn.style.display='';
+  toast('Link enviado! Colaboradores têm 1h para responder.','tok');
+
+  // Iniciar countdown visual no passo 1
+  _tickPassoTimer(expira, 'p1Status', ()=>atualizarPainelPassos());
+}
+
+function _tickPassoTimer(expira, elId, onEnd){
+  const el=document.getElementById(elId);
+  if(!el) return;
+  const resto=Math.max(0,expira-Date.now());
+  if(resto===0){if(onEnd)onEnd();return;}
+  const min=Math.floor(resto/60000),sec=Math.floor((resto%60000)/1000);
+  el.innerHTML=`<span style="color:#92400e;font-weight:600">⏳ ${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')} aguardando...</span>`;
+  setTimeout(()=>_tickPassoTimer(expira,elId,onEnd),1000);
+}
+
+async function buscarDisponibilidadesEscala(){
+  const btn=document.getElementById('p1BtnBuscar');
+  if(btn){btn.disabled=true;btn.textContent='Buscando...';}
+
+  const {seg:segProx}=proximaSemana();
+  const p2=v=>String(v).padStart(2,'0');
+  const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+
+  // Tentar múltiplas chaves
+  const keys=['semana_'+segProxISO, segProxISO];
+  let respostas={};
+  for(const key of keys){
+    const res=await apiGet('/disp/'+encodeURIComponent(key));
+    if(res.ok && Object.keys(res.respostas||{}).length>0){
+      respostas=res.respostas; break;
+    }
+  }
+
+  const n=Object.keys(respostas).length;
+  if(!n){
+    toast('Nenhuma resposta recebida ainda.','tok');
+    if(btn){btn.disabled=false;btn.textContent='☁️ Buscar respostas';}
+    return;
+  }
+
+  // Salvar localmente
+  const segKey='orion_v7_disp_'+segProxISO;
+  const atual=JSON.parse(localStorage.getItem(segKey)||'{}');
+  Object.entries(respostas).forEach(([nome,r])=>{ atual[nome]=r; });
+  localStorage.setItem(segKey,JSON.stringify(atual));
+
+  toast(`☁️ ${n} resposta${n!==1?'s':''} importada${n!==1?'s':''}!`,'tok');
+  if(btn){btn.disabled=false;btn.textContent='☁️ Buscar respostas';}
+  atualizarPainelPassos();
+}
+
+async function publicarEEnviarConfirmacao(){
+  if(!S.escala){toast('Monte a escala primeiro.','ter');return;}
+
+  // 1. Publicar
+  const publicou=await publicarEscalaAsync();
+  if(!publicou) return;
+
+  // 2. Buscar histId recém publicado
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const ultima=hist[0];
+  if(!ultima){toast('Erro ao encontrar escala publicada.','ter');return;}
+
+  // 3. Gerar link de confirmação
+  const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const turnosPorColab={};
+  DIAS.forEach(dia=>{
+    for(let h=9;h<=25;h++){
+      const cell=ultima.escala?.[dia]?.[h];
+      if(!cell) continue;
+      (cell.alocados||[]).forEach(nome=>{
+        if(!turnosPorColab[nome])turnosPorColab[nome]=[];
+        const lista=turnosPorColab[nome];
+        const ult=lista[lista.length-1];
+        if(ult&&ult.dia===dia&&ult.fim===h) ult.fim=h+1;
+        else lista.push({dia,ini:h,fim:h+1});
+      });
+    }
+  });
+
+  const nomes=Object.keys(turnosPorColab).sort();
+  const expira=Date.now()+60*60*1000; // 1h para confirmar
+  const dados={tipo:'confirmacao_grupo',histId:ultima.id,nomes,turnosPorColab,semana:ultima.semana,expira,apiUrl:getApiUrl()};
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+  const link=location.origin+location.pathname+'#disp='+b64;
+
+  // Salvar timer de confirmação
+  localStorage.setItem('orion_v7_conftimer_'+ultima.id,JSON.stringify({expira,histId:ultima.id}));
+
+  const msg='Oi pessoal! 📋\n\nA escala da semana *'+ultima.semana+'* está pronta!\n\nAbra o link, selecione seu nome e confirme seus horários (ou marque indisponível):\n\n'+link+'\n\n⚠️ Vocês têm *1 hora* para confirmar. Quem não confirmar terá o horário disponível no leilão. Obrigado!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+
+  // Atualizar passo 3
+  const p3s=document.getElementById('p3Status');
+  if(p3s) p3s.innerHTML='<span style="color:#2563eb;font-weight:600">⏳ Aguardando confirmações...</span>';
+  const p3l=document.getElementById('p3BtnLeilao');
+  if(p3l) p3l.style.display='';
+
+  // Timer para leilão após 1h
+  setTimeout(()=>{
+    const p3s2=document.getElementById('p3Status');
+    if(p3s2) p3s2.innerHTML='<span style="color:#d97706;font-weight:600">⚠️ Prazo encerrado — verificar leilão</span>';
+    toast('⏰ Prazo de confirmação encerrado! Verifique o leilão de horários.','twa');
+  }, expira-Date.now());
+
+  toast('✅ Escala publicada e link enviado! 1h para confirmações.','tok');
+}
+
+function publicarEscalaAsync(){
+  return new Promise(resolve=>{
+    if(!S.escala){resolve(false);return;}
+    // Chama publicarEscala mas sem o confirm (já confirmamos implicitamente)
+    const original=window.confirm;
+    window.confirm=()=>true;
+    try{ publicarEscala(); resolve(true); }
+    catch(e){ resolve(false); }
+    finally{ window.confirm=original; }
+  });
+}
+
+function abrirLeilaoEscalaAtual(){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  if(!hist.length){toast('Publique a escala primeiro.','ter');return;}
+  abrirLinkLeilao(hist[0].id);
+}
+
 function verificarDisponibilidadesExistentes(){
   // Lê a chave da próxima semana (a mesma que preencher() usa)
   const {seg:_segDisp}=proximaSemana();
@@ -1405,12 +1639,9 @@ function refazerEscalaConfirmada(){
 
   toast(msg.split('\n')[0],'tok');
 
-  // Sugerir republicar para atualizar histórico e links de confirmação
-  setTimeout(()=>{
-    if(confirm('Escala refeita com sucesso!\n\nDeseja publicar a escala atualizada?\n(Isso atualiza o histórico e permite enviar um novo link de confirmação de horários via WhatsApp)')){
-      publicarEscala();
-    }
-  }, 600);
+  // Atualizar botão após refazer
+  verificarDisponibilidadesExistentes();
+  _atualizarPainelConfirmacaoAposRefazer();
 
   // Atualizar botão após refazer
   verificarDisponibilidadesExistentes();
@@ -1614,6 +1845,7 @@ function preencher(){
   // Calcular custos
   calcularCustos();
   save();renderEscala();atualizarCustoTotal();
+  atualizarPainelPassos();
   if(av.length)toast(`⚠ ${av.length} slots com cobertura insuficiente.`,'twa');
   else toast('✓ Escala preenchida!','tok');
   // Mostrar botão de inversão se houver 2+ colaboradores 12x36 no hub
@@ -3001,8 +3233,6 @@ function renderHistorico(filtro){
         </div>
         <div class="hist-actions" style="padding:10px 18px;border-top:1px solid var(--brd)">
           <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">Ver escala completa</button>
-          <button class="btn bs sm" style="background:rgba(37,211,102,.15);color:#25d366;border-color:#25d366" onclick="abrirFluxoWppHistorico('${h.id}')">📲 WhatsApp</button>
-          <button class="btn bs sm" style="background:rgba(37,99,235,.15);color:#60a5fa;border-color:#3b82f6" onclick="abrirLinkLeilao('${h.id}')">Leilao de horarios</button>
           <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
           <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
         </div>
@@ -6125,15 +6355,9 @@ async function _sincronizarDoBackend(histId, semanaISO){
 // Auto-poll enquanto timer ativo (a cada 30s)
 let _apiPollInterval=null;
 function _iniciarAutoPoll(histId,semanaISO){
+  // Auto-poll desativado — usuário busca manualmente via botão
   if(_apiPollInterval) clearInterval(_apiPollInterval);
-  if(!apiConfigurada()) return;
-  _apiPollInterval=setInterval(async()=>{
-    const state=_dispTimers[histId];
-    if(!state||state.expira<=Date.now()){
-      clearInterval(_apiPollInterval);_apiPollInterval=null;return;
-    }
-    await _sincronizarDoBackend(histId,semanaISO);
-  },30000); // a cada 30 segundos
+  _apiPollInterval=null;
 }
 
 function _limparRespDisp(histId,nome){
@@ -6375,8 +6599,7 @@ function exportarIndicadores(){
 // ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
 _initApiConfig();
-// Verificar disponibilidades ao carregar (mostra botão refazer se existirem)
-setTimeout(verificarDisponibilidadesExistentes, 100);
+setTimeout(()=>{ verificarDisponibilidadesExistentes(); atualizarPainelPassos(); }, 150);
 
 // ── Importar resposta de disponibilidade de colaborador (via link de retorno)
 if(window._INBOUND_DISP_RESP){
