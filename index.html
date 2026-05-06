@@ -4962,17 +4962,21 @@ function _renderTelaDispHistIndiv(nome, d){
 
     // 1. Tentar enviar para o backend
     try{
-      const resp=await fetch(ORION_API+'/disp',{
+      const apiUrl=localStorage.getItem('orion_api_url')||ORION_API;
+      const semKey=d.semanaISO||d.segISO||'';
+      console.log('[Disp] Enviando para API:', apiUrl, '| semanaISO:', semKey, '| histId:', d.histId);
+      const resp=await fetch(apiUrl+'/disp',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
           nome,
-          semanaISO:d.semanaISO||d.segISO||'',
+          semanaISO: semKey,
           diasIndisponiveis:diasIndisp,
           histId:d.histId,
         }),
       });
       const result=await resp.json();
+      console.log('[Disp] Resposta API:', result);
       if(result.ok) ok=true;
     }catch(e){
       console.warn('[Disp] API error, fallback localStorage:',e.message);
@@ -6053,12 +6057,17 @@ async function _sincronizarDoBackend(histId, semanaISO){
     if(entrada?.domISO) keysToTry.add(entrada.segISO+'/'+entrada.domISO);
   }catch(e){}
 
-  // Também tentar a chave da próxima semana (caso link tenha sido gerado hoje)
+  // Tentar o histId como chave (caso POST tenha caído no fallback)
+  keysToTry.add(histId);
+
+  // Também tentar a chave da próxima semana
   try{
     const {seg:segProx}=proximaSemana();
     const p2=v=>String(v).padStart(2,'0');
     keysToTry.add(segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate()));
   }catch(e){}
+
+  console.log('[Sync] Tentando chaves:', [...keysToTry]);
 
   let respostas={};
   let encontrou=false;
