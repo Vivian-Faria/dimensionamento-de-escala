@@ -3282,6 +3282,20 @@ try {
     }
 
     if(temDados) history.replaceState(null,'',location.pathname);
+
+    // ── RESPOSTA DE DISPONIBILIDADE: #disp_resp=BASE64
+    // Gerado pelo colaborador após confirmar no celular. Gestor abre para importar.
+    var b64Resp=extrairParam(raw,'disp_resp');
+    if(b64Resp){
+      try{
+        var jsonR=decodeURIComponent(escape(atob(b64Resp)));
+        var resp=JSON.parse(jsonR);
+        if(resp&&resp.tipo==='disp_resp'&&resp.nome&&resp.histId){
+          window._INBOUND_DISP_RESP=resp;
+          history.replaceState(null,'',location.pathname);
+        }
+      }catch(e){ console.error('[OrionEscala] disp_resp erro:',e); }
+    }
   }catch(e){ console.error('[OrionEscala] hash reader erro:',e); }
 })();
 
@@ -4795,36 +4809,64 @@ function _renderTelaDispHistIndiv(nome, d){
     const diasIndisp=[...selecionados];
     const payload={nome,diasIndisponiveis:diasIndisp,ts:Date.now()};
 
-    // 1. Salvar no histórico (chave do histId)
-    const dispKey='orion_v7_disp_hist_'+d.histId;
-    const atual=JSON.parse(localStorage.getItem(dispKey)||'{}');
-    atual[nome]=payload;
-    localStorage.setItem(dispKey,JSON.stringify(atual));
-
-    // 2. Salvar diretamente na chave que preencherEscala lê (próxima semana)
-    // Isso garante que ao montar a escala, as indisponibilidades já estão lá
+    // Também salva localmente (caso gestor use o mesmo dispositivo)
     try{
-      // Tenta calcular a chave da próxima semana no device do colaborador
-      // Se não conseguir, não falha silenciosamente
+      const dispKey='orion_v7_disp_hist_'+d.histId;
+      const atual=JSON.parse(localStorage.getItem(dispKey)||'{}');
+      atual[nome]=payload;
+      localStorage.setItem(dispKey,JSON.stringify(atual));
+      // Chave da próxima semana no mesmo device
       const hoje=new Date();
       const dow=hoje.getDay();
-      const diasAteDom=dow===0?7:dow;
-      const domAnt=new Date(hoje);domAnt.setDate(hoje.getDate()-diasAteDom);
+      const domAnt=new Date(hoje);domAnt.setDate(hoje.getDate()-(dow===0?7:dow));
       const segAnt=new Date(domAnt);segAnt.setDate(domAnt.getDate()-6);
       const segProx=new Date(segAnt);segProx.setDate(segAnt.getDate()+14);
       const p2=v=>String(v).padStart(2,'0');
       const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
-      const proxKey='orion_v7_disp_'+segProxISO;
-      const proxAtual=JSON.parse(localStorage.getItem(proxKey)||'{}');
+      const proxAtual=JSON.parse(localStorage.getItem('orion_v7_disp_'+segProxISO)||'{}');
       proxAtual[nome]=payload;
-      localStorage.setItem(proxKey,JSON.stringify(proxAtual));
+      localStorage.setItem('orion_v7_disp_'+segProxISO,JSON.stringify(proxAtual));
     }catch(e){}
 
-    card.innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">✅</div>'
+    // Gerar link de retorno com a resposta encodada — o GESTOR abre este link para importar
+    const respData={tipo:'disp_resp',histId:d.histId,nome,...payload};
+    const b64=btoa(unescape(encodeURIComponent(JSON.stringify(respData))));
+    const linkRetorno=location.origin+location.pathname+'#disp_resp='+b64;
+
+    // Mostrar tela de confirmação com o link de retorno
+    card.innerHTML='';
+    const wrap2=document.createElement('div');
+    wrap2.style.cssText='text-align:center;padding:20px';
+    wrap2.innerHTML='<div style="font-size:48px;margin-bottom:16px">✅</div>'
       +'<h3 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:8px">Obrigado, '+nome+'!</h3>'
-      +(diasIndisp.length>0?'<p style="color:#9ca3af;font-size:13px">Registrado que você <strong style="color:#f87171">não pode</strong> trabalhar em: '+diasIndisp.join(', ')+'</p>'
-      :'<p style="color:#86efac;font-size:13px">Você está disponível toda a semana! 🎉</p>')
-      +'<p style="color:#6b7280;font-size:12px;margin-top:16px">Pode fechar esta página.</p></div>';
+      +(diasIndisp.length>0?'<p style="color:#9ca3af;font-size:13px;margin-bottom:16px">Registrado que você <strong style="color:#f87171">não pode</strong> trabalhar em: '+diasIndisp.join(', ')+'</p>'
+      :'<p style="color:#86efac;font-size:13px;margin-bottom:16px">Você está disponível toda a semana! 🎉</p>');
+
+    // Botão WhatsApp para enviar de volta ao gestor
+    const btnWa=document.createElement('button');
+    btnWa.style.cssText='width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px';
+    btnWa.textContent='📲 Enviar confirmação ao gestor via WhatsApp';
+    btnWa.onclick=function(){
+      const msg='Olá! Confirmei minha disponibilidade na semana '+(d.semana||'')+'.\n\nAcesse o link para importar:\n'+linkRetorno;
+      window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+    };
+
+    // Botão copiar link
+    const btnCopy=document.createElement('button');
+    btnCopy.style.cssText='width:100%;background:rgba(255,255,255,.08);color:#d1d5db;border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px';
+    btnCopy.textContent='📋 Copiar link de confirmação';
+    btnCopy.onclick=function(){
+      navigator.clipboard.writeText(linkRetorno).then(()=>{btnCopy.textContent='✅ Link copiado!';});
+    };
+
+    const info=document.createElement('p');
+    info.style.cssText='color:#6b7280;font-size:11px;margin-top:8px';
+    info.textContent='Envie o link acima ao gestor. Ao clicar no link, sua disponibilidade será registrada automaticamente.';
+
+    wrap2.appendChild(btnWa);
+    wrap2.appendChild(btnCopy);
+    wrap2.appendChild(info);
+    card.appendChild(wrap2);
   };
   card.appendChild(btnEnv);
   wrap.appendChild(card);
@@ -5636,10 +5678,12 @@ function _renderDispPanel(panel, histId, entrada){
   } else {
     statusDiv.innerHTML=`<div style="background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px 14px">
       <div style="font-size:12px;font-weight:600;color:var(--tx)">Como funciona:</div>
-      <div style="font-size:11px;color:var(--mu);margin-top:4px;line-height:1.7">
-        1. Clique no botão abaixo para enviar o link de disponibilidade no grupo do WhatsApp<br>
-        2. Os colaboradores têm 1 hora para informar os dias que não podem trabalhar<br>
-        3. Após 1h, o sistema sincroniza as indisponibilidades e você refaz a escala
+      <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.9">
+        <strong>1.</strong> Envie o link abaixo no grupo do WhatsApp<br>
+        <strong>2.</strong> Cada colaborador abre, seleciona o nome e marca os dias indisponíveis<br>
+        <strong>3.</strong> Após confirmar, cada um recebe um <strong>link de retorno</strong> para enviar de volta a você<br>
+        <strong>4.</strong> Você abre o link de retorno — a disponibilidade é importada automaticamente<br>
+        <strong>5.</strong> Vá para a aba Escala → clique em "🔄 Refazer com disponibilidades"
       </div>
     </div>`;
   }
@@ -5770,7 +5814,7 @@ function _enviarDispHistGrupo(histId, entrada){
   const dados={tipo:'grupo_hist_disp',histId,nomes:colabs,expira,semana:entrada.semana};
   const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
   const link=location.origin+location.pathname+'#disp='+b64;
-  const msg='Oi pessoal!\n\nInformem os dias que *não* podem trabalhar na semana '+entrada.semana+':\n\n'+link+'\n\nVocês têm 1 hora para responder. Obrigado!';
+  const msg='Oi pessoal! 👋\n\nInformem os dias que *não podem* trabalhar na semana '+entrada.semana+':\n\n'+link+'\n\n⚠️ Após confirmar, você vai receber um link de retorno — envie ele aqui no grupo para eu registrar. Obrigado!';
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 
   // Registrar timer
@@ -6055,6 +6099,36 @@ function exportarIndicadores(){
 load();renderCo();atualizarSideRegras();
 // Verificar disponibilidades ao carregar (mostra botão refazer se existirem)
 setTimeout(verificarDisponibilidadesExistentes, 100);
+
+// ── Importar resposta de disponibilidade de colaborador (via link de retorno)
+if(window._INBOUND_DISP_RESP){
+  const resp=window._INBOUND_DISP_RESP;
+  const p2=v=>String(v).padStart(2,'0');
+  const {seg:segProx}=proximaSemana();
+  const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+
+  // Salvar no histórico (chave histId)
+  const dispKeyHist='orion_v7_disp_hist_'+resp.histId;
+  const atualHist=JSON.parse(localStorage.getItem(dispKeyHist)||'{}');
+  atualHist[resp.nome]={nome:resp.nome,diasIndisponiveis:resp.diasIndisponiveis||[],ts:resp.ts||Date.now()};
+  localStorage.setItem(dispKeyHist,JSON.stringify(atualHist));
+
+  // Salvar na chave da próxima semana (que preencherEscala lê)
+  const dispKeyProx='orion_v7_disp_'+segProxISO;
+  const atualProx=JSON.parse(localStorage.getItem(dispKeyProx)||'{}');
+  atualProx[resp.nome]={nome:resp.nome,diasIndisponiveis:resp.diasIndisponiveis||[],ts:resp.ts||Date.now()};
+  localStorage.setItem(dispKeyProx,JSON.stringify(atualProx));
+
+  const dias=resp.diasIndisponiveis||[];
+  const msg=dias.length>0
+    ?`✅ Disponibilidade de ${resp.nome} importada!\nIndisponível em: ${dias.join(', ')}`
+    :`✅ ${resp.nome} está disponível toda a semana!`;
+  setTimeout(()=>{
+    alert(msg+'\n\nVá para a aba Escala e clique em "Refazer com disponibilidades".');
+    goT('es');
+    setTimeout(verificarDisponibilidadesExistentes,100);
+  },300);
+}
 // Modo disponibilidade
 if(window._DISP_MODE){
   const d = window._DISP_MODE;
