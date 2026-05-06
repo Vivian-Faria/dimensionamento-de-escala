@@ -3761,6 +3761,12 @@ function renderIndicadores(){
     });
   }catch(e){}
 
+  // Nota: comparações s/ ant. só aparecem quando há 2+ semanas coletadas
+  const notaHtml = semanas.length <= 1
+    ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:11px;color:#92400e;margin-bottom:10px">
+        ℹ️ <strong>Apenas 1 semana coletada.</strong> Os dados comparativos (variações %) aparecerão automaticamente conforme novas semanas forem coletadas via bookmarklet.
+       </div>` : '';
+
   // Cabeçalho da tabela
   const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
 
@@ -3837,6 +3843,20 @@ function renderIndicadores(){
     }
   });
   tbody+='</tbody>';
+
+  // Insert the note before the table if only 1 week
+  const tabelaCard=document.getElementById('indTabelaCard');
+  let notaEl=tabelaCard?.querySelector('.ind-nota-semanas');
+  if(!notaEl&&semanas.length<=1){
+    notaEl=document.createElement('div');
+    notaEl.className='ind-nota-semanas';
+    notaEl.style.cssText='padding:10px 16px 0';
+    notaEl.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:11px;color:#92400e">ℹ️ <strong>Apenas ${hist.length} semana coletada.</strong> Comparações % aparecem ao coletar mais semanas com o bookmarklet.</div>`;
+    const cardBody=tabelaCard?.querySelector('.card-body');
+    if(cardBody)cardBody.insertBefore(notaEl,cardBody.firstChild);
+  } else if(notaEl&&semanas.length>1){
+    notaEl.remove();
+  }
 
   document.getElementById('indTabela').innerHTML=thead+tbody;
 
@@ -3937,6 +3957,19 @@ function gerarRelatorioIndicadores(){
 
   // Distribuição por hub (quando múltiplos)
   // mTotal = apenas semanas do mês em vigência
+  // Filtrar apenas o mês em vigência para o totalizador e CPP
+  const agora = new Date();
+  const mesAtual = agora.getMonth();
+  const anoAtual = agora.getFullYear();
+  const histMesVigente = hist.filter(s=>{
+    if(!s.ate) return true;
+    const d = new Date(s.ate+'T00:00:00');
+    return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
+  });
+  const fonteDados = histMesVigente.length > 0 ? histMesVigente : hist;
+  const todasVendasRel = fonteDados.flatMap(s=>s.vendas||[]);
+  const todosCancelsRel = fonteDados.flatMap(s=>s.cancelamentos||[]);
+
   const _agora=new Date(), _mes=_agora.getMonth(), _ano=_agora.getFullYear();
   const _histMes=hist.filter(s=>{ if(!s.ate)return true; const d=new Date(s.ate+'T00:00:00'); return d.getMonth()===_mes&&d.getFullYear()===_ano; });
   const mTotal=calcGrupo(_histMes.length>0?_histMes:hist);
@@ -3960,18 +3993,6 @@ function gerarRelatorioIndicadores(){
   const HUBS_SION_REL = ['DS Sion', 'Sem hub'];
   const hubsSionAtivos = hubsAtivos.filter(h => HUBS_SION_REL.includes(h));
   const temSionUnificado = hubsSionAtivos.length === 2;
-  // Filtrar apenas o mês em vigência para o totalizador
-  const agora = new Date();
-  const mesAtual = agora.getMonth(); // 0-indexed
-  const anoAtual = agora.getFullYear();
-  const histMesVigente = hist.filter(s=>{
-    if(!s.ate) return true;
-    const d = new Date(s.ate+'T00:00:00');
-    return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
-  });
-  const fonteDados = histMesVigente.length > 0 ? histMesVigente : hist;
-  const todasVendasRel = fonteDados.flatMap(s=>s.vendas||[]);
-  const todosCancelsRel = fonteDados.flatMap(s=>s.cancelamentos||[]);
 
   const distRows = hubsAtivos.length > 1 ? (()=>{
     const cores = ['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
@@ -4565,13 +4586,37 @@ function _renderTelaDispHistIndiv(nome, d){
   btnEnv.style.cssText='width:100%;background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
   btnEnv.textContent='Confirmar disponibilidade';
   btnEnv.onclick=function(){
+    const diasIndisp=[...selecionados];
+    const payload={nome,diasIndisponiveis:diasIndisp,ts:Date.now()};
+
+    // 1. Salvar no histórico (chave do histId)
     const dispKey='orion_v7_disp_hist_'+d.histId;
     const atual=JSON.parse(localStorage.getItem(dispKey)||'{}');
-    atual[nome]={nome,diasIndisponiveis:[...selecionados],ts:Date.now()};
+    atual[nome]=payload;
     localStorage.setItem(dispKey,JSON.stringify(atual));
+
+    // 2. Salvar diretamente na chave que preencherEscala lê (próxima semana)
+    // Isso garante que ao montar a escala, as indisponibilidades já estão lá
+    try{
+      // Tenta calcular a chave da próxima semana no device do colaborador
+      // Se não conseguir, não falha silenciosamente
+      const hoje=new Date();
+      const dow=hoje.getDay();
+      const diasAteDom=dow===0?7:dow;
+      const domAnt=new Date(hoje);domAnt.setDate(hoje.getDate()-diasAteDom);
+      const segAnt=new Date(domAnt);segAnt.setDate(domAnt.getDate()-6);
+      const segProx=new Date(segAnt);segProx.setDate(segAnt.getDate()+14);
+      const p2=v=>String(v).padStart(2,'0');
+      const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+      const proxKey='orion_v7_disp_'+segProxISO;
+      const proxAtual=JSON.parse(localStorage.getItem(proxKey)||'{}');
+      proxAtual[nome]=payload;
+      localStorage.setItem(proxKey,JSON.stringify(proxAtual));
+    }catch(e){}
+
     card.innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">✅</div>'
       +'<h3 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:8px">Obrigado, '+nome+'!</h3>'
-      +(selecionados.size>0?'<p style="color:#9ca3af;font-size:13px">Registrado que você <strong style="color:#f87171">não pode</strong> trabalhar em: '+[...selecionados].join(', ')+'</p>'
+      +(diasIndisp.length>0?'<p style="color:#9ca3af;font-size:13px">Registrado que você <strong style="color:#f87171">não pode</strong> trabalhar em: '+diasIndisp.join(', ')+'</p>'
       :'<p style="color:#86efac;font-size:13px">Você está disponível toda a semana! 🎉</p>')
       +'<p style="color:#6b7280;font-size:12px;margin-top:16px">Pode fechar esta página.</p></div>';
   };
@@ -5334,10 +5379,12 @@ function _renderDispPanel(panel, histId, entrada){
   const timerAtivo=timerState&&timerState.expira>agora;
   const timerExpirado=timerState&&timerState.expira<=agora;
 
-  // Sincronizar indisponibilidades com a chave que preencherEscala usa (orion_v7_disp_SEGISO)
+  // Sincronizar indisponibilidades com a chave que preencherEscala usa (orion_v7_disp_SEGISO_PROXIMA)
   function sincronizarIndisponibilidades(){
-    if(!entrada.segISO) return;
-    const segKey='orion_v7_disp_'+entrada.segISO;
+    const {seg:segProx}=proximaSemana();
+    const p2=v=>String(v).padStart(2,'0');
+    const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+    const segKey='orion_v7_disp_'+segProxISO;
     const atual=JSON.parse(localStorage.getItem(segKey)||'{}');
     Object.entries(dispRecebidas).forEach(([nome,resp])=>{
       atual[nome]={nome,diasIndisponiveis:resp.diasIndisponiveis||[],ts:resp.ts||Date.now()};
@@ -5371,8 +5418,8 @@ function _renderDispPanel(panel, histId, entrada){
       <div style="font-size:11px;color:#166534;margin-top:4px">${nRecebidas} colaborador${nRecebidas!==1?'es':''} respondeu · ${nIndisp} com dias indisponíveis</div>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <button style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit"
-          onclick="document.getElementById('wpp-hist-modal')?.remove();goT('es');setTimeout(()=>{ toast('Indisponibilidades carregadas! Clique em Preencher automaticamente.','tok'); },300)">
-          🔄 Ir para Escala e Refazer
+          onclick="_sincronizarERecarregar('${histId}');document.getElementById('wpp-hist-modal')?.remove();goT('es');setTimeout(()=>{ toast('✅ Indisponibilidades aplicadas! Clique em Preencher automaticamente.','tok'); },400)">
+          🔄 Sincronizar e Ir para Escala
         </button>
         <button style="background:transparent;border:1px solid #16a34a;color:#166534;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit"
           onclick="_sincronizarERecarregar('${histId}')">
@@ -5577,10 +5624,15 @@ function _limparRespDisp(histId,nome){
 function _sincronizarERecarregar(histId){
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const entrada=hist.find(h=>h.id===histId);
-  if(!entrada||!entrada.segISO){toast('Semana sem data ISO, não foi possível sincronizar.','ter');return;}
+  if(!entrada){toast('Escala não encontrada.','ter');return;}
   const dispKey='orion_v7_disp_hist_'+histId;
   const dispRecebidas=JSON.parse(localStorage.getItem(dispKey)||'{}');
-  const segKey='orion_v7_disp_'+entrada.segISO;
+
+  // Escreve na chave que preencherEscala lê: orion_v7_disp_SEGISO_PROXIMA_SEMANA
+  const {seg:segProx}=proximaSemana();
+  const p2=v=>String(v).padStart(2,'0');
+  const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+  const segKey='orion_v7_disp_'+segProxISO;
   const atual=JSON.parse(localStorage.getItem(segKey)||'{}');
   let n=0;
   Object.entries(dispRecebidas).forEach(([nome,resp])=>{
@@ -5588,7 +5640,7 @@ function _sincronizarERecarregar(histId){
     n++;
   });
   localStorage.setItem(segKey,JSON.stringify(atual));
-  toast('✅ '+n+' resposta'+( n!==1?'s':'')+' sincronizada'+( n!==1?'s':'')+' com a escala!','tok');
+  toast('✅ '+n+' resposta'+( n!==1?'s':'')+' sincronizada'+( n!==1?'s':'')+' → semana '+segProxISO,'tok');
   const panel=document.getElementById('wph-disp');
   if(panel) _renderDispPanel(panel,histId,entrada);
 }
