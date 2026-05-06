@@ -4962,7 +4962,7 @@ function _renderTelaDispHistIndiv(nome, d){
 
     // 1. Tentar enviar para o backend
     try{
-      const apiUrl=localStorage.getItem('orion_api_url')||ORION_API;
+      const apiUrl=d.apiUrl||localStorage.getItem('orion_api_url')||ORION_API;
       const semKey=d.semanaISO||d.segISO||'';
       console.log('[Disp] Enviando para API:', apiUrl, '| semanaISO:', semKey, '| histId:', d.histId);
       const resp=await fetch(apiUrl+'/disp',{
@@ -5984,7 +5984,7 @@ function _renderConfPanel(panel, histId, entrada){
 function _enviarDispHistGrupo(histId, entrada){
   const colabs=Object.keys(entrada.confirmacoes||{}).sort();
   const expira=Date.now()+60*60*1000; // 1 hora
-  const dados={tipo:'grupo_hist_disp',histId,nomes:colabs,expira,semana:entrada.semana,semanaISO:entrada.segISO||'',segISO:entrada.segISO||''};
+  const dados={tipo:'grupo_hist_disp',histId,nomes:colabs,expira,semana:entrada.semana,semanaISO:entrada.segISO||'',segISO:entrada.segISO||'',apiUrl:getApiUrl()};
   const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
   const link=location.origin+location.pathname+'#disp='+b64;
   const msg='Oi pessoal! 👋\n\nInformem os dias que *não podem* trabalhar na semana '+entrada.semana+':\n\n'+link+'\n\n⚠️ Após confirmar, você vai receber um link de retorno — envie ele aqui no grupo para eu registrar. Obrigado!';
