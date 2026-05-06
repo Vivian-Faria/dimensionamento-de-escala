@@ -417,6 +417,16 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div class="cfg"><label>Hora abertura</label><input type="number" id="cHI" value="9" min="0" max="23" oninput="atualizarSideRegras()"></div>
   <div class="cfg"><label>Hora fechamento (25=01h)</label><input type="number" id="cHO" value="25" min="1" max="30" oninput="atualizarSideRegras()"></div>
 
+  <div class="stit" style="margin-top:12px">☁️ API Backend</div>
+  <div style="font-size:10px;color:var(--mu);margin-bottom:6px;line-height:1.5">URL do Cloudflare Worker para coleta de disponibilidade entre dispositivos.</div>
+  <div id="apiStatusBadge" style="margin-bottom:6px"></div>
+  <div style="display:flex;gap:4px;align-items:center">
+    <input type="text" id="cfgApiUrl" placeholder="https://orion-escala-api.xxx.workers.dev"
+      style="flex:1;font-size:10px;padding:5px 7px;border-radius:6px;border:1px solid var(--brd);background:var(--card2);color:var(--tx);font-family:var(--mo);outline:none"
+      oninput="salvarApiUrl(this.value)">
+    <button onclick="testarApi()" style="font-size:10px;padding:5px 8px;border-radius:6px;border:1px solid var(--brd);background:var(--card2);cursor:pointer;font-family:var(--fn);white-space:nowrap">Testar</button>
+  </div>
+
   <div class="stit">Regras ativas</div>
   <div id="sideRegras">
     <div class="rule-badge"><span class="rb-dot" style="background:#16a34a"></span>Período: Seg–Dom anterior</div>
@@ -688,6 +698,52 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 const DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 const DIASF={Dom:'Domingo',Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado'};
 const KC='orion_v7_c',KM='orion_v7_m',KE='orion_v7_e',KCOL='orion_coleta',KH='orion_v7_hist';
+
+// ── API Backend (Cloudflare Worker)
+// Após o deploy, substitua pela URL do seu worker
+const ORION_API = localStorage.getItem('orion_api_url') || 'https://orion-escala-api.SEU_USUARIO.workers.dev';
+
+async function apiPost(endpoint, data) {
+  const base=getApiUrl();
+  try {
+    const r = await fetch(base + endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return await r.json();
+  } catch(e) {
+    console.warn('[OrionAPI] POST', endpoint, e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+async function apiGet(endpoint) {
+  const base=getApiUrl();
+  try {
+    const r = await fetch(base + endpoint);
+    return await r.json();
+  } catch(e) {
+    console.warn('[OrionAPI] GET', endpoint, e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+async function apiDelete(endpoint) {
+  const base=getApiUrl();
+  try {
+    const r = await fetch(base + endpoint, { method: 'DELETE' });
+    return await r.json();
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// Verifica se API está configurada
+function apiConfigurada() {
+  const url=getApiUrl();
+  return !url.includes('SEU_USUARIO') && url.startsWith('http');
+}
 const S={colabs:[],matrix:null,escala:null,editId:null};
 function p2(v){return String(v).padStart(2,'0');}
 function fmtISOlocal(d){return`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
@@ -1626,6 +1682,65 @@ function atualizarCustoTotal(){
   const cpp = total>0&&totalPed>0 ? total/totalPed : 0;
   document.getElementById('sCpp').textContent = cpp>0 ? `R$ ${cpp.toFixed(2).replace('.',',')}` : '—';
   document.getElementById('sCppSub').textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe';
+}
+
+function _initApiConfig(){
+  const saved=localStorage.getItem('orion_api_url');
+  const el=document.getElementById('cfgApiUrl');
+  if(el&&saved) el.value=saved;
+  _atualizarApiStatusBadge();
+}
+
+function salvarApiUrl(val){
+  const url=(val||'').trim();
+  if(url&&(url.startsWith('http://')||url.startsWith('https://'))){
+    localStorage.setItem('orion_api_url',url);
+    // Atualiza a variável global
+    window._orionApiUrl=url;
+    _atualizarApiStatusBadge();
+  } else if(!url){
+    localStorage.removeItem('orion_api_url');
+    _atualizarApiStatusBadge();
+  }
+}
+
+// Override ORION_API to read from localStorage dynamically
+function getApiUrl(){
+  return localStorage.getItem('orion_api_url')||ORION_API;
+}
+
+function _atualizarApiStatusBadge(){
+  const badge=document.getElementById('apiStatusBadge');
+  if(!badge) return;
+  const url=localStorage.getItem('orion_api_url');
+  if(!url||url.includes('SEU_USUARIO')){
+    badge.innerHTML='<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-weight:600">⚠ Não configurada</span>';
+  } else {
+    badge.innerHTML='<span style="font-size:10px;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-weight:600">✅ Configurada</span>';
+  }
+}
+
+async function testarApi(){
+  const url=localStorage.getItem('orion_api_url');
+  if(!url||url.includes('SEU_USUARIO')){
+    toast('Cole a URL do Worker primeiro.','ter');
+    return;
+  }
+  const badge=document.getElementById('apiStatusBadge');
+  if(badge) badge.innerHTML='<span style="font-size:10px;color:var(--mu)">Testando...</span>';
+  try{
+    const r=await fetch(url+'/ping',{signal:AbortSignal.timeout(5000)});
+    const d=await r.json();
+    if(d.ok){
+      toast('✅ API online e funcionando!','tok');
+      if(badge) badge.innerHTML='<span style="font-size:10px;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-weight:600">✅ Online</span>';
+    } else {
+      throw new Error('Resposta inesperada');
+    }
+  }catch(e){
+    toast('❌ Não foi possível conectar: '+e.message,'ter');
+    if(badge) badge.innerHTML='<span style="font-size:10px;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-weight:600">❌ Erro</span>';
+  }
 }
 
 function atualizarSideRegras(){
@@ -4838,17 +4953,38 @@ function _renderTelaDispHistIndiv(nome, d){
   const btnEnv=document.createElement('button');
   btnEnv.style.cssText='width:100%;background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
   btnEnv.textContent='Confirmar disponibilidade';
-  btnEnv.onclick=function(){
+  btnEnv.onclick=async function(){
     const diasIndisp=[...selecionados];
-    const payload={nome,diasIndisponiveis:diasIndisp,ts:Date.now()};
+    btnEnv.disabled=true;
+    btnEnv.textContent='Enviando...';
 
-    // Também salva localmente (caso gestor use o mesmo dispositivo)
+    let ok=false;
+
+    // 1. Tentar enviar para o backend
+    try{
+      const resp=await fetch(ORION_API+'/disp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          nome,
+          semanaISO:d.semanaISO||d.segISO||'',
+          diasIndisponiveis:diasIndisp,
+          histId:d.histId,
+        }),
+      });
+      const result=await resp.json();
+      if(result.ok) ok=true;
+    }catch(e){
+      console.warn('[Disp] API error, fallback localStorage:',e.message);
+    }
+
+    // 2. Fallback: localStorage local (mesmo device)
     try{
       const dispKey='orion_v7_disp_hist_'+d.histId;
       const atual=JSON.parse(localStorage.getItem(dispKey)||'{}');
-      atual[nome]=payload;
+      atual[nome]={nome,diasIndisponiveis:diasIndisp,ts:Date.now()};
       localStorage.setItem(dispKey,JSON.stringify(atual));
-      // Chave da próxima semana no mesmo device
+      // Também na chave da próxima semana
       const hoje=new Date();
       const dow=hoje.getDay();
       const domAnt=new Date(hoje);domAnt.setDate(hoje.getDate()-(dow===0?7:dow));
@@ -4857,48 +4993,36 @@ function _renderTelaDispHistIndiv(nome, d){
       const p2=v=>String(v).padStart(2,'0');
       const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
       const proxAtual=JSON.parse(localStorage.getItem('orion_v7_disp_'+segProxISO)||'{}');
-      proxAtual[nome]=payload;
+      proxAtual[nome]={nome,diasIndisponiveis:diasIndisp,ts:Date.now()};
       localStorage.setItem('orion_v7_disp_'+segProxISO,JSON.stringify(proxAtual));
+      if(!ok) ok=true; // ao menos localStorage funcionou
     }catch(e){}
 
-    // Gerar link de retorno com a resposta encodada — o GESTOR abre este link para importar
-    const respData={tipo:'disp_resp',histId:d.histId,nome,...payload};
-    const b64=btoa(unescape(encodeURIComponent(JSON.stringify(respData))));
-    const linkRetorno=location.origin+location.pathname+'#disp_resp='+b64;
-
-    // Mostrar tela de confirmação com o link de retorno
     card.innerHTML='';
     const wrap2=document.createElement('div');
-    wrap2.style.cssText='text-align:center;padding:20px';
-    wrap2.innerHTML='<div style="font-size:48px;margin-bottom:16px">✅</div>'
-      +'<h3 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:8px">Obrigado, '+nome+'!</h3>'
-      +(diasIndisp.length>0?'<p style="color:#9ca3af;font-size:13px;margin-bottom:16px">Registrado que você <strong style="color:#f87171">não pode</strong> trabalhar em: '+diasIndisp.join(', ')+'</p>'
-      :'<p style="color:#86efac;font-size:13px;margin-bottom:16px">Você está disponível toda a semana! 🎉</p>');
-
-    // Botão WhatsApp para enviar de volta ao gestor
-    const btnWa=document.createElement('button');
-    btnWa.style.cssText='width:100%;background:#25d366;color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px';
-    btnWa.textContent='📲 Enviar confirmação ao gestor via WhatsApp';
-    btnWa.onclick=function(){
-      const msg='Olá! Confirmei minha disponibilidade na semana '+(d.semana||'')+'.\n\nAcesse o link para importar:\n'+linkRetorno;
-      window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-    };
-
-    // Botão copiar link
-    const btnCopy=document.createElement('button');
-    btnCopy.style.cssText='width:100%;background:rgba(255,255,255,.08);color:#d1d5db;border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px';
-    btnCopy.textContent='📋 Copiar link de confirmação';
-    btnCopy.onclick=function(){
-      navigator.clipboard.writeText(linkRetorno).then(()=>{btnCopy.textContent='✅ Link copiado!';});
-    };
-
-    const info=document.createElement('p');
-    info.style.cssText='color:#6b7280;font-size:11px;margin-top:8px';
-    info.textContent='Envie o link acima ao gestor. Ao clicar no link, sua disponibilidade será registrada automaticamente.';
-
-    wrap2.appendChild(btnWa);
-    wrap2.appendChild(btnCopy);
-    wrap2.appendChild(info);
+    wrap2.style.cssText='text-align:center;padding:24px';
+    if(ok){
+      wrap2.innerHTML='<div style="font-size:52px;margin-bottom:16px">✅</div>'
+        +'<h3 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:8px">Pronto, '+nome+'!</h3>'
+        +(diasIndisp.length>0
+          ?'<p style="color:#f87171;font-size:14px;font-weight:600">Indisponível em: '+diasIndisp.join(', ')+'</p>'
+          :'<p style="color:#86efac;font-size:14px;font-weight:600">Disponível toda a semana! 🎉</p>')
+        +'<p style="color:#6b7280;font-size:12px;margin-top:16px">Pode fechar esta página.<br>O gestor já recebeu sua resposta.</p>';
+    } else {
+      wrap2.innerHTML='<div style="font-size:52px;margin-bottom:16px">⚠️</div>'
+        +'<h3 style="color:#fff;font-size:18px;font-weight:700;margin-bottom:8px">Erro ao enviar</h3>'
+        +'<p style="color:#9ca3af;font-size:13px">Verifique sua conexão e tente novamente.</p>';
+      const btnR=document.createElement('button');
+      btnR.style.cssText='margin-top:16px;background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit';
+      btnR.textContent='Tentar novamente';
+      btnR.onclick=()=>{
+        btnEnv.disabled=false;
+        btnEnv.textContent='Confirmar disponibilidade';
+        card.innerHTML='';
+        card.appendChild(wrap2.previousElementSibling||wrap2);
+      };
+      wrap2.appendChild(btnR);
+    }
     card.appendChild(wrap2);
   };
   card.appendChild(btnEnv);
@@ -5691,20 +5815,19 @@ function _renderDispPanel(panel, histId, entrada){
     </div>`;
     _tickTimerDisp(histId);
   } else if(timerExpirado||nRecebidas>0){
-    // Sincronizar automaticamente quando há respostas ou timer expirou
     sincronizarIndisponibilidades();
     const nIndisp=Object.values(dispRecebidas).filter(r=>(r.diasIndisponiveis||[]).length>0).length;
     statusDiv.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px">
-      <div style="font-size:12px;font-weight:700;color:#166534">${timerExpirado?'✅ Prazo encerrado':'📥 Respostas recebidas'} — indisponibilidades sincronizadas</div>
-      <div style="font-size:11px;color:#166534;margin-top:4px">${nRecebidas} colaborador${nRecebidas!==1?'es':''} respondeu · ${nIndisp} com dias indisponíveis</div>
+      <div style="font-size:12px;font-weight:700;color:#166534">${timerExpirado?'✅ Prazo encerrado':'📥 Respostas recebidas'}</div>
+      <div style="font-size:11px;color:#166534;margin-top:4px">${nRecebidas} respondeu · ${nIndisp} com dias indisponíveis</div>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        ${apiConfigurada()?`<button id="btnBuscarAPI_${histId}" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit"
+          onclick="_sincronizarDoBackend('${histId}','${entrada.segISO||''}')">
+          ☁️ Buscar respostas online
+        </button>`:'<span style="font-size:10px;color:#6b7280">⚠️ API não configurada — respostas só do mesmo dispositivo</span>'}
         <button style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit"
-          onclick="_sincronizarERecarregar('${histId}');document.getElementById('wpp-hist-modal')?.remove();goT('es');setTimeout(()=>{ toast('✅ Indisponibilidades aplicadas! Clique em Preencher automaticamente.','tok'); },400)">
-          🔄 Sincronizar e Ir para Escala
-        </button>
-        <button style="background:transparent;border:1px solid #16a34a;color:#166534;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit"
-          onclick="_sincronizarERecarregar('${histId}')">
-          ↻ Sincronizar novamente
+          onclick="_sincronizarERecarregar('${histId}');document.getElementById('wpp-hist-modal')?.remove();goT('es');setTimeout(()=>{ toast('✅ Indisponibilidades aplicadas! Clique em Refazer com disponibilidades.','tok'); },400)">
+          🔄 Ir para Escala
         </button>
       </div>
     </div>`;
@@ -5714,10 +5837,11 @@ function _renderDispPanel(panel, histId, entrada){
       <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.9">
         <strong>1.</strong> Envie o link abaixo no grupo do WhatsApp<br>
         <strong>2.</strong> Cada colaborador abre, seleciona o nome e marca os dias indisponíveis<br>
-        <strong>3.</strong> Após confirmar, cada um recebe um <strong>link de retorno</strong> para enviar de volta a você<br>
-        <strong>4.</strong> Você abre o link de retorno — a disponibilidade é importada automaticamente<br>
-        <strong>5.</strong> Vá para a aba Escala → clique em "🔄 Refazer com disponibilidades"
+        <strong>3.</strong> Após confirmar, a resposta vai direto para o servidor ☁️<br>
+        <strong>4.</strong> Clique em <strong>☁️ Buscar respostas online</strong> para importar tudo<br>
+        <strong>5.</strong> Vá para Escala → <strong>🔄 Refazer com disponibilidades</strong>
       </div>
+      ${!apiConfigurada()?'<div style="margin-top:8px;font-size:10px;color:#f59e0b;background:#fffbeb;border-radius:6px;padding:6px 8px">⚠️ API não configurada ainda. Ver instruções no painel de configurações.</div>':''}
     </div>`;
   }
   panel.appendChild(statusDiv);
@@ -5844,7 +5968,7 @@ function _renderConfPanel(panel, histId, entrada){
 function _enviarDispHistGrupo(histId, entrada){
   const colabs=Object.keys(entrada.confirmacoes||{}).sort();
   const expira=Date.now()+60*60*1000; // 1 hora
-  const dados={tipo:'grupo_hist_disp',histId,nomes:colabs,expira,semana:entrada.semana};
+  const dados={tipo:'grupo_hist_disp',histId,nomes:colabs,expira,semana:entrada.semana,semanaISO:entrada.segISO||'',segISO:entrada.segISO||''};
   const b64=btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
   const link=location.origin+location.pathname+'#disp='+b64;
   const msg='Oi pessoal! 👋\n\nInformem os dias que *não podem* trabalhar na semana '+entrada.semana+':\n\n'+link+'\n\n⚠️ Após confirmar, você vai receber um link de retorno — envie ele aqui no grupo para eu registrar. Obrigado!';
@@ -5854,10 +5978,13 @@ function _enviarDispHistGrupo(histId, entrada){
   _dispTimers[histId]={expira};
   localStorage.setItem('orion_v7_disptimer_'+histId, JSON.stringify({expira}));
 
+  // Iniciar auto-poll da API
+  _iniciarAutoPoll(histId, entrada.segISO||'');
+
   // Re-renderizar painel
   const panel=document.getElementById('wph-disp');
   if(panel) _renderDispPanel(panel, histId, entrada);
-  toast('Link enviado! Timer de 1h iniciado.','tok');
+  toast('Link enviado! Respostas serão coletadas automaticamente.','tok');
 }
 
 function _tickTimerDisp(histId){
@@ -5890,6 +6017,79 @@ function _cancelarTimerDisp(histId){
   const entrada=hist.find(h=>h.id===histId);
   const panel=document.getElementById('wph-disp');
   if(panel&&entrada) _renderDispPanel(panel,histId,entrada);
+}
+
+async function _sincronizarDoBackend(histId, semanaISO){
+  const btn=document.getElementById('btnBuscarAPI_'+histId);
+  if(btn){btn.disabled=true;btn.textContent='☁️ Buscando...';}
+
+  if(!apiConfigurada()){
+    toast('Configure a URL da API primeiro (Configurações → API Backend).','ter');
+    if(btn){btn.disabled=false;btn.textContent='☁️ Buscar respostas online';}
+    return;
+  }
+
+  // Buscar da API
+  const res=await apiGet('/disp/'+encodeURIComponent(semanaISO));
+  if(!res.ok){
+    toast('Erro ao buscar respostas: '+(res.error||'sem conexão'),'ter');
+    if(btn){btn.disabled=false;btn.textContent='☁️ Buscar respostas online';}
+    return;
+  }
+
+  const respostas=res.respostas||{};
+  const n=Object.keys(respostas).length;
+
+  if(!n){
+    toast('Nenhuma resposta recebida ainda.','tok');
+    if(btn){btn.disabled=false;btn.textContent='☁️ Buscar respostas online';}
+    return;
+  }
+
+  // Salvar no localStorage local
+  const dispKey='orion_v7_disp_hist_'+histId;
+  const atualLocal=JSON.parse(localStorage.getItem(dispKey)||'{}');
+  let novas=0;
+  Object.entries(respostas).forEach(([nome,r])=>{
+    if(!atualLocal[nome]||(r.ts||0)>(atualLocal[nome].ts||0)){
+      atualLocal[nome]=r; novas++;
+    }
+  });
+  localStorage.setItem(dispKey,JSON.stringify(atualLocal));
+
+  // Sincronizar com chave da próxima semana
+  const p2=v=>String(v).padStart(2,'0');
+  const {seg:segProx}=proximaSemana();
+  const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+  const segKey='orion_v7_disp_'+segProxISO;
+  const atualProx=JSON.parse(localStorage.getItem(segKey)||'{}');
+  Object.entries(respostas).forEach(([nome,r])=>{ atualProx[nome]=r; });
+  localStorage.setItem(segKey,JSON.stringify(atualProx));
+
+  toast(`☁️ ${n} resposta${n!==1?'s':''} recebida${n!==1?'s':''}${novas>0?' ('+novas+' nova'+( novas!==1?'s':'')+')':''}!`,'tok');
+
+  // Re-renderizar painel
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada=hist.find(h=>h.id===histId);
+  const panel=document.getElementById('wph-disp');
+  if(panel&&entrada) _renderDispPanel(panel,histId,entrada);
+
+  // Mostrar botão de ir para escala
+  verificarDisponibilidadesExistentes();
+}
+
+// Auto-poll enquanto timer ativo (a cada 30s)
+let _apiPollInterval=null;
+function _iniciarAutoPoll(histId,semanaISO){
+  if(_apiPollInterval) clearInterval(_apiPollInterval);
+  if(!apiConfigurada()) return;
+  _apiPollInterval=setInterval(async()=>{
+    const state=_dispTimers[histId];
+    if(!state||state.expira<=Date.now()){
+      clearInterval(_apiPollInterval);_apiPollInterval=null;return;
+    }
+    await _sincronizarDoBackend(histId,semanaISO);
+  },30000); // a cada 30 segundos
 }
 
 function _limparRespDisp(histId,nome){
@@ -6130,6 +6330,7 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
+_initApiConfig();
 // Verificar disponibilidades ao carregar (mostra botão refazer se existirem)
 setTimeout(verificarDisponibilidadesExistentes, 100);
 
