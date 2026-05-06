@@ -5838,10 +5838,18 @@ function _renderDispPanel(panel, histId, entrada){
         <strong>1.</strong> Envie o link abaixo no grupo do WhatsApp<br>
         <strong>2.</strong> Cada colaborador abre, seleciona o nome e marca os dias indisponíveis<br>
         <strong>3.</strong> Após confirmar, a resposta vai direto para o servidor ☁️<br>
-        <strong>4.</strong> Clique em <strong>☁️ Buscar respostas online</strong> para importar tudo<br>
+        <strong>4.</strong> Clique no botão abaixo para importar as respostas<br>
         <strong>5.</strong> Vá para Escala → <strong>🔄 Refazer com disponibilidades</strong>
       </div>
-      ${!apiConfigurada()?'<div style="margin-top:8px;font-size:10px;color:#f59e0b;background:#fffbeb;border-radius:6px;padding:6px 8px">⚠️ API não configurada ainda. Ver instruções no painel de configurações.</div>':''}
+      ${apiConfigurada()?`
+      <div style="margin-top:12px">
+        <button id="btnBuscarAPI_${histId}" style="width:100%;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit"
+          onclick="_sincronizarDoBackend('${histId}','${entrada.segISO||''}')">
+          ☁️ Buscar respostas online
+        </button>
+        <div style="font-size:10px;color:var(--mu);text-align:center;margin-top:5px">Clique a qualquer momento após os colaboradores confirmarem</div>
+      </div>`
+      :'<div style="margin-top:8px;font-size:10px;color:#f59e0b;background:#fffbeb;border-radius:6px;padding:6px 8px">⚠️ API não configurada ainda. Ver instruções no painel de configurações.</div>'}
     </div>`;
   }
   panel.appendChild(statusDiv);
@@ -6029,24 +6037,48 @@ async function _sincronizarDoBackend(histId, semanaISO){
     return;
   }
 
-  // Buscar da API
-  const res=await apiGet('/disp/'+encodeURIComponent(semanaISO));
-  if(!res.ok){
-    toast('Erro ao buscar respostas: '+(res.error||'sem conexão'),'ter');
+  // Tentar múltiplas chaves possíveis para encontrar as respostas
+  const keysToTry=new Set();
+  if(semanaISO) keysToTry.add(semanaISO);
+
+  // Buscar do histórico o segISO real da entrada
+  try{
+    const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+    const entrada=hist.find(h=>h.id===histId);
+    if(entrada?.segISO) keysToTry.add(entrada.segISO);
+    if(entrada?.domISO) keysToTry.add(entrada.segISO+'/'+entrada.domISO);
+  }catch(e){}
+
+  // Também tentar a chave da próxima semana (caso link tenha sido gerado hoje)
+  try{
+    const {seg:segProx}=proximaSemana();
+    const p2=v=>String(v).padStart(2,'0');
+    keysToTry.add(segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate()));
+  }catch(e){}
+
+  let respostas={};
+  let encontrou=false;
+
+  for(const key of keysToTry){
+    if(!key) continue;
+    const res=await apiGet('/disp/'+encodeURIComponent(key));
+    if(res.ok && Object.keys(res.respostas||{}).length>0){
+      respostas=res.respostas;
+      encontrou=true;
+      console.log('[Sync] Respostas encontradas na chave:', key, respostas);
+      break;
+    }
+  }
+
+  if(!encontrou){
+    toast('Nenhuma resposta recebida ainda. Aguarde os colaboradores confirmarem.','tok');
     if(btn){btn.disabled=false;btn.textContent='☁️ Buscar respostas online';}
     return;
   }
 
-  const respostas=res.respostas||{};
   const n=Object.keys(respostas).length;
 
-  if(!n){
-    toast('Nenhuma resposta recebida ainda.','tok');
-    if(btn){btn.disabled=false;btn.textContent='☁️ Buscar respostas online';}
-    return;
-  }
-
-  // Salvar no localStorage local
+  // Salvar no localStorage local (histId)
   const dispKey='orion_v7_disp_hist_'+histId;
   const atualLocal=JSON.parse(localStorage.getItem(dispKey)||'{}');
   let novas=0;
@@ -6057,7 +6089,7 @@ async function _sincronizarDoBackend(histId, semanaISO){
   });
   localStorage.setItem(dispKey,JSON.stringify(atualLocal));
 
-  // Sincronizar com chave da próxima semana
+  // Sincronizar com chave da próxima semana (que preencherEscala lê)
   const p2=v=>String(v).padStart(2,'0');
   const {seg:segProx}=proximaSemana();
   const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
@@ -6066,7 +6098,7 @@ async function _sincronizarDoBackend(histId, semanaISO){
   Object.entries(respostas).forEach(([nome,r])=>{ atualProx[nome]=r; });
   localStorage.setItem(segKey,JSON.stringify(atualProx));
 
-  toast(`☁️ ${n} resposta${n!==1?'s':''} recebida${n!==1?'s':''}${novas>0?' ('+novas+' nova'+( novas!==1?'s':'')+')':''}!`,'tok');
+  toast(`☁️ ${n} resposta${n!==1?'s':''} importada${n!==1?'s':''}!`,'tok');
 
   // Re-renderizar painel
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
@@ -6074,7 +6106,6 @@ async function _sincronizarDoBackend(histId, semanaISO){
   const panel=document.getElementById('wph-disp');
   if(panel&&entrada) _renderDispPanel(panel,histId,entrada);
 
-  // Mostrar botão de ir para escala
   verificarDisponibilidadesExistentes();
 }
 
