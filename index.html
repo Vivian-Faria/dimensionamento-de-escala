@@ -462,7 +462,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <button class="btn bs" onclick="inverter12x36()" id="btn12x36" title="Inverte quais dias cada colaborador 12x36 trabalha nesta semana" style="display:none">↔ Inverter 12x36</button>
             <button class="btn bs" onclick="abrirPainelTurnos()">📋 Painel de turnos</button>
             <button class="btn ba sm" style="background:#2563eb" onclick="publicarEscala()">✅ Publicar escala</button>
-            <button class="btn bs sm" style="background:#25d366;color:#fff;border-color:#25d366" onclick="abrirEnvioWhatsApp()" title="Enviar escala ou coletar disponibilidade via WhatsApp">💬 WhatsApp</button>
+
             <button class="btn bs sm" onclick="limpar()">↺ Limpar alocação</button>
           </div>
         </div>
@@ -554,12 +554,12 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <p id="indSub">Análise semanal · baseada nos dados do Órion</p>
         </div>
         <div class="sh-r">
-          <div style="position:relative;display:inline-block">
+          <div style="position:relative;display:inline-block;z-index:100">
             <button id="indHubBtn" class="btn bs sm" onclick="toggleHubDropdown(event)" style="min-width:140px;justify-content:space-between;gap:8px">
               <span id="indHubLabel">Todos os hubs</span>
               <span style="font-size:10px;opacity:.6">▾</span>
             </button>
-            <div id="indHubDropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:200;min-width:220px;padding:6px 0">
+            <div id="indHubDropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:300;min-width:220px;padding:6px 0">
               <div style="padding:8px 14px;font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">FILTRAR POR HUB</div>
               <div id="indHubLista" style="max-height:220px;overflow-y:auto"></div>
               <div style="padding:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:6px">
@@ -568,7 +568,6 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
               </div>
             </div>
           </div>
-          <button class="btn ba" onclick="coletarIndicadores()">⚡ Coletar dados</button>
           <button class="btn bs sm" onclick="limparIndicadores()">↺ Limpar</button>
         </div>
       </div>
@@ -646,8 +645,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <div id="indEmp" class="empty">
         <div class="empty-ico">📈</div>
         <h3>Nenhum dado coletado</h3>
-        <p>Clique em <strong>⚡ Coletar dados</strong> para buscar os indicadores<br>da semana anterior (Seg–Dom) no Órion.</p>
-        <button class="btn ba" onclick="coletarIndicadores()">⚡ Coletar dados agora</button>
+        <p>Use o bookmarklet do Órion para coletar os indicadores<br>da semana anterior (Seg–Dom).</p>
       </div>
     </div>
 
@@ -3399,8 +3397,8 @@ function inicializarCppManual(){
   if(!hist.length){document.getElementById('cppManualPanel').style.display='none';return;}
   document.getElementById('cppManualPanel').style.display='block';
 
-  // Botões de semanas disponíveis
-  const semanas=hist.slice(0,6);
+  // Botões de semanas disponíveis (todas)
+  const semanas=hist.slice();
   if(!_cppManualSemanaAtiva||!semanas.find(s=>s.semanaISO===_cppManualSemanaAtiva)){
     _cppManualSemanaAtiva=semanas[0].semanaISO;
   }
@@ -3844,7 +3842,7 @@ function renderIndicadores(){
 
   const subTxt=`Semana atual: ${semanaAtual.deBR}–${semanaAtual.ateBR} · ${hist.length} semana${hist.length!==1?'s':''}`;
   document.getElementById('indSub').textContent=subTxt;
-  document.getElementById('indTabelaMeta').textContent=`${hist.length} semanas coletadas`;
+  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · exibindo todas`;
 
   // Atualiza select hubs
   atualizarSelectHubs([]);
@@ -3865,9 +3863,10 @@ function gerarRelatorioIndicadores(){
   if(!hist.length){toast('Sem dados para gerar relatório.','ter');return;}
 
   const periodo=document.getElementById('indPeriodo')?.value||'semanal';
-  const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
-  const hubsAtivos=hub instanceof Set?(hub.has('todos')?(hist[0].hubs||[]):[...hub]):[hub];
-  const hubLabel=hubsAtivos.length===0||hub.has('todos')?'Todos os hubs':hubsAtivos.map(nomeHub).join(' + ');
+  const hub=typeof _hubsSel!=='undefined'&&_hubsSel instanceof Set?_hubsSel:new Set(['todos']);
+  const eTodos=!hub||hub.has('todos')||hub.size===0;
+  const hubsAtivos=eTodos?(hist[0]?.hubs||[]).filter(hubVisivel):[...hub].filter(hubVisivel);
+  const hubLabel=eTodos||hubsAtivos.length===0?'Todos os hubs':hubsAtivos.map(nomeHub).join(' + ');
 
   // Custo total da escala — base para CPP por hub
   const custoEscalaRel = getCustoEscalaSemana(hist[0]?.semanaISO);
@@ -4611,7 +4610,7 @@ function _renderTelaConfirmacaoIndiv(nome,d,turnos){
   const card=document.createElement('div');
   card.style.cssText='background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;max-width:400px;width:100%';
 
-  card.innerHTML='<div style="text-align:center;margin-bottom:20px"><h2 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:4px">Olá, '+nome+'!</h2><p style="color:#9ca3af;font-size:13px">Semana '+d.semana+'</p><p style="color:#c8f135;font-size:12px;margin-top:6px;font-weight:600">Confirme ou marque falta em cada turno</p></div>';
+  card.innerHTML='<div style="text-align:center;margin-bottom:20px"><h2 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:4px">Olá, '+nome+'!</h2><p style="color:#9ca3af;font-size:13px">Semana '+d.semana+'</p><p style="color:#c8f135;font-size:12px;margin-top:6px;font-weight:600">Confirme ou marque indisponibilidade em cada turno</p></div>';
 
   const faltas=new Set();
   const turnosDiv=document.createElement('div');
@@ -4627,15 +4626,15 @@ function _renderTelaConfirmacaoIndiv(nome,d,turnos){
     btnConf.addEventListener('click',function(){
       faltas.delete(i);
       btnConf.style.background='rgba(22,163,74,.25)';btnConf.style.color='#86efac';btnConf.style.borderColor='#16a34a';btnConf.textContent='✅ Confirmado';
-      btnFalta.style.background='rgba(255,255,255,.05)';btnFalta.style.color='#9ca3af';btnFalta.style.borderColor='rgba(255,255,255,.1)';btnFalta.textContent='Faltei';
+      btnFalta.style.background='rgba(255,255,255,.05)';btnFalta.style.color='#9ca3af';btnFalta.style.borderColor='rgba(255,255,255,.1)';btnFalta.textContent='Indisponível';
       row.style.borderColor='rgba(22,163,74,.4)';
     });
     const btnFalta=document.createElement('button');
     btnFalta.style.cssText='background:rgba(255,255,255,.05);color:#9ca3af;border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:6px 12px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;transition:.15s';
-    btnFalta.textContent='Faltei';
+    btnFalta.textContent='Indisponível';
     btnFalta.addEventListener('click',function(){
       faltas.add(i);
-      btnFalta.style.background='rgba(239,68,68,.25)';btnFalta.style.color='#f87171';btnFalta.style.borderColor='#ef4444';btnFalta.textContent='⚠ Faltei';
+      btnFalta.style.background='rgba(239,68,68,.25)';btnFalta.style.color='#f87171';btnFalta.style.borderColor='#ef4444';btnFalta.textContent='⚠ Indisponível';
       btnConf.style.background='rgba(255,255,255,.05)';btnConf.style.color='#9ca3af';btnConf.style.borderColor='rgba(255,255,255,.1)';btnConf.textContent='Confirmado?';
       row.style.borderColor='rgba(239,68,68,.4)';
     });
@@ -4661,7 +4660,7 @@ function _renderTelaConfirmacaoIndiv(nome,d,turnos){
     localStorage.setItem(resKey,JSON.stringify(confs));
     card.innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">'+(faltas.size>0?'⚠':'✅')+'</div>'
       +'<h3 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:8px">Obrigado, '+nome+'!</h3>'
-      +(faltas.size>0?'<p style="color:#f87171;font-size:13px">'+faltas.size+' turno(s) marcado(s) como falta.</p>'
+      +(faltas.size>0?'<p style="color:#f87171;font-size:13px">'+faltas.size+' turno(s) marcado(s) como indisponível.</p>'
       :'<p style="color:#86efac;font-size:13px">Todos os turnos confirmados!</p>')
       +'<p style="color:#6b7280;font-size:12px;margin-top:16px">Pode fechar esta página.</p></div>';
   };
@@ -5335,6 +5334,17 @@ function _renderDispPanel(panel, histId, entrada){
   const timerAtivo=timerState&&timerState.expira>agora;
   const timerExpirado=timerState&&timerState.expira<=agora;
 
+  // Sincronizar indisponibilidades com a chave que preencherEscala usa (orion_v7_disp_SEGISO)
+  function sincronizarIndisponibilidades(){
+    if(!entrada.segISO) return;
+    const segKey='orion_v7_disp_'+entrada.segISO;
+    const atual=JSON.parse(localStorage.getItem(segKey)||'{}');
+    Object.entries(dispRecebidas).forEach(([nome,resp])=>{
+      atual[nome]={nome,diasIndisponiveis:resp.diasIndisponiveis||[],ts:resp.ts||Date.now()};
+    });
+    localStorage.setItem(segKey,JSON.stringify(atual));
+  }
+
   panel.innerHTML='';
 
   // Status timer
@@ -5351,12 +5361,24 @@ function _renderDispPanel(panel, histId, entrada){
       </div>
       <button class="btn bd sm" onclick="_cancelarTimerDisp('${histId}')">Cancelar timer</button>
     </div>`;
-    // Iniciar tick
     _tickTimerDisp(histId);
-  } else if(timerExpirado){
-    statusDiv.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px">
-      <div style="font-size:12px;font-weight:700;color:#166534">✅ Prazo encerrado — pode montar a escala!</div>
-      <div style="font-size:11px;color:#166534;margin-top:2px">${nRecebidas} colaborador${nRecebidas!==1?'es':''} informou indisponibilidade. Acesse a aba Escala para montar considerando estas datas.</div>
+  } else if(timerExpirado||nRecebidas>0){
+    // Sincronizar automaticamente quando há respostas ou timer expirou
+    sincronizarIndisponibilidades();
+    const nIndisp=Object.values(dispRecebidas).filter(r=>(r.diasIndisponiveis||[]).length>0).length;
+    statusDiv.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;color:#166534">${timerExpirado?'✅ Prazo encerrado':'📥 Respostas recebidas'} — indisponibilidades sincronizadas</div>
+      <div style="font-size:11px;color:#166534;margin-top:4px">${nRecebidas} colaborador${nRecebidas!==1?'es':''} respondeu · ${nIndisp} com dias indisponíveis</div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit"
+          onclick="document.getElementById('wpp-hist-modal')?.remove();goT('es');setTimeout(()=>{ toast('Indisponibilidades carregadas! Clique em Preencher automaticamente.','tok'); },300)">
+          🔄 Ir para Escala e Refazer
+        </button>
+        <button style="background:transparent;border:1px solid #16a34a;color:#166534;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit"
+          onclick="_sincronizarERecarregar('${histId}')">
+          ↻ Sincronizar novamente
+        </button>
+      </div>
     </div>`;
   } else {
     statusDiv.innerHTML=`<div style="background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px 14px">
@@ -5364,7 +5386,7 @@ function _renderDispPanel(panel, histId, entrada){
       <div style="font-size:11px;color:var(--mu);margin-top:4px;line-height:1.7">
         1. Clique no botão abaixo para enviar o link de disponibilidade no grupo do WhatsApp<br>
         2. Os colaboradores têm 1 hora para informar os dias que não podem trabalhar<br>
-        3. Após 1h, o botão "Montar escala" irá considerar as indisponibilidades
+        3. Após 1h, o sistema sincroniza as indisponibilidades e você refaz a escala
       </div>
     </div>`;
   }
@@ -5401,11 +5423,11 @@ function _renderDispPanel(panel, histId, entrada){
       if(resp){
         const dias=resp.diasIndisponiveis||[];
         row.innerHTML=`<span style="font-size:12px;font-weight:600;flex:1">${nome}</span>
-          <span style="font-size:10px;background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-weight:600">Respondeu${dias.length>0?' — não pode: '+dias.join(', '):' — disponível todos'}</span>
+          <span style="font-size:10px;background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-weight:600">✅ ${dias.length>0?'Não pode: '+dias.join(', '):'Disponível todos os dias'}</span>
           <button style="background:none;border:none;font-size:11px;color:var(--mu);cursor:pointer;padding:0" onclick="_limparRespDisp('${histId}','${nome.replace(/'/g,"\'")}')">✕</button>`;
       } else {
         row.innerHTML=`<span style="font-size:12px;font-weight:600;flex:1">${nome}</span>
-          <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-weight:600">Pendente</span>`;
+          <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-weight:600">⏳ Pendente</span>`;
       }
       respostaDiv.appendChild(row);
     });
@@ -5550,6 +5572,25 @@ function _limparRespDisp(histId,nome){
   const panel=document.getElementById('wph-disp');
   if(panel&&entrada) _renderDispPanel(panel,histId,entrada);
   toast('Disponibilidade de '+nome+' removida.','tok');
+}
+
+function _sincronizarERecarregar(histId){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada=hist.find(h=>h.id===histId);
+  if(!entrada||!entrada.segISO){toast('Semana sem data ISO, não foi possível sincronizar.','ter');return;}
+  const dispKey='orion_v7_disp_hist_'+histId;
+  const dispRecebidas=JSON.parse(localStorage.getItem(dispKey)||'{}');
+  const segKey='orion_v7_disp_'+entrada.segISO;
+  const atual=JSON.parse(localStorage.getItem(segKey)||'{}');
+  let n=0;
+  Object.entries(dispRecebidas).forEach(([nome,resp])=>{
+    atual[nome]={nome,diasIndisponiveis:resp.diasIndisponiveis||[],ts:resp.ts||Date.now()};
+    n++;
+  });
+  localStorage.setItem(segKey,JSON.stringify(atual));
+  toast('✅ '+n+' resposta'+( n!==1?'s':'')+' sincronizada'+( n!==1?'s':'')+' com a escala!','tok');
+  const panel=document.getElementById('wph-disp');
+  if(panel) _renderDispPanel(panel,histId,entrada);
 }
 
 // Carregar timers salvos ao iniciar
