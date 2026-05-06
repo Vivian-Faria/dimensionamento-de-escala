@@ -5801,15 +5801,16 @@ function _renderDispPanel(panel, histId, entrada){
 
   // Status timer
   const statusDiv=document.createElement('div');
+  // ── Bloco de status do timer
   if(timerAtivo){
     const restante=timerState.expira-agora;
     const min=Math.floor(restante/60000);
     const sec=Math.floor((restante%60000)/1000);
     statusDiv.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px">
       <div style="flex:1">
-        <div style="font-size:12px;font-weight:700;color:#92400e">⏳ Link enviado — aguardando respostas</div>
+        <div style="font-size:12px;font-weight:700;color:#92400e">⏳ Aguardando respostas</div>
         <div style="font-size:11px;color:#92400e;margin-top:2px">Tempo restante: <strong id="wph-timer-val">${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}</strong></div>
-        <div style="font-size:11px;color:#92400e;margin-top:2px">${nRecebidas} de ${Object.keys(entrada.confirmacoes||{}).length} colaboradores responderam</div>
+        <div style="font-size:11px;color:#92400e;margin-top:2px">${nRecebidas} de ${Object.keys(entrada.confirmacoes||{}).length} responderam</div>
       </div>
       <button class="btn bd sm" onclick="_cancelarTimerDisp('${histId}')">Cancelar timer</button>
     </div>`;
@@ -5817,42 +5818,45 @@ function _renderDispPanel(panel, histId, entrada){
   } else if(timerExpirado||nRecebidas>0){
     sincronizarIndisponibilidades();
     const nIndisp=Object.values(dispRecebidas).filter(r=>(r.diasIndisponiveis||[]).length>0).length;
-    statusDiv.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px">
+    statusDiv.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px">
       <div style="font-size:12px;font-weight:700;color:#166534">${timerExpirado?'✅ Prazo encerrado':'📥 Respostas recebidas'}</div>
       <div style="font-size:11px;color:#166534;margin-top:4px">${nRecebidas} respondeu · ${nIndisp} com dias indisponíveis</div>
-      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-        ${apiConfigurada()?`<button id="btnBuscarAPI_${histId}" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit"
-          onclick="_sincronizarDoBackend('${histId}','${entrada.segISO||''}')">
-          ☁️ Buscar respostas online
-        </button>`:'<span style="font-size:10px;color:#6b7280">⚠️ API não configurada — respostas só do mesmo dispositivo</span>'}
-        <button style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit"
-          onclick="_sincronizarERecarregar('${histId}');document.getElementById('wpp-hist-modal')?.remove();goT('es');setTimeout(()=>{ toast('✅ Indisponibilidades aplicadas! Clique em Refazer com disponibilidades.','tok'); },400)">
-          🔄 Ir para Escala
-        </button>
-      </div>
     </div>`;
   } else {
     statusDiv.innerHTML=`<div style="background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px 14px">
       <div style="font-size:12px;font-weight:600;color:var(--tx)">Como funciona:</div>
       <div style="font-size:11px;color:var(--mu);margin-top:6px;line-height:1.9">
-        <strong>1.</strong> Envie o link abaixo no grupo do WhatsApp<br>
-        <strong>2.</strong> Cada colaborador abre, seleciona o nome e marca os dias indisponíveis<br>
-        <strong>3.</strong> Após confirmar, a resposta vai direto para o servidor ☁️<br>
-        <strong>4.</strong> Clique no botão abaixo para importar as respostas<br>
-        <strong>5.</strong> Vá para Escala → <strong>🔄 Refazer com disponibilidades</strong>
+        <strong>1.</strong> Envie o link no grupo do WhatsApp<br>
+        <strong>2.</strong> Colaborador abre, seleciona nome, marca dias indisponíveis e confirma<br>
+        <strong>3.</strong> Resposta vai direto ao servidor ☁️<br>
+        <strong>4.</strong> Clique em <strong>☁️ Buscar respostas</strong> abaixo para importar
       </div>
-      ${apiConfigurada()?`
-      <div style="margin-top:12px">
-        <button id="btnBuscarAPI_${histId}" style="width:100%;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit"
-          onclick="_sincronizarDoBackend('${histId}','${entrada.segISO||''}')">
-          ☁️ Buscar respostas online
-        </button>
-        <div style="font-size:10px;color:var(--mu);text-align:center;margin-top:5px">Clique a qualquer momento após os colaboradores confirmarem</div>
-      </div>`
-      :'<div style="margin-top:8px;font-size:10px;color:#f59e0b;background:#fffbeb;border-radius:6px;padding:6px 8px">⚠️ API não configurada ainda. Ver instruções no painel de configurações.</div>'}
     </div>`;
   }
   panel.appendChild(statusDiv);
+
+  // ── Botão buscar respostas — SEMPRE VISÍVEL quando API configurada
+  if(apiConfigurada()){
+    const fetchDiv=document.createElement('div');
+    fetchDiv.style.cssText='margin-bottom:4px';
+    fetchDiv.innerHTML=`<button id="btnBuscarAPI_${histId}"
+      style="width:100%;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--fn)"
+      onclick="_sincronizarDoBackend('${histId}','${entrada.segISO||''}')">
+      ☁️ Buscar respostas online
+    </button>`;
+    panel.appendChild(fetchDiv);
+  }
+
+  // ── Botão ir para escala — aparece quando há respostas
+  if(nRecebidas>0||timerExpirado){
+    const irDiv=document.createElement('div');
+    irDiv.style.cssText='margin-bottom:4px';
+    irDiv.innerHTML=`<button style="width:100%;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--fn)"
+      onclick="_sincronizarERecarregar('${histId}');document.getElementById('wpp-hist-modal')?.remove();goT('es');setTimeout(()=>{ toast('✅ Indisponibilidades aplicadas! Clique em Refazer com disponibilidades.','tok'); },400)">
+      🔄 Ir para Escala e Refazer
+    </button>`;
+    panel.appendChild(irDiv);
+  }
 
   // Botão enviar grupo
   const grpDiv=document.createElement('div');
