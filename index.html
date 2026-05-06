@@ -5356,14 +5356,14 @@ function _renderDispPanel(panel, histId, entrada){
   } else if(timerExpirado){
     statusDiv.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px">
       <div style="font-size:12px;font-weight:700;color:#166534">✅ Prazo encerrado — pode montar a escala!</div>
-      <div style="font-size:11px;color:#166534;margin-top:2px">${nRecebidas} colaborador${nRecebidas!==1?'es':'} informou indisponibilidade. Acesse a aba <strong>Escala</strong> para montar considerando estas datas.</div>
+      <div style="font-size:11px;color:#166534;margin-top:2px">${nRecebidas} colaborador${nRecebidas!==1?'es':''} informou indisponibilidade. Acesse a aba Escala para montar considerando estas datas.</div>
     </div>`;
   } else {
     statusDiv.innerHTML=`<div style="background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:12px 14px">
       <div style="font-size:12px;font-weight:600;color:var(--tx)">Como funciona:</div>
       <div style="font-size:11px;color:var(--mu);margin-top:4px;line-height:1.7">
         1. Clique no botão abaixo para enviar o link de disponibilidade no grupo do WhatsApp<br>
-        2. Os colaboradores têm <strong>1 hora</strong> para informar os dias que não podem trabalhar<br>
+        2. Os colaboradores têm 1 hora para informar os dias que não podem trabalhar<br>
         3. Após 1h, o botão "Montar escala" irá considerar as indisponibilidades
       </div>
     </div>`;
