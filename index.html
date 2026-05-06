@@ -459,6 +459,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <div><h2>Projeção da próxima semana</h2><p id="esSub">—</p></div>
           <div class="sh-r">
             <button class="btn ba" onclick="preencher()">👥 Preencher automaticamente</button>
+            <button class="btn ba sm" id="btnRefazerConfirmada" style="background:#7c3aed;display:none" onclick="refazerEscalaConfirmada()" title="Refaz a escala respeitando as indisponibilidades declaradas pelos colaboradores">🔄 Refazer com disponibilidades</button>
             <button class="btn bs" onclick="inverter12x36()" id="btn12x36" title="Inverte quais dias cada colaborador 12x36 trabalha nesta semana" style="display:none">↔ Inverter 12x36</button>
             <button class="btn bs" onclick="abrirPainelTurnos()">📋 Painel de turnos</button>
             <button class="btn ba sm" style="background:#2563eb" onclick="publicarEscala()">✅ Publicar escala</button>
@@ -852,6 +853,7 @@ function goT(n){
   document.getElementById('panel-'+n)?.classList.add('on');
   if(n==='hi')renderHistorico();
   if(n==='col')renderColHist();
+  if(n==='es') setTimeout(verificarDisponibilidadesExistentes, 50);
   if(n==='ind'){
     const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
     if(hist.length){atualizarSelectHubs([]);renderIndicadores();}
@@ -1288,6 +1290,88 @@ function inverter12x36(){
   }, 100);
 }
 
+// ═══════════════════════════════════════════════════
+// REFAZER ESCALA COM DISPONIBILIDADES CONFIRMADAS
+// ═══════════════════════════════════════════════════
+
+function verificarDisponibilidadesExistentes(){
+  // Lê a chave da próxima semana (a mesma que preencher() usa)
+  const {seg:_segDisp}=proximaSemana();
+  const p2=v=>String(v).padStart(2,'0');
+  const segISO=_segDisp.getFullYear()+'-'+p2(_segDisp.getMonth()+1)+'-'+p2(_segDisp.getDate());
+  const disp=JSON.parse(localStorage.getItem('orion_v7_disp_'+segISO)||'{}');
+  const n=Object.keys(disp).length;
+  const btn=document.getElementById('btnRefazerConfirmada');
+  if(btn){
+    btn.style.display=n>0?'':'none';
+    // Atualizar tooltip com quem respondeu
+    if(n>0){
+      const nomes=Object.entries(disp).map(([nome,r])=>{
+        const dias=(r.diasIndisponiveis||[]);
+        return nome+(dias.length>0?' (indisponível: '+dias.join(', ')+')':' (disponível)');
+      }).join('\n');
+      btn.title='Refazer escala com disponibilidades de:\n'+nomes;
+    }
+  }
+  return {segISO, disp, n};
+}
+
+function refazerEscalaConfirmada(){
+  if(!S.escala){toast('Gere a escala primeiro.','ter');return;}
+
+  const {segISO, disp, n}=verificarDisponibilidadesExistentes();
+  if(n===0){
+    toast('Nenhuma disponibilidade registrada para esta semana.','ter');
+    return;
+  }
+
+  // Mostrar resumo antes de refazer
+  const resumo=Object.entries(disp).map(([nome,r])=>{
+    const dias=(r.diasIndisponiveis||[]);
+    return `• ${nome}: ${dias.length>0?'❌ indisponível em '+dias.join(', '):'✅ disponível todos os dias'}`;
+  }).join('\n');
+
+  if(!confirm(`Refazer escala considerando as seguintes disponibilidades?\n\n${resumo}\n\nIsso irá limpar a alocação atual e remontar respeitando essas restrições.`)) return;
+
+  // Executar preencher (que já lê orion_v7_disp_SEGISO automaticamente)
+  preencher();
+
+  // Após preencher, verificar se algum colaborador foi removido de dias indisponíveis
+  let colabsRemovidos=[];
+  Object.entries(disp).forEach(([nome,r])=>{
+    const dias=r.diasIndisponiveis||[];
+    if(dias.length>0) colabsRemovidos.push(`${nome} não escalado(a) em: ${dias.join(', ')}`);
+  });
+
+  const msg=colabsRemovidos.length>0
+    ?`✅ Escala refeita!\n\nIndisponibilidades aplicadas:\n${colabsRemovidos.join('\n')}`
+    :'✅ Escala refeita! Todos os colaboradores estão disponíveis.';
+
+  toast(msg.split('\n')[0],'tok');
+
+  // Sugerir republicar para atualizar histórico e links de confirmação
+  setTimeout(()=>{
+    if(confirm('Escala refeita com sucesso!\n\nDeseja publicar a escala atualizada?\n(Isso atualiza o histórico e permite enviar um novo link de confirmação de horários via WhatsApp)')){
+      publicarEscala();
+    }
+  }, 600);
+
+  // Atualizar botão após refazer
+  verificarDisponibilidadesExistentes();
+
+  // Atualizar painel de confirmações de escala no histórico se existir
+  _atualizarPainelConfirmacaoAposRefazer();
+}
+
+function _atualizarPainelConfirmacaoAposRefazer(){
+  // Salvar snapshot das disponibilidades usadas nesta montagem
+  const {segISO,disp}=verificarDisponibilidadesExistentes();
+  try{
+    const snap={segISO,disp,ts:Date.now(),fonte:'refazer_confirmada'};
+    localStorage.setItem('orion_v7_disp_snap_'+segISO,JSON.stringify(snap));
+  }catch(e){}
+}
+
 function preencher(){
   if(!S.escala){toast('Gere a escala primeiro.','ter');return;}
   if(!S.colabs.length){toast('Cadastre colaboradores!','ter');goT('co');return;}
@@ -1364,6 +1448,12 @@ function preencher(){
     colabsAtivos.filter(c=>c.fixo).forEach(c=>{
       // 12x36: mesmo fixos respeitam alternância
       if(c.tipoContrato==='12x36'&&diasTrabalho12x36[c.nome]&&!diasTrabalho12x36[c.nome].has(dia))return;
+      // Indisponibilidade declarada — FIXOS também respeitam
+      const _dispFixo=_dispSemana[c.nome];
+      if(_dispFixo&&Array.isArray(_dispFixo.diasIndisponiveis)&&_dispFixo.diasIndisponiveis.includes(dia)){
+        console.log('[Preencher/Fixo] Bloqueando',c.nome,'em',dia,'(marcou indisponível)');
+        return;
+      }
       // Resolve os blocos de turno: usa turnosFixos se preenchido, senão monta do cadastro
       const blocos=(c.turnosFixos&&c.turnosFixos.length)
         ? c.turnosFixos
@@ -3748,7 +3838,7 @@ function renderIndicadores(){
     </div>`;
   }).join('');
 
-  // Tabela histórica
+  // Tabela histórica — agrupa conforme período selecionado
   const semanas=hist.slice().reverse(); // ordem cronológica
   const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
 
@@ -3761,34 +3851,78 @@ function renderIndicadores(){
     });
   }catch(e){}
 
-  // Nota: comparações s/ ant. só aparecem quando há 2+ semanas coletadas
-  const notaHtml = semanas.length <= 1
-    ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:11px;color:#92400e;margin-bottom:10px">
-        ℹ️ <strong>Apenas 1 semana coletada.</strong> Os dados comparativos (variações %) aparecerão automaticamente conforme novas semanas forem coletadas via bookmarklet.
-       </div>` : '';
-
   // Cabeçalho da tabela
   const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
 
-  // Calcula médias mensais agrupando por mês
-  const porMes={};
-  semanas.forEach(sem=>{
-    const mes=sem.de.slice(0,7); // yyyy-mm
-    if(!porMes[mes])porMes[mes]={semanas:[],label:''};
-    const d=new Date(sem.de+'T12:00:00');
-    porMes[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-    porMes[mes].semanas.push(sem);
-  });
+  // Agrupar semanas conforme período selecionado
+  function agruparTabelaPor(semanas, tipo){
+    if(tipo==='semanal'){
+      return semanas.map(s=>({label:null,semanas:[s]}));
+    }
+    if(tipo==='trimestral'){
+      const grupos={};
+      semanas.forEach(s=>{
+        if(!s.de) return;
+        const d=new Date(s.de+'T12:00:00');
+        const ano=d.getFullYear();
+        const tri=Math.ceil((d.getMonth()+1)/3);
+        const k=`${ano}-T${tri}`;
+        if(!grupos[k])grupos[k]={label:`T${tri}/${ano}`,semanas:[]};
+        grupos[k].semanas.push(s);
+      });
+      return Object.entries(grupos).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
+    }
+    // mensal (padrão)
+    const grupos={};
+    semanas.forEach(s=>{
+      if(!s.de) return;
+      const mes=s.de.slice(0,7);
+      const d=new Date(s.de+'T12:00:00');
+      if(!grupos[mes])grupos[mes]={label:d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}),semanas:[]};
+      grupos[mes].semanas.push(s);
+    });
+    return Object.entries(grupos).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
+  }
+
+  const grupos=agruparTabelaPor(semanas, periodo);
 
   let tbody='<tbody>';
-  // Por mês
-  Object.entries(porMes).forEach(([mes,grupo])=>{
-    // Cabeçalho do mês
-    tbody+=`<tr><td colspan="${cols.length}" style="background:#f0fdf4;color:#166534;font-weight:700;font-size:11px;padding:6px 12px;text-transform:capitalize;border-bottom:1px solid #bbf7d0">${grupo.label}</td></tr>`;
+  grupos.forEach((grupo,gi)=>{
+    // Cabeçalho do grupo (mensal / trimestral)
+    if(grupo.label){
+      tbody+=`<tr><td colspan="${cols.length}" style="background:#f0fdf4;color:#166534;font-weight:700;font-size:11px;padding:6px 12px;text-transform:capitalize;border-bottom:1px solid #bbf7d0">${grupo.label}</td></tr>`;
+    }
+
+    // Para trimestral: linha de totais do grupo (soma)
+    const isTrimestral = periodo==='trimestral';
+
+    if(isTrimestral && grupo.semanas.length>1){
+      // Linha de totais + linha de cada semana expandível
+      const mtGrupo = calcularMetricasSemana(
+        grupo.semanas.flatMap(s=>s.vendas||[]),
+        grupo.semanas.flatMap(s=>s.cancelamentos||[]),
+        hub
+      );
+      const cppsGrupo=grupo.semanas.map(s=>histEscMap[s.de]).filter(v=>v!=null);
+      const avgCpp=cppsGrupo.length?cppsGrupo.reduce((a,b)=>a+b,0)/cppsGrupo.length:null;
+      const adGrupo=grupo.semanas.reduce((s,sem)=>s+getCppManualTotal(sem.semanaISO||''),0);
+      const cppComAdGrupo=avgCpp!==null&&mtGrupo.volume>0?((avgCpp*mtGrupo.volume+adGrupo)/mtGrupo.volume):null;
+      tbody+=`<tr style="background:#f8f9fa;font-weight:700;border-top:1px solid var(--brd2)">
+        <td style="padding:6px 12px;font-size:11px;color:#374151">Total ${grupo.label} (${grupo.semanas.length} sem.)</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.volume.toLocaleString('pt-BR')}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.cancelamentos}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.pctCancel.toFixed(2)}%</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tPreparoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tColetaMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tDespachoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${avgCpp!==null?'R$ '+avgCpp.toFixed(2).replace('.',','):'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${adGrupo>0?'R$ '+adGrupo.toFixed(2).replace('.',','):'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:800;${cppComAdGrupo!==null&&adGrupo>0?'color:#dc2626':''}">${cppComAdGrupo!==null?'R$ '+cppComAdGrupo.toFixed(2).replace('.',','):'—'}</td>
+      </tr>`;
+    }
 
     const metricas=grupo.semanas.map(sem=>{
       const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
-      // Encontra CPP da escala para essa semana
       const cppSem=histEscMap[sem.de]||null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
       const cppComAdicional=cppSem!==null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
@@ -3796,21 +3930,27 @@ function renderIndicadores(){
     });
 
     metricas.forEach(({sem,mt,cppSem,adicionalSem,cppComAdicional},i)=>{
-      const prev=i>0?metricas[i-1].mt:null;
+      // Comparar com semana anterior do mesmo grupo (mensal) ou semana anterior global (semanal)
+      let prevMt=null;
+      if(periodo==='semanal'||periodo==='mensal'){
+        prevMt=i>0?metricas[i-1].mt:null;
+      }
       function celVar(atual,ant,hiMelhor=false,fmt=v=>v){
-        if(ant===null||ant===undefined||atual===null)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)}</td>`;
+        if(ant===null||ant===undefined||atual===null)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)??'—'}</td>`;
         const pct=ant!==0?((atual-ant)/ant*100):0;
         const melhorou=hiMelhor?pct>0:pct<0;
         const cor=melhorou?'#166534':'#dc2626';
         const estudo=pct>=0?`+${pct.toFixed(1)}%`:`${pct.toFixed(1)}%`;
         return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)} <span style="font-size:10px;color:${cor};font-weight:600">${estudo}</span></td>`;
       }
+      const rowBg=isTrimestral?'background:#fafafa':'';
+      const rowPad=isTrimestral?'padding-left:20px':'';
       const cppAdicBg=adicionalSem>0?'background:#fff7ed':'';
-      tbody+=`<tr style="border-bottom:1px solid var(--brd)">
-        <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap">${sem.deBR}–${sem.ateBR}</td>
-        ${celVar(mt.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))}
-        ${celVar(mt.cancelamentos,prev?.cancelamentos,false,v=>v)}
-        ${celVar(mt.pctCancel,prev?.pctCancel,false,v=>v.toFixed(2)+'%')}
+      tbody+=`<tr style="border-bottom:1px solid var(--brd);${rowBg}">
+        <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap;${rowPad}">${sem.deBR}–${sem.ateBR}</td>
+        ${celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR'))}
+        ${celVar(mt.cancelamentos,prevMt?.cancelamentos,false,v=>v)}
+        ${celVar(mt.pctCancel,prevMt?.pctCancel,false,v=>v.toFixed(2)+'%')}
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tPreparoMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tColetaMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>
@@ -3820,13 +3960,13 @@ function renderIndicadores(){
       </tr>`;
     });
 
-    // Linha de média do mês
-    if(metricas.length>1){
+    // Linha de média do grupo (só mensal com 2+ semanas)
+    if(periodo==='mensal' && metricas.length>1){
       const vols=metricas.map(x=>x.mt.volume);
       const cancs=metricas.map(x=>x.mt.cancelamentos);
       const pcts=metricas.map(x=>x.mt.pctCancel);
       const preps=metricas.map(x=>x.mt.tPreparoMed).filter(v=>v!==null);
-      const cols_=metricas.map(x=>x.mt.tColetaMed).filter(v=>v!==null);
+      const colets=metricas.map(x=>x.mt.tColetaMed).filter(v=>v!==null);
       const desps=metricas.map(x=>x.mt.tDespachoMed).filter(v=>v!==null);
       const cpps=metricas.map(x=>x.cppSem).filter(v=>v!==null);
       const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
@@ -3836,22 +3976,23 @@ function renderIndicadores(){
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${Math.round(avg(cancs))}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${avg(pcts).toFixed(2)}%</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(preps))}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(cols_))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(colets))}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(desps))}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cpps.length?'R$ '+avg(cpps).toFixed(2).replace('.',','):'—'}</td>
+        <td colspan="2"></td>
       </tr>`;
     }
   });
   tbody+='</tbody>';
 
-  // Insert the note before the table if only 1 week
+  // Insert informative note when 1 week only
   const tabelaCard=document.getElementById('indTabelaCard');
   let notaEl=tabelaCard?.querySelector('.ind-nota-semanas');
-  if(!notaEl&&semanas.length<=1){
+  if(semanas.length<=1&&!notaEl){
     notaEl=document.createElement('div');
     notaEl.className='ind-nota-semanas';
     notaEl.style.cssText='padding:10px 16px 0';
-    notaEl.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:11px;color:#92400e">ℹ️ <strong>Apenas ${hist.length} semana coletada.</strong> Comparações % aparecem ao coletar mais semanas com o bookmarklet.</div>`;
+    notaEl.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:11px;color:#92400e">ℹ️ <strong>Apenas ${hist.length} semana coletada.</strong> Comparações % e visões mensais/trimestrais ficam melhores com mais semanas coletadas.</div>`;
     const cardBody=tabelaCard?.querySelector('.card-body');
     if(cardBody)cardBody.insertBefore(notaEl,cardBody.firstChild);
   } else if(notaEl&&semanas.length>1){
@@ -5847,6 +5988,8 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
+// Verificar disponibilidades ao carregar (mostra botão refazer se existirem)
+setTimeout(verificarDisponibilidadesExistentes, 100);
 // Modo disponibilidade
 if(window._DISP_MODE){
   const d = window._DISP_MODE;
