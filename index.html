@@ -1516,6 +1516,8 @@ async function buscarConfirmacoesAPI(){
           ultima.confirmacoes[nome].turnos=c.turnos;
         }
 
+        console.log('[BuscarConf]',nome,'status:',c.status,'turnos:',c.turnos?.length,'indisponíveis:',c.turnos?.filter(t=>t.indisponivel).length);
+
         // ── SUBSTITUIÇÕES DO LEILÃO: remover quem saiu, adicionar quem pegou
         if(c.substituicao){
           const {removeu,adicionou,dia,ini,fim}=c.substituicao;
@@ -1543,8 +1545,11 @@ async function buscarConfirmacoesAPI(){
           // Adicionar ao leilão se ainda não estiver
           const dup=leilaoLocal.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===nome);
           if(!dup){
+            console.log('[BuscarConf] Adicionando ao leilão:',nome,t.dia,t.ini,'-',t.fim);
             leilaoLocal.push({...t,ofertadoPor:nome,pegoPor:null});
             nIndisp++;
+          } else {
+            console.log('[BuscarConf] Já existe no leilão:',nome,t.dia,t.ini);
           }
         });
       });
@@ -1588,9 +1593,10 @@ async function buscarConfirmacoesAPI(){
     toast(msg,'tok');
 
     const p3s=document.getElementById('p3Status');
-    if(p3s) p3s.innerHTML=`<span style="color:#16a34a;font-weight:600">✅ ${nConf} resposta${nConf!==1?'s':''}${nRemovidos>0?' · escala atualizada':''}</span>`;
+    if(p3s) p3s.innerHTML=`<span style="color:#16a34a;font-weight:600">✅ ${nConf} resposta${nConf!==1?'s':''}${nRemovidos>0?' · escala atualizada':''}${nIndisp>0?' · '+nIndisp+' no leilão':''}</span>`;
+    // Sempre mostrar botão do leilão após buscar
     const p3l=document.getElementById('p3BtnLeilao');
-    if(p3l&&nIndisp>0) p3l.style.display='';
+    if(p3l) p3l.style.display='';
 
   }catch(e){
     toast('Erro ao buscar: '+e.message,'ter');
