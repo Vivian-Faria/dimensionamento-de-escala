@@ -1550,7 +1550,11 @@ async function criarLinkCurto(payload){
       body:JSON.stringify({payload}),
     });
     const d=await r.json();
-    if(d.ok) return location.origin+location.pathname+'#s='+d.code;
+    if(d.ok){
+      // Formato: CODE@APIHOST — colaborador sabe onde buscar sem precisar de localStorage
+      const apiHost=encodeURIComponent(apiUrl);
+      return location.origin+location.pathname+'#s='+d.code+'@'+apiHost;
+    }
   }catch(e){
     console.warn('[LinkCurto] Erro, usando link longo:',e.message);
   }
@@ -3741,9 +3745,9 @@ try {
       }catch(e){ console.error('[OrionEscala] hash ind_dados erro:',e); }
     }
 
-    // ── LINK CURTO: #s=CODE
+    // ── LINK CURTO: #s=CODE ou #s=CODE@APIHOST
     var shortCode=extrairParam(raw,'s');
-    if(shortCode&&shortCode.length<=12){
+    if(shortCode&&shortCode.length>=6){
       window._SHORT_CODE=shortCode;
       history.replaceState(null,'',location.pathname);
     }
@@ -6753,17 +6757,35 @@ setTimeout(()=>{ verificarDisponibilidadesExistentes(); atualizarPainelPassos();
 if(window._SHORT_CODE){
   (async()=>{
     try{
-      const apiUrl=localStorage.getItem('orion_api_url')||ORION_API;
-      const r=await fetch(apiUrl+'/link/'+window._SHORT_CODE);
+      // Tenta: 1) URL salva no localStorage, 2) URL embutida no código, 3) URL do worker conhecido
+      const code=window._SHORT_CODE;
+      // Formato: CODE ou CODE@APIHOST
+      let apiUrl, realCode=code;
+      if(code.includes('@')){
+        const parts=code.split('@');
+        realCode=parts[0];
+        apiUrl=decodeURIComponent(parts[1]);
+      } else {
+        apiUrl=localStorage.getItem('orion_api_url')||ORION_API;
+      }
+
+      const r=await fetch(apiUrl+'/link/'+realCode);
       const d=await r.json();
       if(d.ok&&d.payload){
+        // Se o payload tem apiUrl, salvar para uso posterior
+        if(d.payload.apiUrl) localStorage.setItem('orion_api_url',d.payload.apiUrl);
         window._DISP_MODE=d.payload;
         const pd=d.payload;
         if(pd.tipo==='confirmacao') renderConfirmacaoMode(pd);
         else if(pd.tipo==='confirmacao_grupo'||pd.tipo==='grupo_hist_disp') renderDispMode();
         else renderDispMode();
+      } else {
+        document.body.innerHTML='<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;font-family:sans-serif"><div style="text-align:center;color:#fff;padding:20px"><div style="font-size:48px;margin-bottom:16px">⚠️</div><h2 style="font-size:18px;margin-bottom:8px">Link não encontrado</h2><p style="color:#9ca3af;font-size:13px">Este link pode ter expirado. Peça um novo ao gestor.</p></div></div>';
       }
-    }catch(e){ console.warn('[ShortLink] Erro ao resolver:',e.message); }
+    }catch(e){
+      console.warn('[ShortLink] Erro ao resolver:',e.message);
+      document.body.innerHTML='<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;font-family:sans-serif"><div style="text-align:center;color:#fff;padding:20px"><div style="font-size:48px;margin-bottom:16px">❌</div><h2 style="font-size:18px;margin-bottom:8px">Erro ao carregar</h2><p style="color:#9ca3af;font-size:13px">Verifique sua conexão e tente novamente.</p></div></div>';
+    }
   })();
 }
 
