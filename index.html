@@ -483,7 +483,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <div style="font-size:13px;font-weight:700;color:var(--tx)">📅 Disponibilidade</div>
             <div style="font-size:11px;color:var(--mu);line-height:1.5;flex:1">Colete os dias que cada colaborador não pode trabalhar antes de montar a escala.</div>
             <div id="p1Status" style="font-size:11px;color:var(--mu)">Nenhuma resposta ainda</div>
-            <button class="btn ba sm" style="background:#25d366;border-color:#25d366" onclick="abrirDispEscala()">📲 Enviar link de disponibilidade</button>
+            <button class="btn ba sm" style="background:#25d366;border-color:#25d366" onclick="abrirDispEscala()">📲 Enviar link de indisponibilidade</button>
             <button class="btn bs sm" id="p1BtnBuscar" onclick="buscarDisponibilidadesEscala()" style="display:none">☁️ Buscar respostas</button>
             <button class="btn bs sm" id="p1BtnVer" onclick="verRespostasDisp()" style="display:none">👁 Ver respostas</button>
             <button class="btn bd sm" id="p1BtnLimpar" onclick="limparDisponibilidades()" style="display:none">✕ Limpar</button>
@@ -511,6 +511,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <div style="font-size:11px;color:var(--mu);line-height:1.5;flex:1">Publique e envie a escala para confirmação. Quem não confirmar em 1h vai para o leilão de horários.</div>
             <div id="p3Status" style="font-size:11px;color:var(--mu)">Aguardando montagem</div>
             <button class="btn ba sm" style="background:#2563eb" onclick="publicarEEnviarConfirmacao()">✅ Publicar e enviar para confirmação</button>
+            <button class="btn bs sm" id="p3BtnBuscar" onclick="buscarConfirmacoesAPI()" style="display:none">☁️ Buscar confirmações</button>
             <button class="btn bs sm" id="p3BtnLeilao" onclick="abrirLeilaoEscalaAtual()" style="display:none">🔖 Ver leilão de horários</button>
           </div>
         </div>
@@ -1489,6 +1490,65 @@ function montarEscalaInteligente(){
   }
 }
 
+async function buscarConfirmacoesAPI(){
+  const btn=document.getElementById('p3BtnBuscar');
+  if(btn){btn.disabled=true;btn.textContent='Buscando...';}
+
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const ultima=hist[0];
+  if(!ultima){toast('Publique a escala primeiro.','ter');if(btn){btn.disabled=false;btn.textContent='☁️ Buscar confirmações';}return;}
+
+  const apiUrl=getApiUrl();
+  let nConf=0, nIndisp=0;
+
+  try{
+    // Buscar confirmações
+    const rc=await apiGet('/conf/'+encodeURIComponent(ultima.id));
+    if(rc.ok&&rc.confirmacoes){
+      // Salvar no localStorage do gestor
+      const resKey='orion_v7_confres_'+ultima.id;
+      const local=JSON.parse(localStorage.getItem(resKey)||'{}');
+      Object.entries(rc.confirmacoes).forEach(([nome,c])=>{
+        local[nome]=c; nConf++;
+        // Atualizar confirmações no histórico
+        if(ultima.confirmacoes&&ultima.confirmacoes[nome]){
+          ultima.confirmacoes[nome].status=c.status;
+          ultima.confirmacoes[nome].turnos=c.turnos;
+        }
+      });
+      localStorage.setItem(resKey,JSON.stringify(local));
+      // Salvar histórico atualizado
+      hist[0]=ultima;
+      localStorage.setItem(KH,JSON.stringify(hist));
+    }
+
+    // Buscar leilão
+    const rl=await apiGet('/leilao/'+encodeURIComponent(ultima.id));
+    if(rl.ok&&rl.turnos?.length>0){
+      const leilaoKey='orion_v7_leilao_'+ultima.id;
+      const leilaoLocal=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+      rl.turnos.forEach(t=>{
+        const dup=leilaoLocal.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
+        if(!dup){leilaoLocal.push(t);nIndisp++;}
+        else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;}
+      });
+      localStorage.setItem(leilaoKey,JSON.stringify(leilaoLocal));
+    }
+
+    toast(`☁️ ${nConf} confirmação${nConf!==1?'ões':''}${nIndisp>0?' · '+nIndisp+' turno(s) no leilão':''}`, 'tok');
+
+    // Atualizar status passo 3
+    const p3s=document.getElementById('p3Status');
+    if(p3s) p3s.innerHTML=`<span style="color:#16a34a;font-weight:600">✅ ${nConf} resposta${nConf!==1?'s':''} recebida${nConf!==1?'s':''}</span>`;
+    const p3l=document.getElementById('p3BtnLeilao');
+    if(p3l&&nIndisp>0) p3l.style.display='';
+
+  }catch(e){
+    toast('Erro ao buscar: '+e.message,'ter');
+  }
+  if(btn){btn.disabled=false;btn.textContent='☁️ Buscar confirmações';}
+}
+
 function atualizarPainelPassos(){
   const {seg:segProx}=proximaSemana();
   const p2=v=>String(v).padStart(2,'0');
@@ -1681,6 +1741,8 @@ async function publicarEEnviarConfirmacao(){
   if(p3s) p3s.innerHTML='<span style="color:#2563eb;font-weight:600">⏳ Aguardando confirmações...</span>';
   const p3l=document.getElementById('p3BtnLeilao');
   if(p3l) p3l.style.display='';
+  const p3b=document.getElementById('p3BtnBuscar');
+  if(p3b) p3b.style.display='';
 
   toast('✅ Escala publicada e link enviado!','tok');
 }
@@ -5457,19 +5519,70 @@ function _renderTelaConfirmacaoIndiv(nome,d,turnos){
   const btnEnv=document.createElement('button');
   btnEnv.style.cssText='width:100%;background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
   btnEnv.textContent='Enviar confirmação';
-  btnEnv.onclick=function(){
-    // Salvar confirmação no localStorage
-    const resKey='orion_v7_confres_'+d.histId;
-    const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
+  btnEnv.onclick=async function(){
+    btnEnv.disabled=true;
+    btnEnv.textContent='Enviando...';
+
     const turnosResult=turnos.map(function(t,i){
-      return Object.assign({},t,{confirmado:!faltas.has(i),faltou:faltas.has(i),horasAbatidas:faltas.has(i)?(t.fim-t.ini):0});
+      return Object.assign({},t,{
+        confirmado:!faltas.has(i),
+        indisponivel:faltas.has(i),
+        horasAbatidas:faltas.has(i)?(t.fim-t.ini):0
+      });
     });
-    confs[nome]={nome,histId:d.histId,turnos:turnosResult,status:faltas.size>0?'tem_falta':'confirmado',ts:Date.now()};
-    localStorage.setItem(resKey,JSON.stringify(confs));
-    card.innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">'+(faltas.size>0?'⚠':'✅')+'</div>'
+    const status=faltas.size>0?'tem_indisponivel':'confirmado';
+    const turnosIndisp=turnosResult.filter(t=>t.indisponivel);
+
+    // 1. Salvar no localStorage (mesmo device)
+    try{
+      const resKey='orion_v7_confres_'+d.histId;
+      const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
+      confs[nome]={nome,histId:d.histId,turnos:turnosResult,status,ts:Date.now()};
+      localStorage.setItem(resKey,JSON.stringify(confs));
+
+      // Alimentar leilão no localStorage
+      if(turnosIndisp.length>0){
+        const leilaoKey='orion_v7_leilao_'+d.histId;
+        const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+        turnosIndisp.forEach(t=>{
+          if(!leilao.find(l=>l.dia===t.dia&&l.ini===t.ini))
+            leilao.push(Object.assign({},t,{ofertadoPor:nome,pegoPor:null,indisponivel:true}));
+        });
+        localStorage.setItem(leilaoKey,JSON.stringify(leilao));
+      }
+    }catch(e){}
+
+    // 2. Enviar para API (cross-device)
+    const apiUrl=d.apiUrl||localStorage.getItem('orion_api_url')||'';
+    if(apiUrl){
+      try{
+        // Registrar confirmação
+        await fetch(apiUrl+'/conf',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({histId:d.histId,nome,turnos:turnosResult,status}),
+        });
+        // Registrar turnos indisponíveis no leilão via API
+        if(turnosIndisp.length>0){
+          await fetch(apiUrl+'/leilao',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              histId:d.histId,
+              turnos:turnosIndisp.map(t=>Object.assign({},t,{ofertadoPor:nome,pegoPor:null}))
+            }),
+          });
+        }
+      }catch(e){ console.warn('[Conf] API error:',e.message); }
+    }
+
+    // Tela de sucesso
+    card.innerHTML='<div style="text-align:center;padding:24px">'
+      +'<div style="font-size:52px;margin-bottom:16px">'+(faltas.size>0?'⚠️':'✅')+'</div>'
       +'<h3 style="color:#fff;font-size:18px;font-weight:800;margin-bottom:8px">Obrigado, '+nome+'!</h3>'
-      +(faltas.size>0?'<p style="color:#f87171;font-size:13px">'+faltas.size+' turno(s) marcado(s) como indisponível.</p>'
-      :'<p style="color:#86efac;font-size:13px">Todos os turnos confirmados!</p>')
+      +(faltas.size>0
+        ?'<p style="color:#f87171;font-size:13px">'+faltas.size+' turno(s) marcado(s) como indisponível.<br><span style="color:#9ca3af;font-size:12px">Esses horários foram para o leilão.</span></p>'
+        :'<p style="color:#86efac;font-size:13px">Todos os turnos confirmados! 🎉</p>')
       +'<p style="color:#6b7280;font-size:12px;margin-top:16px">Pode fechar esta página.</p></div>';
   };
   card.appendChild(btnEnv);
@@ -5731,7 +5844,19 @@ function renderLeilaoMode(){
   const fHl = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
   const fDur = (ini,fim) => { const h=fim-ini; return h+'h'; };
 
-  function renderPagina(){
+  async function renderPagina(){
+    // Tentar atualizar do servidor
+    const apiUrl=(window._DISP_MODE?.apiUrl)||localStorage.getItem('orion_api_url')||'';
+    if(apiUrl){
+      try{
+        const r=await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId));
+        const d=await r.json();
+        if(d.ok&&d.turnos?.length>0){
+          localStorage.setItem(leilaoKey,JSON.stringify(d.turnos));
+        }
+      }catch(e){}
+    }
+
     const leilao = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
     const disponiveis = leilao.filter(t=>!t.pegoPor);
     const tomados = leilao.filter(t=>t.pegoPor);
@@ -5793,21 +5918,43 @@ function renderLeilaoMode(){
         </div>
       </div>`;
 
-    window.pegarTurnoLeilao = function(idx){
+    window.pegarTurnoLeilao = async function(idx){
       const nome = prompt('Qual o seu nome?');
       if(!nome||!nome.trim()) return;
       const leilaoAtual = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
       const turno = leilaoAtual.filter(t=>!t.pegoPor)[idx];
-      if(!turno){ alert('Esse turno já foi pego. Atualizando...'); renderPagina(); return; }
+      if(!turno){ alert('Esse turno já foi pego. Atualizando...'); await renderPagina(); return; }
+
       turno.pegoPor = nome.trim();
       turno.pegadoEm = Date.now();
-      const idxGlobal = leilaoAtual.findIndex(t=>t.dia===turno.dia&&t.ini===turno.ini&&t.fim===turno.fim&&!t.pegoPor);
+      const idxGlobal = leilaoAtual.findIndex(t=>t.dia===turno.dia&&t.ini===turno.ini&&!t.pegoPor);
       if(idxGlobal>=0){ leilaoAtual[idxGlobal]=turno; localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual)); }
+
+      // Atualizar no servidor também
+      const apiUrl=(window._DISP_MODE?.apiUrl)||localStorage.getItem('orion_api_url')||'';
+      if(apiUrl){
+        try{
+          await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId)+'?nome='+encodeURIComponent(nome.trim())+'&dia='+encodeURIComponent(turno.dia)+'&ini='+encodeURIComponent(turno.ini),{method:'DELETE'});
+          // Registrar como confirmado nas confs
+          await fetch(apiUrl+'/conf',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              histId,nome:nome.trim(),
+              turnos:[Object.assign({},turno,{confirmado:true,deLeilao:true})],
+              status:'confirmado'
+            }),
+          });
+        }catch(e){}
+      }
+
+      // Salvar confirmação no localStorage
       const resKey='orion_v7_confres_'+histId;
       const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
       if(!confs[nome.trim()]) confs[nome.trim()]={nome:nome.trim(),histId,turnos:[],ts:Date.now()};
-      confs[nome.trim()].turnos.push(Object.assign({},turno,{confirmado:true,recusado:false,deLeilao:true}));
+      confs[nome.trim()].turnos.push(Object.assign({},turno,{confirmado:true,deLeilao:true}));
       localStorage.setItem(resKey,JSON.stringify(confs));
+
       renderPagina();
     };
   }
