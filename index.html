@@ -5925,10 +5925,56 @@ function renderLeilaoMode(){
   const leilaoKey = 'orion_v7_leilao_' + histId;
   const hist = JSON.parse(localStorage.getItem(KH)||'[]');
   const entrada = hist.find(h=>h.id===histId);
-  const semana = entrada ? entrada.semana : '?';
+  const semana = entrada ? entrada.semana : (window._DISP_MODE?.semana||'?');
+  // Nomes: do payload do link curto, ou do histórico local
+  const nomesDisp = (window._DISP_MODE?.nomes) || (entrada?.colabs?.map(c=>c.nome)) || (S?.colabs?.map(c=>c.nome)) || [];
   const DIAS_NOMES = {Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado',Dom:'Domingo'};
   const fHl = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
   const fDur = (ini,fim) => { const h=fim-ini; return h+'h'; };
+
+  // UI de seleção de nome (substitui prompt)
+  function selecionarNome(onConfirm){
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    const box=document.createElement('div');
+    box.style.cssText='background:#1a1d23;border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:24px;max-width:360px;width:100%';
+    box.innerHTML='<h3 style="color:#fff;font-size:17px;font-weight:800;margin-bottom:6px;text-align:center">Qual é o seu nome?</h3>'
+      +'<p style="color:#9ca3af;font-size:12px;text-align:center;margin-bottom:16px">Selecione seu nome para confirmar o turno</p>';
+
+    if(nomesDisp.length>0){
+      const grid=document.createElement('div');
+      grid.style.cssText='display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto';
+      nomesDisp.sort().forEach(nome=>{
+        const btn=document.createElement('button');
+        btn.style.cssText='background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 16px;color:#f3f4f6;font-size:14px;font-weight:600;cursor:pointer;text-align:left;font-family:inherit;transition:.15s';
+        btn.textContent=nome;
+        btn.onmouseover=()=>btn.style.background='rgba(200,241,53,.15)';
+        btn.onmouseout=()=>btn.style.background='rgba(255,255,255,.05)';
+        btn.onclick=()=>{overlay.remove();onConfirm(nome);};
+        grid.appendChild(btn);
+      });
+      box.appendChild(grid);
+    } else {
+      // Fallback: input de texto
+      const input=document.createElement('input');
+      input.placeholder='Digite seu nome';
+      input.style.cssText='width:100%;box-sizing:border-box;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:12px;color:#fff;font-size:14px;font-family:inherit;outline:none;margin-bottom:12px';
+      const btnOk=document.createElement('button');
+      btnOk.textContent='Confirmar';
+      btnOk.style.cssText='width:100%;background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit';
+      btnOk.onclick=()=>{const n=(input.value||'').trim();if(!n)return;overlay.remove();onConfirm(n);};
+      box.appendChild(input);
+      box.appendChild(btnOk);
+    }
+
+    const btnCancel=document.createElement('button');
+    btnCancel.textContent='Cancelar';
+    btnCancel.style.cssText='width:100%;background:transparent;border:none;color:#6b7280;font-size:13px;cursor:pointer;margin-top:10px;padding:6px;font-family:inherit';
+    btnCancel.onclick=()=>overlay.remove();
+    box.appendChild(btnCancel);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  }
 
   async function renderPagina(){
     // Buscar do servidor (funciona em qualquer dispositivo)
@@ -6027,89 +6073,72 @@ function renderLeilaoMode(){
     window.pegarTurnoLeilao = async function(btn){
       const dia=btn.dataset.dia;
       const ini=parseInt(btn.dataset.ini);
+      const fim=parseInt(btn.dataset.fim||String(ini+1));
       const ofertadoPor=btn.dataset.ofertado;
-      const fim=parseInt(btn.dataset.fim||btn.dataset.ini)+1;
-      const nome=(prompt('Qual o seu nome?')||'').trim();
-      if(!nome) return;
 
-      btn.disabled=true;
-      btn.textContent='Pegando...';
+      // Mostrar UI de seleção de nome (não usa prompt)
+      selecionarNome(async function(nome){
+        btn.disabled=true;
+        btn.textContent='Pegando...';
 
-      const leilaoAtual=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-      const idx=leilaoAtual.findIndex(t=>t.dia===dia&&t.ini===ini&&t.ofertadoPor===ofertadoPor&&!t.pegoPor);
-      if(idx<0){
-        alert('Esse turno já foi pego por outra pessoa.');
-        await renderPagina();
-        return;
-      }
-
-      const turno=leilaoAtual[idx];
-      leilaoAtual[idx].pegoPor=nome;
-      leilaoAtual[idx].pegadoEm=Date.now();
-      localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual));
-
-      // ── ATUALIZAR S.escala SE ESTIVER NO DEVICE DO GESTOR
-      if(typeof S!=='undefined'&&S.escala){
-        for(let h=turno.ini;h<turno.fim;h++){
-          const cell=S.escala?.[dia]?.[h];
-          if(!cell) continue;
-          // Remover quem ofertou (se ainda estiver)
-          if(ofertadoPor!=='Sistema'){
-            cell.alocados=cell.alocados.filter(n=>n!==ofertadoPor);
-          }
-          // Adicionar quem pegou (evitar duplicata)
-          if(!cell.alocados.includes(nome)) cell.alocados.push(nome);
+        const leilaoAtual=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+        const idx=leilaoAtual.findIndex(t=>t.dia===dia&&t.ini===ini&&t.ofertadoPor===ofertadoPor&&!t.pegoPor);
+        if(idx<0){
+          alert('Esse turno já foi pego por outra pessoa.');
+          await renderPagina();
+          return;
         }
-        // Persistir e re-renderizar
-        if(typeof save==='function') save();
-        if(typeof renderEscala==='function') renderEscala();
-        if(typeof atualizarCustoTotal==='function') atualizarCustoTotal();
 
-        // Atualizar histórico publicado com a escala corrigida
-        try{
-          const hist=JSON.parse(localStorage.getItem(KH)||'[]');
-          if(hist.length>0){
-            hist[0].escala=JSON.parse(JSON.stringify(S.escala));
-            localStorage.setItem(KH,JSON.stringify(hist));
+        const turno=leilaoAtual[idx];
+        leilaoAtual[idx].pegoPor=nome;
+        leilaoAtual[idx].pegadoEm=Date.now();
+        localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual));
+
+        // ── ATUALIZAR S.escala SE ESTIVER NO DEVICE DO GESTOR
+        if(typeof S!=='undefined'&&S.escala){
+          for(let h=turno.ini;h<turno.fim;h++){
+            const cell=S.escala?.[dia]?.[h];
+            if(!cell) continue;
+            if(ofertadoPor!=='Sistema') cell.alocados=cell.alocados.filter(n=>n!==ofertadoPor);
+            if(!cell.alocados.includes(nome)) cell.alocados.push(nome);
           }
-        }catch(e){}
-      }
+          if(typeof save==='function') save();
+          if(typeof renderEscala==='function') renderEscala();
+          if(typeof atualizarCustoTotal==='function') atualizarCustoTotal();
+          try{
+            const histLocal=JSON.parse(localStorage.getItem(KH)||'[]');
+            if(histLocal.length>0){histLocal[0].escala=JSON.parse(JSON.stringify(S.escala));localStorage.setItem(KH,JSON.stringify(histLocal));}
+          }catch(e){}
+        }
 
-      // ── ENVIAR PARA API (funciona cross-device)
-      const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||'';
-      if(apiUrl){
-        try{
-          // 1. Marcar turno como pego no leilão
-          await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId)
-            +'?nome='+encodeURIComponent(nome)
-            +'&dia='+encodeURIComponent(dia)
-            +'&ini='+encodeURIComponent(turno.ini),
-            {method:'DELETE'}
-          );
-          // 2. Registrar confirmação com info de quem pegou e de quem saiu
-          await fetch(apiUrl+'/conf',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-              histId,
-              nome,
-              turnos:[Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor})],
-              status:'confirmado',
-              // Sinaliza que quem ofertou deve sair da escala
-              substituicao:{removeu:ofertadoPor,adicionou:nome,dia,ini:turno.ini,fim:turno.fim}
-            }),
-          });
-        }catch(e){}
-      }
+        // ── ENVIAR PARA API
+        const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||'';
+        if(apiUrl){
+          try{
+            await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId)
+              +'?nome='+encodeURIComponent(nome)
+              +'&dia='+encodeURIComponent(dia)
+              +'&ini='+encodeURIComponent(turno.ini),{method:'DELETE'});
+            await fetch(apiUrl+'/conf',{
+              method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({histId,nome,
+                turnos:[Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor})],
+                status:'confirmado',
+                substituicao:{removeu:ofertadoPor,adicionou:nome,dia,ini:turno.ini,fim:turno.fim}
+              }),
+            });
+          }catch(e){}
+        }
 
-      // ── SALVAR CONFIRMAÇÃO LOCAL
-      const resKey='orion_v7_confres_'+histId;
-      const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
-      if(!confs[nome]) confs[nome]={nome,histId,turnos:[],ts:Date.now()};
-      confs[nome].turnos.push(Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor}));
-      localStorage.setItem(resKey,JSON.stringify(confs));
+        // ── CONFIRMAÇÃO LOCAL
+        const resKey='orion_v7_confres_'+histId;
+        const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
+        if(!confs[nome]) confs[nome]={nome,histId,turnos:[],ts:Date.now()};
+        confs[nome].turnos.push(Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor}));
+        localStorage.setItem(resKey,JSON.stringify(confs));
 
-      await renderPagina();
+        await renderPagina();
+      });
     };
   }
 
@@ -6117,20 +6146,33 @@ function renderLeilaoMode(){
 }
 
 // Botão de leilão na plataforma (para gestor enviar link do leilão)
-function abrirLinkLeilao(histId){
-  const link = location.origin + location.pathname + '#leilao=' + histId;
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.innerHTML = '<div style="background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:24px;max-width:420px;width:100%;text-align:center">'
-    + '<div style="font-size:28px;margin-bottom:12px">⚡</div>'
-    + '<h3 style="font-size:16px;font-weight:800;margin-bottom:8px">Link do Leilao de Horarios</h3>'
-    + '<p style="font-size:12px;color:var(--mu);margin-bottom:16px">Envie este link no grupo para que os colaboradores possam pegar os turnos disponiveis.</p>'
-    + '<input value="'+link+'" readonly style="width:100%;background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:10px;font-size:11px;color:var(--tx);margin-bottom:12px">'
-    + '<div style="display:flex;gap:8px;justify-content:center">'
-    + '<button onclick="navigator.clipboard.writeText(\'' + link.replace(/'/g,"\'") + '\').then(()=>toast(\'Link copiado!\',\'tok\'))" style="background:var(--ac);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-weight:700;font-size:12px;cursor:pointer">Copiar link</button>'
-    + '<button onclick="window.open(\'https://wa.me/?text=\'+encodeURIComponent(\'Acesse o leilao de horarios da semana: ' + link.replace(/'/g,"\'") + '\'),\'_blank\')" style="background:#25d366;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;font-size:12px;cursor:pointer">Enviar WA</button>'
-    + '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:1px solid var(--brd);border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;color:var(--mu)">Fechar</button>'
-    + '</div></div>';
+async function abrirLinkLeilao(histId){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const entrada=hist.find(h=>h.id===histId)||{semana:'?'};
+  const nomes=(entrada.colabs||S.colabs||[]).map(c=>c.nome).sort();
+  const apiUrl=getApiUrl();
+  const payload={tipo:'leilao',histId,semana:entrada.semana,nomes,apiUrl};
+
+  let link;
+  try{
+    const r=await fetch(apiUrl+'/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload})});
+    const d=await r.json();
+    if(d.ok) link=location.origin+location.pathname+'#s='+d.code+'@'+encodeURIComponent(apiUrl);
+  }catch(e){}
+  if(!link) link=location.origin+location.pathname+'#leilao='+histId;
+
+  const modal=document.createElement('div');
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML='<div style="background:var(--card);border:1px solid var(--brd);border-radius:16px;padding:24px;max-width:420px;width:100%;text-align:center">'
+    +'<div style="font-size:28px;margin-bottom:12px">⚡</div>'
+    +'<h3 style="font-size:16px;font-weight:800;margin-bottom:8px">Leilão de Horários</h3>'
+    +'<p style="font-size:12px;color:var(--mu);margin-bottom:16px">Envie no grupo — colaboradores selecionam o próprio nome e pegam o turno.</p>'
+    +'<input id="leilaoLinkInput" value="'+link+'" readonly style="width:100%;box-sizing:border-box;background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:10px;font-size:11px;color:var(--tx);margin-bottom:12px">'
+    +'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+    +'<button onclick="navigator.clipboard.writeText(document.getElementById(\'leilaoLinkInput\').value).then(()=>toast(\'Link copiado!\',\'tok\'))" style="background:var(--ac);color:var(--bg);border:none;border-radius:8px;padding:8px 18px;font-weight:700;font-size:12px;cursor:pointer">Copiar</button>'
+    +'<button onclick="window.open(\'https://wa.me/?text=\'+encodeURIComponent(\'⚡ Leilão de horários:\\n\'+document.getElementById(\'leilaoLinkInput\').value),\'_blank\')" style="background:#25d366;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;font-size:12px;cursor:pointer">📲 WhatsApp</button>'
+    +'<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:1px solid var(--brd);border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;color:var(--mu)">Fechar</button>'
+    +'</div></div>';
   document.body.appendChild(modal);
   modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
 }
