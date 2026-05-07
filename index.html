@@ -5300,6 +5300,14 @@ function renderDispMode(){
   const d = window._DISP_MODE;
   window._dispDados = d;
 
+  // Leilão de horários — redirecionar para renderLeilaoMode
+  if(d.tipo === 'leilao'){
+    window._LEILAO_HIST_ID=d.histId;
+    window._LEILAO_API_URL=d.apiUrl||localStorage.getItem('orion_api_url')||'';
+    renderLeilaoMode();
+    return;
+  }
+
   // Verificar expiração (só bloqueia se expira foi definido)
   if(d.expira && d.expira > 0 && Date.now() > d.expira){
     document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="text-align:center;color:#fff;max-width:320px"><div style="font-size:52px;margin-bottom:16px">⏰</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px">Link expirado</h2><p style="color:#9ca3af;font-size:13px">O prazo de resposta encerrou. Fale com seu gestor.</p></div></div>';
@@ -7119,13 +7127,21 @@ if(window._SHORT_CODE){
       const r=await fetch(apiUrl+'/link/'+realCode);
       const d=await r.json();
       if(d.ok&&d.payload){
-        // Se o payload tem apiUrl, salvar para uso posterior
         if(d.payload.apiUrl) localStorage.setItem('orion_api_url',d.payload.apiUrl);
         window._DISP_MODE=d.payload;
         const pd=d.payload;
-        if(pd.tipo==='confirmacao') renderConfirmacaoMode(pd);
-        else if(pd.tipo==='confirmacao_grupo'||pd.tipo==='grupo_hist_disp') renderDispMode();
-        else renderDispMode();
+        if(pd.tipo==='leilao'){
+          // Leilão de horários
+          window._LEILAO_HIST_ID=pd.histId;
+          window._LEILAO_API_URL=pd.apiUrl||d.payload.apiUrl||localStorage.getItem('orion_api_url')||'';
+          renderLeilaoMode();
+        } else if(pd.tipo==='confirmacao'){
+          renderConfirmacaoMode(pd);
+        } else if(pd.tipo==='confirmacao_grupo'||pd.tipo==='grupo_hist_disp'){
+          renderDispMode();
+        } else {
+          renderDispMode();
+        }
       } else {
         document.body.innerHTML='<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;font-family:sans-serif"><div style="text-align:center;color:#fff;padding:20px"><div style="font-size:48px;margin-bottom:16px">⚠️</div><h2 style="font-size:18px;margin-bottom:8px">Link não encontrado</h2><p style="color:#9ca3af;font-size:13px">Este link pode ter expirado. Peça um novo ao gestor.</p></div></div>';
       }
