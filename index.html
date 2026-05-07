@@ -1440,25 +1440,34 @@ async function limparDisponibilidades(){
   const p2=v=>String(v).padStart(2,'0');
   const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
 
-  // Limpar localStorage — todas as chaves relacionadas a disp
-  const keysToRemove=[];
+  // 1. Coletar TODAS as chaves de disp do localStorage primeiro
+  const allKeys=[];
   for(let i=0;i<localStorage.length;i++){
     const k=localStorage.key(i);
-    if(k&&(
-      k.startsWith('orion_v7_disp_')||
-      k.startsWith('orion_v7_disptimer_')||
-      k.startsWith('orion_v7_disp_hist_')||
-      k.startsWith('orion_v7_disp_snap_')
-    )) keysToRemove.push(k);
+    if(k) allKeys.push(k);
   }
-  keysToRemove.forEach(k=>localStorage.removeItem(k));
+  const dispKeys=allKeys.filter(k=>
+    k.startsWith('orion_v7_disp_')||
+    k.startsWith('orion_v7_disptimer_')||
+    k.startsWith('orion_v7_disp_snap_')
+  );
+  dispKeys.forEach(k=>localStorage.removeItem(k));
 
-  // Limpar também no servidor (API)
+  // 2. Limpar no servidor — todas as chaves possíveis desta semana
   if(apiConfigurada()){
+    const keysServidor=[
+      segProxISO,
+      'semana_'+segProxISO,
+    ];
+    // Também pegar histIds recentes que podem ter respostas
     try{
-      await apiDelete('/disp/'+encodeURIComponent('semana_'+segProxISO));
-      await apiDelete('/disp/'+encodeURIComponent(segProxISO));
-    }catch(e){ console.warn('[Limpar] Erro ao limpar API:',e.message); }
+      const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+      hist.slice(0,3).forEach(h=>{ if(h.id) keysServidor.push(h.id); });
+    }catch(e){}
+
+    await Promise.all(keysServidor.map(k=>
+      apiDelete('/disp/'+encodeURIComponent(k)).catch(()=>{})
+    ));
   }
 
   atualizarPainelPassos();
