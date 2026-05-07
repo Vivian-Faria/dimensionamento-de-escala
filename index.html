@@ -3210,18 +3210,55 @@ function publicarEscala(){
 
   try{
     const hist=JSON.parse(localStorage.getItem(KH)||'[]');
-    // Evita duplicata da mesma semana — substitui se já existir
-    // Chave única = semana + hub (permite múltiplas escalas por semana, uma por hub)
     const idx=hist.findIndex(h=>h.segISO===entrada.segISO&&(h.hub||'Todos os hubs')===(entrada.hub||'Todos os hubs'));
     if(idx!==-1)hist[idx]=entrada;
     else hist.unshift(entrada);
-    // Mantém máximo 20 semanas
     if(hist.length>20)hist.splice(20);
     localStorage.setItem(KH,JSON.stringify(hist));
+
+    // ── Adicionar slots SEM COBERTURA ou INSUFICIENTES ao leilão automaticamente
+    const leilaoKey='orion_v7_leilao_'+entrada.id;
+    const leilaoAtual=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+    const hIl=+document.getElementById('cHI').value||9;
+    const hOl=+document.getElementById('cHO').value||25;
+    let slotsAdicionados=0;
+
+    diasO.forEach(dia=>{
+      const horasVazias=[];
+      for(let h=hIl;h<hOl;h++){
+        const cell=S.escala[dia]?.[h];
+        if(!cell) continue;
+        const semCobertura=cell.alocados.length===0;
+        const insuficiente=cell.pessoas>0&&cell.alocados.length>0&&cell.alocados.length<cell.pessoas;
+        if(semCobertura||insuficiente) horasVazias.push(h);
+      }
+      // Agrupa horas consecutivas em turnos
+      if(!horasVazias.length) return;
+      const sorted=[...horasVazias].sort((a,b)=>a-b);
+      let g=[sorted[0]];
+      const flush=()=>{
+        const turno={dia,ini:g[0],fim:g[g.length-1]+1,ofertadoPor:'Sistema',pegoPor:null,semCobertura:true};
+        const dup=leilaoAtual.find(l=>l.dia===turno.dia&&l.ini===turno.ini&&!l.pegoPor);
+        if(!dup){leilaoAtual.push(turno);slotsAdicionados++;}
+      };
+      for(let i=1;i<sorted.length;i++){
+        if(sorted[i]===sorted[i-1]+1) g.push(sorted[i]);
+        else{flush();g=[sorted[i]];}
+      }
+      flush();
+    });
+
+    if(slotsAdicionados>0){
+      localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual));
+      // Enviar para API também
+      if(apiConfigurada()){
+        apiPost('/leilao',{histId:entrada.id,turnos:leilaoAtual.filter(t=>t.semCobertura)}).catch(()=>{});
+      }
+    }
+
   }catch(e){toast('Erro ao salvar histórico: '+e.message,'ter');return;}
 
-  toast('✅ Escala publicada e arquivada no histórico!','tok');
-  // Abre a aba histórico
+  toast('✅ Escala publicada!','tok');
   setTimeout(()=>{goT('hi');renderHistorico();},600);
 }
 
@@ -5368,7 +5405,7 @@ function _renderTelaDispHistIndiv(nome, d){
   // Botão enviar
   const btnEnv=document.createElement('button');
   btnEnv.style.cssText='width:100%;background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit';
-  btnEnv.textContent='Confirmar disponibilidade';
+  btnEnv.textContent='Confirmar indisponibilidade';
   btnEnv.onclick=async function(){
     const diasIndisp=[...selecionados];
     btnEnv.disabled=true;
@@ -5437,7 +5474,7 @@ function _renderTelaDispHistIndiv(nome, d){
       btnR.textContent='Tentar novamente';
       btnR.onclick=()=>{
         btnEnv.disabled=false;
-        btnEnv.textContent='Confirmar disponibilidade';
+        btnEnv.textContent='Confirmar indisponibilidade';
         card.innerHTML='';
         card.appendChild(wrap2.previousElementSibling||wrap2);
       };
@@ -5866,15 +5903,26 @@ function renderLeilaoMode(){
     const cardsDisp = disponiveis.length
       ? disponiveis.map(function(t,i){
           const dur=fDur(t.ini,t.fim);
-          return `<div style="background:#1a1d23;border:1.5px solid rgba(200,241,53,.2);border-radius:14px;padding:18px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <div>
-              <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px">${DIAS_NOMES[t.dia]}</div>
-              <div style="font-size:22px;font-weight:900;color:#c8f135;font-family:monospace">${fHl(t.ini)} – ${fHl(t.fim)}</div>
-              <div style="font-size:11px;color:#6b7280;margin-top:4px">${dur} · disponibilizado por <strong style="color:#9ca3af">${t.ofertadoPor}</strong></div>
+          const isSistema=t.ofertadoPor==='Sistema';
+          const borderColor=isSistema?'rgba(239,68,68,.3)':'rgba(200,241,53,.2)';
+          const badge=isSistema
+            ?'<span style="background:rgba(239,68,68,.15);color:#f87171;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px">Sem cobertura</span>'
+            :'<span style="background:rgba(251,191,36,.15);color:#fbbf24;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px">Disponibilizado</span>';
+          return `<div style="background:#1a1d23;border:1.5px solid ${borderColor};border-radius:14px;padding:16px;margin-bottom:10px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:6px">
+                  <span style="font-size:16px;font-weight:800;color:#fff">${DIAS_NOMES[t.dia]||t.dia}</span>
+                  ${badge}
+                </div>
+                <div style="font-size:20px;font-weight:900;color:#c8f135;font-family:monospace">${fHl(t.ini)} – ${fHl(t.fim)}</div>
+                <div style="font-size:11px;color:#6b7280;margin-top:4px">${dur} · ${isSistema?'slot sem cobertura':'disponibilizado por <strong style="color:#9ca3af">'+t.ofertadoPor+'</strong>'}</div>
+              </div>
+              <button onclick="pegarTurnoLeilao(${i})"
+                style="background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:11px 20px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">
+                Pegar turno
+              </button>
             </div>
-            <button onclick="pegarTurnoLeilao(${i})" style="background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:12px 22px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap;font-family:inherit">
-              Pegar turno
-            </button>
           </div>`;
         }).join('')
       : `<div style="text-align:center;padding:48px 20px">
@@ -5897,24 +5945,24 @@ function renderLeilaoMode(){
         </div>` : '';
 
     document.body.innerHTML = `
-      <div style="max-width:480px;margin:0 auto;padding:20px 16px;min-height:100vh">
+      <div style="max-width:520px;margin:0 auto;padding:16px;min-height:100vh;box-sizing:border-box">
         <!-- Header -->
-        <div style="text-align:center;padding:24px 0 20px">
-          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(200,241,53,.1);border:1px solid rgba(200,241,53,.2);border-radius:20px;padding:6px 16px;margin-bottom:16px">
+        <div style="text-align:center;padding:20px 0 16px">
+          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(200,241,53,.1);border:1px solid rgba(200,241,53,.2);border-radius:20px;padding:6px 16px;margin-bottom:14px">
             <span style="font-size:13px;font-weight:700;color:#c8f135">⚡ Leilão de horários</span>
           </div>
           <div style="color:#fff;font-size:22px;font-weight:900;margin-bottom:4px">Semana ${semana}</div>
           <div style="color:#6b7280;font-size:13px">${disponiveis.length} turno${disponiveis.length!==1?'s':''} disponível${disponiveis.length!==1?'is':''}</div>
         </div>
 
-        <!-- Turnos disponíveis -->
         ${disponiveis.length?`<div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Disponíveis para pegar</div>`:''}
         ${cardsDisp}
         ${tomadosHtml}
 
-        <!-- Rodapé -->
-        <div style="text-align:center;margin-top:32px;padding-top:20px;border-top:1px solid rgba(255,255,255,.06)">
-          <div style="color:#374151;font-size:11px">Atualize a página para ver novos turnos disponíveis</div>
+        <div style="text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)">
+          <button onclick="location.reload()" style="background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 16px;color:#6b7280;font-size:12px;cursor:pointer;font-family:inherit">
+            🔄 Atualizar
+          </button>
         </div>
       </div>`;
 
