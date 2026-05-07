@@ -510,7 +510,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <div style="font-size:13px;font-weight:700;color:var(--tx)">✅ Confirmar escala</div>
             <div style="font-size:11px;color:var(--mu);line-height:1.5;flex:1">Publique e envie a escala para confirmação. Quem não confirmar em 1h vai para o leilão de horários.</div>
             <div id="p3Status" style="font-size:11px;color:var(--mu)">Aguardando montagem</div>
-            <button class="btn ba sm" style="background:#2563eb" onclick="publicarEEnviarConfirmacao()">✅ Publicar e enviar para confirmação</button>
+            <button class="btn ba sm" style="background:#16a34a" onclick="publicarEscala()">📋 Publicar escala</button>
+            <button class="btn ba sm" style="background:#2563eb" id="p3BtnEnviarConf" onclick="enviarLinkConfirmacao()" style="display:none">📲 Enviar para confirmação</button>
             <button class="btn bs sm" id="p3BtnBuscar" onclick="buscarConfirmacoesAPI()" style="display:none">☁️ Buscar confirmações</button>
             <button class="btn bs sm" id="p3BtnLeilao" onclick="abrirLeilaoEscalaAtual()" style="display:none">🔖 Ver leilão de horários</button>
           </div>
@@ -601,7 +602,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <div class="sh">
         <div>
           <h2>Indicadores Operacionais</h2>
-          <p id="indSub">Análise semanal · baseada nos dados do Órion</p>
+          <p id="indSub">Selecione o período acima para filtrar os dados</p>
         </div>
         <div class="sh-r">
           <div style="position:relative;display:inline-block;z-index:100">
@@ -1800,6 +1801,46 @@ async function publicarEEnviarConfirmacao(){
   if(p3b) p3b.style.display='';
 
   toast('✅ Escala publicada e link enviado!','tok');
+}
+
+// Separado de publicar — apenas envia o link de confirmação
+async function enviarLinkConfirmacao(){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const ultima=hist[0];
+  if(!ultima){toast('Publique a escala primeiro.','ter');return;}
+
+  const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const turnosPorColab={};
+  DIAS.forEach(dia=>{
+    for(let h=9;h<=25;h++){
+      const cell=ultima.escala?.[dia]?.[h];
+      if(!cell) continue;
+      (cell.alocados||[]).forEach(nome=>{
+        if(!turnosPorColab[nome])turnosPorColab[nome]=[];
+        const lista=turnosPorColab[nome];
+        const ult=lista[lista.length-1];
+        if(ult&&ult.dia===dia&&ult.fim===h) ult.fim=h+1;
+        else lista.push({dia,ini:h,fim:h+1});
+      });
+    }
+  });
+
+  const nomes=Object.keys(turnosPorColab).sort();
+  const dados={tipo:'confirmacao_grupo',histId:ultima.id,nomes,turnosPorColab,semana:ultima.semana,apiUrl:getApiUrl()};
+
+  toast('Gerando link de confirmação...','tok');
+  const link=await criarLinkCurto(dados);
+
+  const msg='Oi pessoal! 📋\n\nA escala da semana *'+ultima.semana+'* está pronta!\n\nAbra o link, selecione seu nome e confirme seus horários:\n\n'+link+'\n\nQuem não confirmar terá o horário disponível no leilão. Obrigado!';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+
+  const p3s=document.getElementById('p3Status');
+  if(p3s) p3s.innerHTML='<span style="color:#2563eb;font-weight:600">⏳ Aguardando confirmações...</span>';
+  const p3b=document.getElementById('p3BtnBuscar');
+  if(p3b) p3b.style.display='';
+  const p3l=document.getElementById('p3BtnLeilao');
+  if(p3l) p3l.style.display='';
+  toast('✅ Link enviado!','tok');
 }
 
 function publicarEscalaAsync(){
@@ -3220,6 +3261,11 @@ function publicarEscala(){
   // Estrutura: confirmacoes[nome] = { status, turnos: [{dia, ini, fim, horas, faltou, horasAbatidas}] }
   const hIp=+document.getElementById('cHI').value||9;
   const hOp=+document.getElementById('cHO').value||25;
+  // ── Fix 2: Preservar confirmações existentes se republicando a mesma semana
+  const histExist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const entradaExist=histExist.find(h=>h.segISO===seg.toISOString().slice(0,10)&&(h.hub||'Todos os hubs')===(S.hubAtual||'Todos os hubs'));
+  const confirmacoesExist=entradaExist?.confirmacoes||{};
+
   const confirmacoes={};
   // Para cada colaborador escalado, monta seus turnos
   const allNomes=new Set(Object.values(forcaPorDia).flat());
@@ -3232,7 +3278,6 @@ function publicarEscala(){
         if(cell&&cell.alocados.includes(nome))horasDia.push(h);
       }
       if(!horasDia.length)return;
-      // Agrupa consecutivos
       const sorted=[...horasDia].sort((a,b)=>a-b);
       let g=[sorted[0]];
       for(let i=1;i<sorted.length;i++){
@@ -3244,7 +3289,19 @@ function publicarEscala(){
       }
       turnosDoColab.push({dia,ini:g[0],fim:g[g.length-1]+1,horas:g.length,faltou:false,horasAbatidas:0});
     });
-    confirmacoes[nome]={status:'pendente',turnos:turnosDoColab};
+    // Preservar status e dados de falta já confirmados
+    const confExist=confirmacoesExist[nome];
+    if(confExist&&confExist.status!=='pendente'){
+      // Mesclar: manter status existente, atualizar lista de turnos mas preservar faltou/horasAbatidas
+      const turnosComFalta=turnosDoColab.map(t=>{
+        const tExist=confExist.turnos?.find(e=>e.dia===t.dia&&e.ini===t.ini);
+        if(tExist) return {...t,faltou:tExist.faltou||false,horasAbatidas:tExist.horasAbatidas||0};
+        return t;
+      });
+      confirmacoes[nome]={status:confExist.status,turnos:turnosComFalta,ts:confExist.ts};
+    } else {
+      confirmacoes[nome]={status:'pendente',turnos:turnosDoColab};
+    }
   });
 
   const entrada={
@@ -3314,6 +3371,11 @@ function publicarEscala(){
   }catch(e){toast('Erro ao salvar histórico: '+e.message,'ter');return;}
 
   toast('✅ Escala publicada!','tok');
+  // Mostrar botões de passo 3
+  const _p3s=document.getElementById('p3Status');
+  if(_p3s) _p3s.innerHTML='<span style="color:#16a34a;font-weight:600">✅ Publicada — pronta para envio</span>';
+  const _p3e=document.getElementById('p3BtnEnviarConf');
+  if(_p3e) _p3e.style.display='';
   setTimeout(()=>{goT('hi');renderHistorico();},600);
 }
 
@@ -3463,7 +3525,7 @@ function renderHistorico(filtro){
       return `<span style="${cor};border-radius:8px;padding:2px 8px;font-size:10px;font-weight:600">${f.reforco?'🎉':'📅'} ${f.nome} (${dStr})</span>`;
     }).join('');
 
-    return`<div class="hist-card" style="padding:0;overflow:hidden">
+    return`<div class="hist-card" data-hist-id="${h.id}" style="padding:0;overflow:hidden">
       <!-- CABEÇALHO CLICÁVEL (sempre visível) -->
       <div class="hist-head" onclick="toggleHistCard('${h.id}')" style="cursor:pointer;padding:14px 18px;user-select:none">
         <span style="font-size:18px">📅</span>
@@ -3477,11 +3539,10 @@ function renderHistorico(filtro){
             <span>${(h.resumo.totalPed||0).toLocaleString('pt-BR')} ped.</span>
             ${h.resumo.totalCusto>0?`<span>R$ ${(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',',')}</span>`:''}
             ${cpp?`<span>CPP R$ ${cpp}</span>`:''}
-            ${faltaram>0?`<span style="color:#dc2626">⚠ ${faltaram} falta${faltaram!==1?'s':''}</span>`:''}
-            ${confirmados===totalColab&&totalColab>0?'<span style="color:#16a34a">✅ Todos confirmados</span>':''}
+            ${totalColab>0?`<span class="hist-conf-count" style="color:${confirmados===totalColab?'#16a34a':pendentes>0?'#92400e':'#6b7280'};font-weight:600">✓ ${confirmados}/${totalColab}</span>`:''}
+            <span class="hist-falta-badge" style="color:#dc2626">${faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:''}${''}${''}</span>
             <span style="color:var(--mu)">Publicado em ${h.publicadoEm}</span>
           </div>
-        </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
           ${faltaram>0?`<span class="hist-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">${faltaram} faltou</span>`:''}
           <span id="hist-chevron-${h.id}" style="font-size:12px;color:var(--mu);transition:.2s;transform:rotate(0deg)">▼</span>
@@ -3767,15 +3828,13 @@ function toggleFaltaTurno(histId, nome, ini, dia, faltou){
   const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===ini);
   if(!t)return;
   t.faltou=faltou;
-  if(faltou&&t.horasAbatidas===0)t.horasAbatidas=t.horas; // padrão: abate tudo
+  if(faltou&&t.horasAbatidas===0)t.horasAbatidas=t.horas;
   if(!faltou)t.horasAbatidas=0;
-  // Atualiza status geral do colaborador
   const temFalta=h.confirmacoes[nome].turnos.some(x=>x.faltou);
   h.confirmacoes[nome].status=temFalta?'faltou':'pendente';
-  // Recalcula total abatido
   h.confirmacoes[nome].horasAbatidas=h.confirmacoes[nome].turnos.reduce((s,x)=>s+(x.horasAbatidas||0),0);
   localStorage.setItem(KH,JSON.stringify(hist));
-  renderHistorico();
+  _atualizarBadgesCard(histId, h);
 }
 
 function setHorasAbatadasTurno(histId, nome, ini, dia, horas){
@@ -3787,7 +3846,7 @@ function setHorasAbatadasTurno(histId, nome, ini, dia, horas){
   t.horasAbatidas=Math.min(parseFloat(horas)||0, t.horas);
   h.confirmacoes[nome].horasAbatidas=h.confirmacoes[nome].turnos.reduce((s,x)=>s+(x.horasAbatidas||0),0);
   localStorage.setItem(KH,JSON.stringify(hist));
-  renderHistorico();
+  _atualizarBadgesCard(histId, h);
 }
 
 function setConfirmacao(histId, nome, status){
@@ -3797,10 +3856,30 @@ function setConfirmacao(histId, nome, status){
   if(!h.confirmacoes)h.confirmacoes={};
   if(!h.confirmacoes[nome])h.confirmacoes[nome]={status:'pendente',horasAbatidas:0};
   h.confirmacoes[nome].status=status;
-  // Se voltou a confirmado, zera horas abatidas
   if(status==='confirmado')h.confirmacoes[nome].horasAbatidas=0;
   localStorage.setItem(KH,JSON.stringify(hist));
-  renderHistorico();
+  _atualizarBadgesCard(histId, h);
+}
+
+// Atualiza apenas os badges/counters do card sem fechar o modal
+function _atualizarBadgesCard(histId, h){
+  const confs=h.confirmacoes||{};
+  const totalColab=Object.keys(confs).length;
+  const confirmados=Object.values(confs).filter(c=>c.status==='confirmado').length;
+  const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
+  const pendentes=totalColab-confirmados-faltaram;
+
+  // Atualizar o contador no cabeçalho colapsado
+  const cardEl=document.querySelector(`[data-hist-id="${histId}"]`);
+  if(cardEl){
+    const contEl=cardEl.querySelector('.hist-conf-count');
+    if(contEl){
+      contEl.textContent=`✓ ${confirmados}/${totalColab}`;
+      contEl.style.color=confirmados===totalColab?'#16a34a':pendentes>0?'#92400e':'#6b7280';
+    }
+    const faltaEl=cardEl.querySelector('.hist-falta-badge');
+    if(faltaEl) faltaEl.textContent=faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:'';
+  }
 }
 
 function setHorasAbatidas(histId, nome, horas){
@@ -4719,9 +4798,9 @@ function renderIndicadores(){
 
   document.getElementById('indTabela').innerHTML=thead+tbody;
 
-  const subTxt=`${periodoLabel} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''}`;
+  const subTxt=`${periodoLabel} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''} · ${todasVendas.length.toLocaleString('pt-BR')} pedidos analisados`;
   document.getElementById('indSub').textContent=subTxt;
-  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · exibindo todas`;
+  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · tabela exibe todas`;
 
   // Atualiza select hubs
   atualizarSelectHubs([]);
