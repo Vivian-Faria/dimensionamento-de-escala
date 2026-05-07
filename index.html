@@ -498,8 +498,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <div style="font-size:13px;font-weight:700;color:var(--tx)">⚙️ Montar escala</div>
             <div style="font-size:11px;color:var(--mu);line-height:1.5;flex:1">Monte a escala automaticamente respeitando as indisponibilidades coletadas.</div>
             <div id="p2Status" style="font-size:11px;color:var(--mu)">Aguardando disponibilidades</div>
-            <button class="btn ba sm" onclick="preencher()">👥 Preencher automaticamente</button>
-            <button class="btn ba sm" id="btnRefazerConfirmada" style="background:#7c3aed;display:none" onclick="refazerEscalaConfirmada()">🔄 Refazer com disponibilidades</button>
+            <button class="btn ba sm" id="btnMontarEscala" onclick="montarEscalaInteligente()">⚙️ Montar escala com disponibilidades</button>
           </div>
 
           <!-- SETA -->
@@ -776,156 +775,6 @@ async function apiDelete(endpoint) {
   } catch(e) {
     return { ok: false, error: e.message };
   }
-}
-
-function _dedupeTurnosLista(turnos){
-  const mapa=new Map();
-  (turnos||[]).forEach(t=>{
-    if(!t)return;
-    const chave=[t.dia,t.ini,t.fim,t.ofertadoPor||'',t.pegoPor||''].join('|');
-    if(!mapa.has(chave))mapa.set(chave,Object.assign({},t));
-  });
-  return Array.from(mapa.values());
-}
-
-function _mesclarTurnosPorHorario(base, extras){
-  const mapa=new Map();
-  (base||[]).forEach(t=>{
-    if(!t)return;
-    mapa.set([t.dia,t.ini,t.fim].join('|'), Object.assign({},t));
-  });
-  (extras||[]).forEach(t=>{
-    if(!t)return;
-    const chave=[t.dia,t.ini,t.fim].join('|');
-    mapa.set(chave, Object.assign({}, mapa.get(chave)||{}, t));
-  });
-  return Array.from(mapa.values()).sort((a,b)=>{
-    const ordem={Seg:1,Ter:2,Qua:3,Qui:4,Sex:5,Sab:6,Dom:7};
-    return (ordem[a.dia]||99)-(ordem[b.dia]||99) || (a.ini||0)-(b.ini||0) || (a.fim||0)-(b.fim||0);
-  });
-}
-
-function _formatarPrazo(ms){
-  if(ms%(60*60*1000)===0){
-    const horas=ms/(60*60*1000);
-    return horas===1?'1 hora':horas+' horas';
-  }
-  if(ms%(60*1000)===0){
-    const minutos=ms/(60*1000);
-    return minutos===1?'1 minuto':minutos+' minutos';
-  }
-  const segundos=Math.round(ms/1000);
-  return segundos===1?'1 segundo':segundos+' segundos';
-}
-
-function _removerDisponibilidadesLocais(segISO, histId){
-  const chaves=[
-    segISO?'orion_v7_disp_'+segISO:'',
-    segISO?'orion_v7_disp_snap_'+segISO:'',
-    segISO?'orion_v7_disptimer_semana_'+segISO:'',
-    histId?'orion_v7_disp_hist_'+histId:'',
-    histId?'orion_v7_disptimer_'+histId:''
-  ].filter(Boolean);
-  chaves.forEach(ch=>localStorage.removeItem(ch));
-}
-
-async function _limparDisponibilidadesRemotas(chaves){
-  const alvos=[...new Set((chaves||[]).filter(Boolean))];
-  if(!alvos.length || !apiConfigurada()) return {tentou:false, ok:true, falhas:[]};
-  const resultados=await Promise.all(alvos.map(async chave=>{
-    const res=await apiDelete('/disp/'+encodeURIComponent(chave));
-    return {chave, ok:!!res.ok, res};
-  }));
-  return {
-    tentou:true,
-    ok:resultados.every(r=>r.ok),
-    falhas:resultados.filter(r=>!r.ok).map(r=>r.chave)
-  };
-}
-
-function _obterEntradaHistorico(histId){
-  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
-  return {hist, entrada:hist.find(h=>h.id===histId)};
-}
-
-function _adicionarTurnosAoLeilao(histId, turnos, ofertadoPor, motivo){
-  const leilaoKey='orion_v7_leilao_'+histId;
-  const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-  let adicionados=0;
-  (turnos||[]).forEach(turno=>{
-    if(!turno)return;
-    const existe=leilao.some(t=>
-      t.dia===turno.dia &&
-      t.ini===turno.ini &&
-      t.fim===turno.fim &&
-      (t.ofertadoPor||'')===(ofertadoPor||'')
-    );
-    if(existe)return;
-    leilao.push(Object.assign({}, turno, {
-      ofertadoPor,
-      pegoPor:null,
-      motivoLeilao:motivo||'nao_confirmado',
-      criadoEm:Date.now()
-    }));
-    adicionados+=1;
-  });
-  localStorage.setItem(leilaoKey, JSON.stringify(_dedupeTurnosLista(leilao)));
-  return adicionados;
-}
-
-function _sincronizarConfirmacoesHistorico(histId){
-  const {hist,entrada}=_obterEntradaHistorico(histId);
-  if(!entrada)return;
-  const resKey='orion_v7_confres_'+histId;
-  const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
-  entrada.confirmacoes=entrada.confirmacoes||{};
-  Object.entries(confs).forEach(([nome,res])=>{
-    const atual=entrada.confirmacoes[nome]||{status:'pendente',turnos:[],horasAbatidas:0};
-    const turnosMesclados=_mesclarTurnosPorHorario(atual.turnos||[], res.turnos||[]);
-    const temRecusa=turnosMesclados.some(t=>t.recusado||t.faltou);
-    const todosConfirmados=turnosMesclados.length>0 && turnosMesclados.every(t=>t.confirmado===true && !t.recusado && !t.faltou);
-    entrada.confirmacoes[nome]=Object.assign({}, atual, {
-      turnos:turnosMesclados,
-      status:todosConfirmados?'confirmado':temRecusa?'faltou':(res.status||atual.status||'pendente'),
-      horasAbatidas:turnosMesclados.reduce((s,t)=>s+(t.horasAbatidas||0),0)
-    });
-  });
-  localStorage.setItem(KH,JSON.stringify(hist));
-}
-
-function _moverPendenciasConfirmacaoParaLeilao(histId){
-  const {entrada}=_obterEntradaHistorico(histId);
-  if(!entrada||!entrada.confirmacoes)return 0;
-  const resKey='orion_v7_confres_'+histId;
-  const respostas=JSON.parse(localStorage.getItem(resKey)||'{}');
-  let adicionados=0;
-
-  Object.entries(entrada.confirmacoes).forEach(([nome,conf])=>{
-    const originais=Array.isArray(conf.turnos)?conf.turnos:[];
-    const respondidos=(respostas[nome]?.turnos)||[];
-    const mapaResp=new Map(respondidos.map(t=>[[t.dia,t.ini,t.fim].join('|'),t]));
-    const faltantes=originais.filter(t=>{
-      const resp=mapaResp.get([t.dia,t.ini,t.fim].join('|'));
-      return !resp || resp.recusado===true || resp.confirmado!==true;
-    }).map(t=>Object.assign({},t,{confirmado:false,recusado:true}));
-    adicionados+=_adicionarTurnosAoLeilao(histId,faltantes,nome,'prazo_encerrado');
-  });
-
-  if(adicionados>0)_sincronizarConfirmacoesHistorico(histId);
-  return adicionados;
-}
-
-function _registrarTurnoNaCarteira(histId, nome, turno){
-  const resKey='orion_v7_confres_'+histId;
-  const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
-  const atual=confs[nome]||{nome,histId,turnos:[],status:'confirmado',ts:Date.now()};
-  const novoTurno=Object.assign({},turno,{confirmado:true,recusado:false,faltou:false,deLeilao:true});
-  atual.turnos=_mesclarTurnosPorHorario(atual.turnos||[], [novoTurno]);
-  atual.status='confirmado';
-  atual.ts=Date.now();
-  confs[nome]=atual;
-  localStorage.setItem(resKey,JSON.stringify(confs));
-  _sincronizarConfirmacoesHistorico(histId);
 }
 
 // Verifica se API está configurada
@@ -1586,24 +1435,49 @@ function verRespostasDisp(){
 
 async function limparDisponibilidades(){
   if(!confirm('Limpar todas as respostas de disponibilidade?\nIsso é necessário ao iniciar uma nova semana.'))return;
+
   const {seg:segProx}=proximaSemana();
   const p2=v=>String(v).padStart(2,'0');
   const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
-  const histId='semana_'+segProxISO;
 
-  _removerDisponibilidadesLocais(segProxISO, histId);
-  for(let i=localStorage.length-1;i>=0;i--){
+  // Limpar localStorage — todas as chaves relacionadas a disp
+  const keysToRemove=[];
+  for(let i=0;i<localStorage.length;i++){
     const k=localStorage.key(i);
-    if(!k)continue;
-    if(k==='orion_v7_disp_'+segProxISO||k==='orion_v7_disp_snap_'+segProxISO||k==='orion_v7_disptimer_semana_'+segProxISO||k==='orion_v7_disp_hist_'+histId||k==='orion_v7_disptimer_'+histId){
-      localStorage.removeItem(k);
-    }
+    if(k&&(
+      k.startsWith('orion_v7_disp_')||
+      k.startsWith('orion_v7_disptimer_')||
+      k.startsWith('orion_v7_disp_hist_')||
+      k.startsWith('orion_v7_disp_snap_')
+    )) keysToRemove.push(k);
   }
-  const remoto=await _limparDisponibilidadesRemotas([histId,segProxISO]);
+  keysToRemove.forEach(k=>localStorage.removeItem(k));
+
+  // Limpar também no servidor (API)
+  if(apiConfigurada()){
+    try{
+      await apiDelete('/disp/'+encodeURIComponent('semana_'+segProxISO));
+      await apiDelete('/disp/'+encodeURIComponent(segProxISO));
+    }catch(e){ console.warn('[Limpar] Erro ao limpar API:',e.message); }
+  }
+
   atualizarPainelPassos();
-  toast(remoto.tentou&&!remoto.ok
-    ?'Disponibilidades locais limpas. Algumas respostas online podem reaparecer.'
-    :'Disponibilidades limpas. Pronto para nova semana.','tok');
+  toast('Disponibilidades limpas. Pronto para nova semana.','tok');
+}
+
+function montarEscalaInteligente(){
+  // Se há disponibilidades coletadas, refaz respeitando-as
+  // Senão, apenas preenche normalmente
+  const {seg:segProx}=proximaSemana();
+  const p2=v=>String(v).padStart(2,'0');
+  const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+  const disp=JSON.parse(localStorage.getItem('orion_v7_disp_'+segProxISO)||'{}');
+  const temDisp=Object.keys(disp).length>0;
+  if(temDisp){
+    refazerEscalaConfirmada();
+  } else {
+    preencher();
+  }
 }
 
 function atualizarPainelPassos(){
@@ -1638,12 +1512,16 @@ function atualizarPainelPassos(){
   // Passo 2 status
   const p2s=document.getElementById('p2Status');
   if(p2s){
-    if(temEscala&&nDisp>0) p2s.innerHTML='<span style="color:#7c3aed;font-weight:600">🔄 Use "Refazer" para aplicar disponibilidades</span>';
+    if(temEscala&&nDisp>0) p2s.innerHTML='<span style="color:#7c3aed;font-weight:600">✅ Montada com disponibilidades</span>';
     else if(temEscala) p2s.innerHTML='<span style="color:#2563eb;font-weight:600">✅ Escala montada</span>';
+    else if(nDisp>0) p2s.innerHTML='<span style="color:#d97706;font-weight:600">'+nDisp+' resposta(s) prontas para montar</span>';
     else p2s.textContent='Aguardando disponibilidades';
   }
-  const btnRef=document.getElementById('btnRefazerConfirmada');
-  if(btnRef) btnRef.style.display=nDisp>0?'':'none';
+  const btnMontar=document.getElementById('btnMontarEscala');
+  if(btnMontar){
+    btnMontar.textContent=nDisp>0?'⚙️ Montar escala com disponibilidades':'⚙️ Montar escala';
+    btnMontar.style.background=nDisp>0?'#7c3aed':'';
+  }
 
   // Passo 3 status
   const p3s=document.getElementById('p3Status');
@@ -1680,10 +1558,8 @@ async function abrirDispEscala(){
   const domBR=p2(dom.getDate())+'/'+p2(dom.getMonth()+1);
   const semana=segBR+'–'+domBR;
   const nomes=S.colabs.map(c=>c.nome).sort();
-  const TIMER_MS = 2*60*1000; // ⚠️ TESTE 2min — mudar para 60*60*1000 em produção
-  const expira=Date.now()+TIMER_MS;
-
-  const dados={tipo:'grupo_hist_disp',histId:'semana_'+segISO,nomes,expira,semana,semanaISO:segISO,segISO,apiUrl:getApiUrl()};
+  // Sem timer — link sem expiração
+  const dados={tipo:'grupo_hist_disp',histId:'semana_'+segISO,nomes,semana,semanaISO:segISO,segISO,apiUrl:getApiUrl()};
 
   toast('Gerando link...','tok');
   const link=await criarLinkCurto(dados);
@@ -1691,12 +1567,12 @@ async function abrirDispEscala(){
   const msg='Oi pessoal! 👋\n\nInformem os dias que *não podem* trabalhar na semana *'+semana+'*:\n\n'+link+'\n\nVocês têm 2 minutos para responder. Obrigado!';
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 
-  localStorage.setItem('orion_v7_disptimer_semana_'+segISO,JSON.stringify({expira,segISO}));
+  localStorage.setItem('orion_v7_disptimer_semana_'+segISO,JSON.stringify({segISO}));
 
   const btn=document.getElementById('p1BtnBuscar');
   if(btn) btn.style.display='';
-  toast('Link enviado!','tok');
-  _tickPassoTimer(expira, 'p1Status', ()=>atualizarPainelPassos());
+  toast('Link enviado! Colaboradores já podem responder.','tok');
+  atualizarPainelPassos();
 }
 
 function _tickPassoTimer(expira, elId, onEnd){
@@ -1775,18 +1651,16 @@ async function publicarEEnviarConfirmacao(){
   });
 
   const nomes=Object.keys(turnosPorColab).sort();
-  const TIMER_CONF_MS = 2*60*1000; // ⚠️ TESTE 2min — mudar para 60*60*1000 em produção
-  const expira=Date.now()+TIMER_CONF_MS;
-  const prazoLabel=_formatarPrazo(TIMER_CONF_MS);
-  const dados={tipo:'confirmacao_grupo',histId:ultima.id,nomes,turnosPorColab,semana:ultima.semana,expira,apiUrl:getApiUrl()};
+  // Sem timer — sem expiração
+  const dados={tipo:'confirmacao_grupo',histId:ultima.id,nomes,turnosPorColab,semana:ultima.semana,apiUrl:getApiUrl()};
 
   toast('Gerando link de confirmação...','tok');
   const link=await criarLinkCurto(dados);
 
-  // Salvar timer de confirmação
-  localStorage.setItem('orion_v7_conftimer_'+ultima.id,JSON.stringify({expira,histId:ultima.id}));
+  // Salvar referência da escala publicada
+  localStorage.setItem('orion_v7_ultpub',JSON.stringify({histId:ultima.id,ts:Date.now()}));
 
-  const msg='Oi pessoal! 📋\n\nA escala da semana *'+ultima.semana+'* está pronta!\n\nAbra o link, selecione seu nome e confirme seus horários (ou marque indisponível):\n\n'+link+'\n\n⚠️ Vocês têm *'+prazoLabel+'* para confirmar. Quem não confirmar terá o horário disponível no leilão. Obrigado!';
+  const msg='Oi pessoal! 📋\n\nA escala da semana *'+ultima.semana+'* está pronta!\n\nAbra o link, selecione seu nome e confirme seus horários:\n\n'+link+'\n\nQuem não confirmar terá o horário disponível no leilão. Obrigado!';
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 
   // Atualizar passo 3
@@ -1795,17 +1669,7 @@ async function publicarEEnviarConfirmacao(){
   const p3l=document.getElementById('p3BtnLeilao');
   if(p3l) p3l.style.display='';
 
-  // Timer para leilão após 1h
-  setTimeout(()=>{
-    const enviados=_moverPendenciasConfirmacaoParaLeilao(ultima.id);
-    const p3s2=document.getElementById('p3Status');
-    if(p3s2) p3s2.innerHTML='<span style="color:#d97706;font-weight:600">⚠️ Prazo encerrado — verificar leilão</span>';
-    toast(enviados>0
-      ?'⏰ Prazo encerrado! '+enviados+' turno(s) foram enviados para o leilão.'
-      :'⏰ Prazo de confirmação encerrado! Verifique o leilão de horários.','twa');
-  }, expira-Date.now());
-
-  toast('✅ Escala publicada e link enviado! Prazo de confirmação: '+prazoLabel+'.','tok');
+  toast('✅ Escala publicada e link enviado!','tok');
 }
 
 function publicarEscalaAsync(){
@@ -5275,8 +5139,8 @@ function renderDispMode(){
   const d = window._DISP_MODE;
   window._dispDados = d;
 
-  // Verificar expiração
-  if(d.expira && Date.now() > d.expira){
+  // Verificar expiração (só bloqueia se expira foi definido)
+  if(d.expira && d.expira > 0 && Date.now() > d.expira){
     document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif"><div style="text-align:center;color:#fff;max-width:320px"><div style="font-size:52px;margin-bottom:16px">⏰</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px">Link expirado</h2><p style="color:#9ca3af;font-size:13px">O prazo de resposta encerrou. Fale com seu gestor.</p></div></div>';
     return;
   }
@@ -5846,80 +5710,91 @@ function renderConfirmacaoMode(d){
 function renderLeilaoMode(){
   if(!window._LEILAO_HIST_ID) return;
   const histId = window._LEILAO_HIST_ID;
-  _moverPendenciasConfirmacaoParaLeilao(histId);
   const leilaoKey = 'orion_v7_leilao_' + histId;
   const hist = JSON.parse(localStorage.getItem(KH)||'[]');
   const entrada = hist.find(h=>h.id===histId);
   const semana = entrada ? entrada.semana : '?';
-  const colaboradores = entrada ? Object.keys(entrada.confirmacoes||{}).sort() : [];
-  const selectedKey = 'orion_v7_leilao_colab_' + histId;
-  const DIAS_NOMES = {Seg:'Segunda',Ter:'Terca',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sabado',Dom:'Domingo'};
+  const DIAS_NOMES = {Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado',Dom:'Domingo'};
   const fHl = h => { if(h>=24) h-=24; return String(h).padStart(2,'0')+':00'; };
+  const fDur = (ini,fim) => { const h=fim-ini; return h+'h'; };
 
   function renderPagina(){
     const leilao = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
     const disponiveis = leilao.filter(t=>!t.pegoPor);
     const tomados = leilao.filter(t=>t.pegoPor);
-    const selecionadoAtual = localStorage.getItem(selectedKey)||'';
-    const seletorColab = colaboradores.length
-      ? '<div style="background:#151922;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;margin-bottom:16px">'
-        + '<div style="color:#cbd5e1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Quem vai assumir os horários</div>'
-        + '<select id="leilaoColabSelect" onchange="selecionarColaboradorLeilao(this.value)" style="width:100%;background:#0f172a;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px 14px;font-size:14px;font-weight:600">'
-        + '<option value="">Selecione seu nome</option>'
-        + colaboradores.map(nome=>'<option value="'+nome.replace(/"/g,'&quot;')+'"'+(nome===selecionadoAtual?' selected':'')+'>'+nome+'</option>').join('')
-        + '</select>'
-        + '<div style="color:#94a3b8;font-size:11px;margin-top:8px">Os turnos escolhidos serão enviados para a carteira do colaborador selecionado.</div>'
-        + '</div>'
-      : '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;padding:14px 16px;margin-bottom:16px;color:#fecaca;font-size:12px">Não encontrei os colaboradores desta escala para registrar o leilão.</div>';
 
-    const cards = disponiveis.length
+    document.body.style.cssText='margin:0;padding:0;background:#0d0d10;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh';
+
+    const cardsDisp = disponiveis.length
       ? disponiveis.map(function(t,i){
-          return '<div style="background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px;margin-bottom:10px">'
-            + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'
-            + '<div>'
-            + '<div style="color:#fff;font-size:15px;font-weight:700">'+DIAS_NOMES[t.dia]+' - '+fHl(t.ini)+' ate '+fHl(t.fim)+'</div>'
-            + '<div style="color:#9ca3af;font-size:12px;margin-top:2px">'+((t.fim>=24?t.fim-24:t.fim)-(t.ini>=24?t.ini-24:t.ini)||t.fim-t.ini)+'h · Ofertado por '+t.ofertadoPor+'</div>'
-            + '</div>'
-            + '<button onclick="pegarTurnoLeilao('+i+')" style="background:#c8f135;color:#0d0d10;border:none;border-radius:8px;padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer">Pegar para a minha carteira</button>'
-            + '</div></div>';
+          const dur=fDur(t.ini,t.fim);
+          return `<div style="background:#1a1d23;border:1.5px solid rgba(200,241,53,.2);border-radius:14px;padding:18px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px">${DIAS_NOMES[t.dia]}</div>
+              <div style="font-size:22px;font-weight:900;color:#c8f135;font-family:monospace">${fHl(t.ini)} – ${fHl(t.fim)}</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:4px">${dur} · disponibilizado por <strong style="color:#9ca3af">${t.ofertadoPor}</strong></div>
+            </div>
+            <button onclick="pegarTurnoLeilao(${i})" style="background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:12px 22px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap;font-family:inherit">
+              Pegar turno
+            </button>
+          </div>`;
         }).join('')
-      : '<div style="text-align:center;padding:30px;color:#6b7280"><div style="font-size:40px;margin-bottom:10px">ok</div><p>Nenhum turno disponivel no momento.</p></div>';
+      : `<div style="text-align:center;padding:48px 20px">
+          <div style="font-size:48px;margin-bottom:12px">✅</div>
+          <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:6px">Nenhum turno disponível</div>
+          <div style="color:#6b7280;font-size:13px">Todos os horários foram confirmados ou preenchidos.</div>
+        </div>`;
 
     const tomadosHtml = tomados.length
-      ? '<div style="margin-top:20px"><div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Ja pegados</div>'
-        + tomados.map(t=>'<div style="background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.2);border-radius:10px;padding:12px 16px;margin-bottom:6px;display:flex;justify-content:space-between"><span style="color:#d1fae5;font-size:13px">'+DIAS_NOMES[t.dia]+' '+fHl(t.ini)+'-'+fHl(t.fim)+'</span><span style="color:#86efac;font-size:12px;font-weight:700">'+t.pegoPor+'</span></div>').join('')
-        + '</div>'
-      : '';
+      ? `<div style="margin-top:24px">
+          <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Já pegados</div>
+          ${tomados.map(t=>`
+            <div style="background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.2);border-radius:10px;padding:12px 16px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div>
+                <span style="color:#d1fae5;font-size:13px;font-weight:600">${DIAS_NOMES[t.dia]} · ${fHl(t.ini)}–${fHl(t.fim)}</span>
+                <span style="color:#6b7280;font-size:11px;margin-left:8px">${fDur(t.ini,t.fim)}</span>
+              </div>
+              <span style="background:rgba(22,163,74,.2);color:#86efac;font-size:12px;font-weight:700;padding:3px 10px;border-radius:6px">${t.pegoPor}</span>
+            </div>`).join('')}
+        </div>` : '';
 
-    document.body.innerHTML = '<div style="min-height:100vh;background:#0d0d10;padding:20px;font-family:sans-serif;max-width:480px;margin:0 auto">'
-      + '<div style="text-align:center;padding:20px 0 24px">'
-      + '<div style="font-size:28px;margin-bottom:8px">⚡</div>'
-      + '<h2 style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">Leilao de Horarios</h2>'
-      + '<p style="color:#9ca3af;font-size:13px">Semana '+semana+'</p>'
-      + (disponiveis.length ? '<p style="color:#c8f135;font-size:12px;font-weight:600;margin-top:6px">'+disponiveis.length+' turno(s) disponivel(is)</p>' : '')
-      + '</div>'
-      + seletorColab + cards + tomadosHtml + '</div>';
+    document.body.innerHTML = `
+      <div style="max-width:480px;margin:0 auto;padding:20px 16px;min-height:100vh">
+        <!-- Header -->
+        <div style="text-align:center;padding:24px 0 20px">
+          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(200,241,53,.1);border:1px solid rgba(200,241,53,.2);border-radius:20px;padding:6px 16px;margin-bottom:16px">
+            <span style="font-size:13px;font-weight:700;color:#c8f135">⚡ Leilão de horários</span>
+          </div>
+          <div style="color:#fff;font-size:22px;font-weight:900;margin-bottom:4px">Semana ${semana}</div>
+          <div style="color:#6b7280;font-size:13px">${disponiveis.length} turno${disponiveis.length!==1?'s':''} disponível${disponiveis.length!==1?'is':''}</div>
+        </div>
 
-    window.selecionarColaboradorLeilao = function(nome){
-      if(nome) localStorage.setItem(selectedKey, nome);
-      else localStorage.removeItem(selectedKey);
-    };
+        <!-- Turnos disponíveis -->
+        ${disponiveis.length?`<div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Disponíveis para pegar</div>`:''}
+        ${cardsDisp}
+        ${tomadosHtml}
+
+        <!-- Rodapé -->
+        <div style="text-align:center;margin-top:32px;padding-top:20px;border-top:1px solid rgba(255,255,255,.06)">
+          <div style="color:#374151;font-size:11px">Atualize a página para ver novos turnos disponíveis</div>
+        </div>
+      </div>`;
 
     window.pegarTurnoLeilao = function(idx){
-      const nome = (document.getElementById('leilaoColabSelect')?.value||'').trim();
-      if(!nome){
-        alert('Selecione seu nome antes de pegar um turno.');
-        return;
-      }
+      const nome = prompt('Qual o seu nome?');
+      if(!nome||!nome.trim()) return;
       const leilaoAtual = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
       const turno = leilaoAtual.filter(t=>!t.pegoPor)[idx];
-      if(!turno){ alert('Turno ja foi pego por outro colaborador. Atualizando...'); renderPagina(); return; }
-      turno.pegoPor = nome;
+      if(!turno){ alert('Esse turno já foi pego. Atualizando...'); renderPagina(); return; }
+      turno.pegoPor = nome.trim();
       turno.pegadoEm = Date.now();
-      // Atualizar no leilão
-      const idxGlobal = leilaoAtual.findIndex(t=>t.dia===turno.dia&&t.ini===turno.ini&&t.fim===turno.fim&&(t.ofertadoPor||'')===(turno.ofertadoPor||'')&&!t.pegoPor);
-      if(idxGlobal>=0){ leilaoAtual[idxGlobal] = turno; localStorage.setItem(leilaoKey, JSON.stringify(leilaoAtual)); }
-      _registrarTurnoNaCarteira(histId, nome, turno);
+      const idxGlobal = leilaoAtual.findIndex(t=>t.dia===turno.dia&&t.ini===turno.ini&&t.fim===turno.fim&&!t.pegoPor);
+      if(idxGlobal>=0){ leilaoAtual[idxGlobal]=turno; localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual)); }
+      const resKey='orion_v7_confres_'+histId;
+      const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
+      if(!confs[nome.trim()]) confs[nome.trim()]={nome:nome.trim(),histId,turnos:[],ts:Date.now()};
+      confs[nome.trim()].turnos.push(Object.assign({},turno,{confirmado:true,recusado:false,deLeilao:true}));
+      localStorage.setItem(resKey,JSON.stringify(confs));
       renderPagina();
     };
   }
@@ -6629,12 +6504,6 @@ function _limparRespDisp(histId,nome){
   const atual=JSON.parse(localStorage.getItem(dispKey)||'{}');
   delete atual[nome];
   localStorage.setItem(dispKey,JSON.stringify(atual));
-  if(histId&&histId.startsWith('semana_')){
-    const segISO=histId.slice(7);
-    const proxAtual=JSON.parse(localStorage.getItem('orion_v7_disp_'+segISO)||'{}');
-    delete proxAtual[nome];
-    localStorage.setItem('orion_v7_disp_'+segISO,JSON.stringify(proxAtual));
-  }
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const entrada=hist.find(h=>h.id===histId);
   const panel=document.getElementById('wph-disp');
