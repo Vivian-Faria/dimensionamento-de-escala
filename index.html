@@ -5976,26 +5976,8 @@ function renderLeilaoMode(){
     document.body.appendChild(overlay);
   }
 
-  async function renderPagina(){
-    // Buscar do servidor (funciona em qualquer dispositivo)
-    const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||getApiUrl()||'';
-    if(apiUrl){
-      try{
-        const r=await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId));
-        const d=await r.json();
-        if(d.ok&&d.turnos?.length>0){
-          // Merge com dados locais (preserva pegas locais)
-          const local=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-          d.turnos.forEach(t=>{
-            const dup=local.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
-            if(!dup) local.push(t);
-            else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;}
-          });
-          localStorage.setItem(leilaoKey,JSON.stringify(local));
-        }
-      }catch(e){}
-    }
-
+  function renderPagina(){
+    // Renderizar imediatamente do localStorage — sem await, sem bloqueio
     const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
     const disponiveis=leilao.filter(t=>!t.pegoPor);
     const tomados=leilao.filter(t=>t.pegoPor);
@@ -6064,11 +6046,35 @@ function renderLeilaoMode(){
         ${tomadosHtml}
 
         <div style="text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)">
-          <button onclick="renderPagina()" style="background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 16px;color:#6b7280;font-size:12px;cursor:pointer;font-family:inherit">
+          <button onclick="atualizarDoServidor()" style="background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 16px;color:#6b7280;font-size:12px;cursor:pointer;font-family:inherit">
             🔄 Atualizar
           </button>
         </div>
       </div>`;
+
+    // Busca do servidor em background e re-renderiza se houver novidades
+    window.atualizarDoServidor = async function(){
+      const btnAtualizar=document.querySelector('button[onclick="atualizarDoServidor()"]');
+      if(btnAtualizar){btnAtualizar.disabled=true;btnAtualizar.textContent='Buscando...';}
+      const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||'';
+      if(apiUrl){
+        try{
+          const r=await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId),{signal:AbortSignal.timeout(5000)});
+          const d=await r.json();
+          if(d.ok&&d.turnos?.length>0){
+            const local=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+            let mudou=false;
+            d.turnos.forEach(t=>{
+              const dup=local.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
+              if(!dup){local.push(t);mudou=true;}
+              else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;mudou=true;}
+            });
+            if(mudou){localStorage.setItem(leilaoKey,JSON.stringify(local));renderPagina();}
+          }
+        }catch(e){}
+      }
+      if(btnAtualizar){btnAtualizar.disabled=false;btnAtualizar.textContent='🔄 Atualizar';}
+    };
 
     window.pegarTurnoLeilao = async function(btn){
       const dia=btn.dataset.dia;
@@ -6076,16 +6082,16 @@ function renderLeilaoMode(){
       const fim=parseInt(btn.dataset.fim||String(ini+1));
       const ofertadoPor=btn.dataset.ofertado;
 
-      // Mostrar UI de seleção de nome (não usa prompt)
-      selecionarNome(async function(nome){
+      // Mostrar UI de seleção de nome
+      selecionarNome(function(nome){
+        // Desabilitar botão imediatamente
         btn.disabled=true;
-        btn.textContent='Pegando...';
+        btn.textContent='✅ Pego!';
 
         const leilaoAtual=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
         const idx=leilaoAtual.findIndex(t=>t.dia===dia&&t.ini===ini&&t.ofertadoPor===ofertadoPor&&!t.pegoPor);
         if(idx<0){
-          alert('Esse turno já foi pego por outra pessoa.');
-          await renderPagina();
+          renderPagina(); // já foi pego
           return;
         }
 
@@ -6094,7 +6100,7 @@ function renderLeilaoMode(){
         leilaoAtual[idx].pegadoEm=Date.now();
         localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual));
 
-        // ── ATUALIZAR S.escala SE ESTIVER NO DEVICE DO GESTOR
+        // ── ATUALIZAR S.escala IMEDIATAMENTE (mesmo device do gestor)
         if(typeof S!=='undefined'&&S.escala){
           for(let h=turno.ini;h<turno.fim;h++){
             const cell=S.escala?.[dia]?.[h];
@@ -6111,33 +6117,31 @@ function renderLeilaoMode(){
           }catch(e){}
         }
 
-        // ── ENVIAR PARA API
+        // Renderizar leilão imediatamente — sem esperar API
+        renderPagina();
+
+        // ── API em background (não bloqueia)
         const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||'';
         if(apiUrl){
-          try{
-            await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId)
-              +'?nome='+encodeURIComponent(nome)
-              +'&dia='+encodeURIComponent(dia)
-              +'&ini='+encodeURIComponent(turno.ini),{method:'DELETE'});
-            await fetch(apiUrl+'/conf',{
-              method:'POST',headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({histId,nome,
-                turnos:[Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor})],
-                status:'confirmado',
-                substituicao:{removeu:ofertadoPor,adicionou:nome,dia,ini:turno.ini,fim:turno.fim}
-              }),
-            });
-          }catch(e){}
+          const confPayload={histId,nome,
+            turnos:[Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor})],
+            status:'confirmado',
+            substituicao:{removeu:ofertadoPor,adicionou:nome,dia,ini:turno.ini,fim:turno.fim}
+          };
+          // Fire and forget — não await
+          fetch(apiUrl+'/leilao/'+encodeURIComponent(histId)
+            +'?nome='+encodeURIComponent(nome)
+            +'&dia='+encodeURIComponent(dia)
+            +'&ini='+encodeURIComponent(turno.ini),{method:'DELETE'}).catch(()=>{});
+          fetch(apiUrl+'/conf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(confPayload)}).catch(()=>{});
         }
 
-        // ── CONFIRMAÇÃO LOCAL
+        // Confirmação local
         const resKey='orion_v7_confres_'+histId;
         const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
         if(!confs[nome]) confs[nome]={nome,histId,turnos:[],ts:Date.now()};
         confs[nome].turnos.push(Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor}));
         localStorage.setItem(resKey,JSON.stringify(confs));
-
-        await renderPagina();
       });
     };
   }
