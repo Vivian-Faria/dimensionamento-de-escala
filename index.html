@@ -1498,48 +1498,85 @@ async function buscarConfirmacoesAPI(){
   const ultima=hist[0];
   if(!ultima){toast('Publique a escala primeiro.','ter');if(btn){btn.disabled=false;btn.textContent='☁️ Buscar confirmações';}return;}
 
-  const apiUrl=getApiUrl();
-  let nConf=0, nIndisp=0;
+  let nConf=0, nRemovidos=0, nIndisp=0;
 
   try{
     // Buscar confirmações
     const rc=await apiGet('/conf/'+encodeURIComponent(ultima.id));
     if(rc.ok&&rc.confirmacoes){
-      // Salvar no localStorage do gestor
       const resKey='orion_v7_confres_'+ultima.id;
       const local=JSON.parse(localStorage.getItem(resKey)||'{}');
+      const leilaoKey='orion_v7_leilao_'+ultima.id;
+      const leilaoLocal=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+
       Object.entries(rc.confirmacoes).forEach(([nome,c])=>{
         local[nome]=c; nConf++;
-        // Atualizar confirmações no histórico
         if(ultima.confirmacoes&&ultima.confirmacoes[nome]){
           ultima.confirmacoes[nome].status=c.status;
           ultima.confirmacoes[nome].turnos=c.turnos;
         }
+
+        // ── REMOVER COLABORADOR DOS SLOTS MARCADOS COMO INDISPONÍVEL
+        const turnosIndisp=(c.turnos||[]).filter(t=>t.indisponivel);
+        turnosIndisp.forEach(t=>{
+          // Remover de todos os slots do intervalo na escala atual
+          for(let h=t.ini;h<t.fim;h++){
+            const cell=S.escala?.[t.dia]?.[h];
+            if(cell&&cell.alocados){
+              const antes=cell.alocados.length;
+              cell.alocados=cell.alocados.filter(n=>n!==nome);
+              if(cell.alocados.length<antes) nRemovidos++;
+            }
+          }
+          // Adicionar ao leilão se ainda não estiver
+          const dup=leilaoLocal.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===nome);
+          if(!dup){
+            leilaoLocal.push({...t,ofertadoPor:nome,pegoPor:null});
+            nIndisp++;
+          }
+        });
       });
+
       localStorage.setItem(resKey,JSON.stringify(local));
+      localStorage.setItem(leilaoKey,JSON.stringify(leilaoLocal));
+
+      // Salvar escala atualizada no estado e re-renderizar
+      if(nRemovidos>0){
+        save();
+        renderEscala();
+        atualizarCustoTotal();
+        // Enviar leilão atualizado para API
+        if(apiConfigurada()){
+          apiPost('/leilao',{histId:ultima.id,turnos:leilaoLocal.filter(t=>!t.pegoPor&&!t.semCobertura)}).catch(()=>{});
+        }
+      }
+
       // Salvar histórico atualizado
       hist[0]=ultima;
       localStorage.setItem(KH,JSON.stringify(hist));
     }
 
-    // Buscar leilão
+    // Buscar leilão do servidor (para pegas feitas por outros)
     const rl=await apiGet('/leilao/'+encodeURIComponent(ultima.id));
     if(rl.ok&&rl.turnos?.length>0){
       const leilaoKey='orion_v7_leilao_'+ultima.id;
       const leilaoLocal=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
       rl.turnos.forEach(t=>{
         const dup=leilaoLocal.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
-        if(!dup){leilaoLocal.push(t);nIndisp++;}
+        if(!dup){leilaoLocal.push(t);}
         else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;}
       });
       localStorage.setItem(leilaoKey,JSON.stringify(leilaoLocal));
     }
 
-    toast(`☁️ ${nConf} confirmação${nConf!==1?'ões':''}${nIndisp>0?' · '+nIndisp+' turno(s) no leilão':''}`, 'tok');
+    // Feedback
+    let msg=`☁️ ${nConf} confirmação${nConf!==1?'ões':''}`;
+    if(nRemovidos>0) msg+=` · ${nRemovidos} slot${nRemovidos!==1?'s':''} removido${nRemovidos!==1?'s':''} da escala`;
+    if(nIndisp>0) msg+=` · ${nIndisp} turno${nIndisp!==1?'s':''} no leilão`;
+    toast(msg,'tok');
 
-    // Atualizar status passo 3
     const p3s=document.getElementById('p3Status');
-    if(p3s) p3s.innerHTML=`<span style="color:#16a34a;font-weight:600">✅ ${nConf} resposta${nConf!==1?'s':''} recebida${nConf!==1?'s':''}</span>`;
+    if(p3s) p3s.innerHTML=`<span style="color:#16a34a;font-weight:600">✅ ${nConf} resposta${nConf!==1?'s':''}${nRemovidos>0?' · escala atualizada':''}</span>`;
     const p3l=document.getElementById('p3BtnLeilao');
     if(p3l&&nIndisp>0) p3l.style.display='';
 
@@ -5882,21 +5919,28 @@ function renderLeilaoMode(){
   const fDur = (ini,fim) => { const h=fim-ini; return h+'h'; };
 
   async function renderPagina(){
-    // Tentar atualizar do servidor
-    const apiUrl=(window._DISP_MODE?.apiUrl)||localStorage.getItem('orion_api_url')||'';
+    // Buscar do servidor (funciona em qualquer dispositivo)
+    const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||getApiUrl()||'';
     if(apiUrl){
       try{
         const r=await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId));
         const d=await r.json();
         if(d.ok&&d.turnos?.length>0){
-          localStorage.setItem(leilaoKey,JSON.stringify(d.turnos));
+          // Merge com dados locais (preserva pegas locais)
+          const local=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+          d.turnos.forEach(t=>{
+            const dup=local.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
+            if(!dup) local.push(t);
+            else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;}
+          });
+          localStorage.setItem(leilaoKey,JSON.stringify(local));
         }
       }catch(e){}
     }
 
-    const leilao = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-    const disponiveis = leilao.filter(t=>!t.pegoPor);
-    const tomados = leilao.filter(t=>t.pegoPor);
+    const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+    const disponiveis=leilao.filter(t=>!t.pegoPor);
+    const tomados=leilao.filter(t=>t.pegoPor);
 
     document.body.style.cssText='margin:0;padding:0;background:#0d0d10;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh';
 
@@ -5918,7 +5962,9 @@ function renderLeilaoMode(){
                 <div style="font-size:20px;font-weight:900;color:#c8f135;font-family:monospace">${fHl(t.ini)} – ${fHl(t.fim)}</div>
                 <div style="font-size:11px;color:#6b7280;margin-top:4px">${dur} · ${isSistema?'slot sem cobertura':'disponibilizado por <strong style="color:#9ca3af">'+t.ofertadoPor+'</strong>'}</div>
               </div>
-              <button onclick="pegarTurnoLeilao(${i})"
+              <button
+                data-dia="${t.dia}" data-ini="${t.ini}" data-ofertado="${t.ofertadoPor}"
+                onclick="pegarTurnoLeilao(this)"
                 style="background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:11px 20px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">
                 Pegar turno
               </button>
@@ -5960,50 +6006,65 @@ function renderLeilaoMode(){
         ${tomadosHtml}
 
         <div style="text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)">
-          <button onclick="location.reload()" style="background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 16px;color:#6b7280;font-size:12px;cursor:pointer;font-family:inherit">
+          <button onclick="renderPagina()" style="background:transparent;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 16px;color:#6b7280;font-size:12px;cursor:pointer;font-family:inherit">
             🔄 Atualizar
           </button>
         </div>
       </div>`;
 
-    window.pegarTurnoLeilao = async function(idx){
-      const nome = prompt('Qual o seu nome?');
-      if(!nome||!nome.trim()) return;
-      const leilaoAtual = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-      const turno = leilaoAtual.filter(t=>!t.pegoPor)[idx];
-      if(!turno){ alert('Esse turno já foi pego. Atualizando...'); await renderPagina(); return; }
+    window.pegarTurnoLeilao = async function(btn){
+      const dia=btn.dataset.dia;
+      const ini=parseInt(btn.dataset.ini);
+      const ofertadoPor=btn.dataset.ofertado;
+      const nome=(prompt('Qual o seu nome?')||'').trim();
+      if(!nome) return;
 
-      turno.pegoPor = nome.trim();
-      turno.pegadoEm = Date.now();
-      const idxGlobal = leilaoAtual.findIndex(t=>t.dia===turno.dia&&t.ini===turno.ini&&!t.pegoPor);
-      if(idxGlobal>=0){ leilaoAtual[idxGlobal]=turno; localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual)); }
+      btn.disabled=true;
+      btn.textContent='Pegando...';
 
-      // Atualizar no servidor também
-      const apiUrl=(window._DISP_MODE?.apiUrl)||localStorage.getItem('orion_api_url')||'';
+      const leilaoAtual=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+      const idx=leilaoAtual.findIndex(t=>t.dia===dia&&t.ini===ini&&t.ofertadoPor===ofertadoPor&&!t.pegoPor);
+      if(idx<0){
+        alert('Esse turno já foi pego por outra pessoa.');
+        await renderPagina();
+        return;
+      }
+
+      leilaoAtual[idx].pegoPor=nome;
+      leilaoAtual[idx].pegadoEm=Date.now();
+      localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual));
+
+      // Atualizar no servidor
+      const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||getApiUrl()||'';
       if(apiUrl){
         try{
-          await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId)+'?nome='+encodeURIComponent(nome.trim())+'&dia='+encodeURIComponent(turno.dia)+'&ini='+encodeURIComponent(turno.ini),{method:'DELETE'});
-          // Registrar como confirmado nas confs
+          await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId)
+            +'?nome='+encodeURIComponent(nome)
+            +'&dia='+encodeURIComponent(dia)
+            +'&ini='+encodeURIComponent(ini),
+            {method:'DELETE'}
+          );
+          // Registrar nas confirmações
           await fetch(apiUrl+'/conf',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
-              histId,nome:nome.trim(),
-              turnos:[Object.assign({},turno,{confirmado:true,deLeilao:true})],
+              histId,nome,
+              turnos:[Object.assign({},leilaoAtual[idx],{confirmado:true,deLeilao:true})],
               status:'confirmado'
             }),
           });
         }catch(e){}
       }
 
-      // Salvar confirmação no localStorage
+      // Salvar confirmação local
       const resKey='orion_v7_confres_'+histId;
       const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
-      if(!confs[nome.trim()]) confs[nome.trim()]={nome:nome.trim(),histId,turnos:[],ts:Date.now()};
-      confs[nome.trim()].turnos.push(Object.assign({},turno,{confirmado:true,deLeilao:true}));
+      if(!confs[nome]) confs[nome]={nome,histId,turnos:[],ts:Date.now()};
+      confs[nome].turnos.push(Object.assign({},leilaoAtual[idx],{confirmado:true,deLeilao:true}));
       localStorage.setItem(resKey,JSON.stringify(confs));
 
-      renderPagina();
+      await renderPagina();
     };
   }
 
