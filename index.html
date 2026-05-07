@@ -1516,6 +1516,18 @@ async function buscarConfirmacoesAPI(){
           ultima.confirmacoes[nome].turnos=c.turnos;
         }
 
+        // ── SUBSTITUIÇÕES DO LEILÃO: remover quem saiu, adicionar quem pegou
+        if(c.substituicao){
+          const {removeu,adicionou,dia,ini,fim}=c.substituicao;
+          for(let h=ini;h<fim;h++){
+            const cell=S.escala?.[dia]?.[h];
+            if(!cell) continue;
+            if(removeu&&removeu!=='Sistema') cell.alocados=cell.alocados.filter(n=>n!==removeu);
+            if(adicionou&&!cell.alocados.includes(adicionou)) cell.alocados.push(adicionou);
+            nRemovidos++;
+          }
+        }
+
         // ── REMOVER COLABORADOR DOS SLOTS MARCADOS COMO INDISPONÍVEL
         const turnosIndisp=(c.turnos||[]).filter(t=>t.indisponivel);
         turnosIndisp.forEach(t=>{
@@ -5963,7 +5975,7 @@ function renderLeilaoMode(){
                 <div style="font-size:11px;color:#6b7280;margin-top:4px">${dur} · ${isSistema?'slot sem cobertura':'disponibilizado por <strong style="color:#9ca3af">'+t.ofertadoPor+'</strong>'}</div>
               </div>
               <button
-                data-dia="${t.dia}" data-ini="${t.ini}" data-ofertado="${t.ofertadoPor}"
+                data-dia="${t.dia}" data-ini="${t.ini}" data-fim="${t.fim}" data-ofertado="${t.ofertadoPor}"
                 onclick="pegarTurnoLeilao(this)"
                 style="background:#c8f135;color:#0d0d10;border:none;border-radius:10px;padding:11px 20px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0">
                 Pegar turno
@@ -6016,6 +6028,7 @@ function renderLeilaoMode(){
       const dia=btn.dataset.dia;
       const ini=parseInt(btn.dataset.ini);
       const ofertadoPor=btn.dataset.ofertado;
+      const fim=parseInt(btn.dataset.fim||btn.dataset.ini)+1;
       const nome=(prompt('Qual o seu nome?')||'').trim();
       if(!nome) return;
 
@@ -6030,38 +6043,70 @@ function renderLeilaoMode(){
         return;
       }
 
+      const turno=leilaoAtual[idx];
       leilaoAtual[idx].pegoPor=nome;
       leilaoAtual[idx].pegadoEm=Date.now();
       localStorage.setItem(leilaoKey,JSON.stringify(leilaoAtual));
 
-      // Atualizar no servidor
-      const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||getApiUrl()||'';
+      // ── ATUALIZAR S.escala SE ESTIVER NO DEVICE DO GESTOR
+      if(typeof S!=='undefined'&&S.escala){
+        for(let h=turno.ini;h<turno.fim;h++){
+          const cell=S.escala?.[dia]?.[h];
+          if(!cell) continue;
+          // Remover quem ofertou (se ainda estiver)
+          if(ofertadoPor!=='Sistema'){
+            cell.alocados=cell.alocados.filter(n=>n!==ofertadoPor);
+          }
+          // Adicionar quem pegou (evitar duplicata)
+          if(!cell.alocados.includes(nome)) cell.alocados.push(nome);
+        }
+        // Persistir e re-renderizar
+        if(typeof save==='function') save();
+        if(typeof renderEscala==='function') renderEscala();
+        if(typeof atualizarCustoTotal==='function') atualizarCustoTotal();
+
+        // Atualizar histórico publicado com a escala corrigida
+        try{
+          const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+          if(hist.length>0){
+            hist[0].escala=JSON.parse(JSON.stringify(S.escala));
+            localStorage.setItem(KH,JSON.stringify(hist));
+          }
+        }catch(e){}
+      }
+
+      // ── ENVIAR PARA API (funciona cross-device)
+      const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||'';
       if(apiUrl){
         try{
+          // 1. Marcar turno como pego no leilão
           await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId)
             +'?nome='+encodeURIComponent(nome)
             +'&dia='+encodeURIComponent(dia)
-            +'&ini='+encodeURIComponent(ini),
+            +'&ini='+encodeURIComponent(turno.ini),
             {method:'DELETE'}
           );
-          // Registrar nas confirmações
+          // 2. Registrar confirmação com info de quem pegou e de quem saiu
           await fetch(apiUrl+'/conf',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
-              histId,nome,
-              turnos:[Object.assign({},leilaoAtual[idx],{confirmado:true,deLeilao:true})],
-              status:'confirmado'
+              histId,
+              nome,
+              turnos:[Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor})],
+              status:'confirmado',
+              // Sinaliza que quem ofertou deve sair da escala
+              substituicao:{removeu:ofertadoPor,adicionou:nome,dia,ini:turno.ini,fim:turno.fim}
             }),
           });
         }catch(e){}
       }
 
-      // Salvar confirmação local
+      // ── SALVAR CONFIRMAÇÃO LOCAL
       const resKey='orion_v7_confres_'+histId;
       const confs=JSON.parse(localStorage.getItem(resKey)||'{}');
       if(!confs[nome]) confs[nome]={nome,histId,turnos:[],ts:Date.now()};
-      confs[nome].turnos.push(Object.assign({},leilaoAtual[idx],{confirmado:true,deLeilao:true}));
+      confs[nome].turnos.push(Object.assign({},turno,{confirmado:true,deLeilao:true,substituiu:ofertadoPor}));
       localStorage.setItem(resKey,JSON.stringify(confs));
 
       await renderPagina();
