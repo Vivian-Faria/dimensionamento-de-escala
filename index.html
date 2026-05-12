@@ -4546,9 +4546,9 @@ function renderIndicadores(){
   const primSem=semanasPerido[0];
   const primMes=primSem?.de?new Date(primSem.de+'T12:00:00'):agora;
   const periodoLabel={
-    semanal:`Últimas ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''}`,
-    mensal:primMes.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}),
-    trimestral:`T${Math.ceil((primMes.getMonth()+1)/3)}/${primMes.getFullYear()} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''}`,
+    semanal: primSem ? `${primSem.deBR}–${primSem.ateBR}` : 'Semana atual',
+    mensal: primMes.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}),
+    trimestral:`T${triAtual}/${anoAtual}`,
   }[periodo];
 
   // Inicializar painel de custos manuais
@@ -4630,167 +4630,210 @@ function renderIndicadores(){
     </div>`;
   }).join('');
 
-  // Tabela histórica — agrupa conforme período selecionado
-  // A tabela SEMPRE mostra TODAS as semanas coletadas, agrupadas pelo período
-  // O filtro de período afeta os KPIs (resumo) e a visualização de agrupamento
-  // Para semanal: mostra últimas 4 em destaque + restante colapsado
-  // Para mensal/trimestral: agrupa todas por mês/trimestre
-  const todasSemanas=hist.slice().reverse(); // ordem cronológica (mais antiga primeiro)
-  const semanas = todasSemanas; // sempre mostra todas as semanas na tabela
-  const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
-
+  // ── helpers de cálculo de métricas de escala ──────────────────────────────
   let histEscMap={};
   try{
     const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
     he.forEach(e=>{
       const seg=e.segISO;
-      if(e.resumo.totalPed>0)histEscMap[seg]=(e.resumo.totalCusto/e.resumo.totalPed);
+      if(e.resumo?.totalPed>0) histEscMap[seg]=(e.resumo.totalCusto/e.resumo.totalPed);
     });
   }catch(e){}
 
-  // Cabeçalho da tabela
-  const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
 
-  // Agrupar semanas conforme período selecionado
-  function agruparTabelaPor(semanas, tipo){
-    if(tipo==='semanal'){
-      return semanas.map(s=>({label:null,semanas:[s]}));
-    }
-    if(tipo==='trimestral'){
-      const grupos={};
-      semanas.forEach(s=>{
-        if(!s.de) return;
-        const d=new Date(s.de+'T12:00:00');
-        const ano=d.getFullYear();
-        const tri=Math.ceil((d.getMonth()+1)/3);
-        const k=`${ano}-T${tri}`;
-        if(!grupos[k])grupos[k]={label:`T${tri}/${ano}`,semanas:[]};
-        grupos[k].semanas.push(s);
-      });
-      return Object.entries(grupos).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
-    }
-    // mensal (padrão)
-    const grupos={};
-    semanas.forEach(s=>{
-      if(!s.de) return;
-      const mes=s.de.slice(0,7);
-      const d=new Date(s.de+'T12:00:00');
-      if(!grupos[mes])grupos[mes]={label:d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}),semanas:[]};
-      grupos[mes].semanas.push(s);
-    });
-    return Object.entries(grupos).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
+  // Calcula métricas médias de um conjunto de semanas (para linhas de resumo)
+  function calcularMediaSemanas(sems){
+    if(!sems.length) return null;
+    const mts=sems.map(s=>calcularMetricasSemana(s.vendas,s.cancelamentos,hub));
+    const cpps=sems.map(s=>histEscMap[s.de]).filter(v=>v!=null);
+    const ads=sems.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
+    const avgVol=avg(mts.map(x=>x.volume));
+    const avgCpp=avg(cpps);
+    const avgCppComAd=avgCpp!=null&&avgVol>0?((avgCpp*avgVol+ads/sems.length)/avgVol):null;
+    return{
+      volume:Math.round(avgVol??0),
+      cancelamentos:Math.round(avg(mts.map(x=>x.cancelamentos))??0),
+      pctCancel:avg(mts.map(x=>x.pctCancel))??0,
+      tPreparoMed:avg(mts.map(x=>x.tPreparoMed).filter(v=>v!=null)),
+      tColetaMed:avg(mts.map(x=>x.tColetaMed).filter(v=>v!=null)),
+      tDespachoMed:avg(mts.map(x=>x.tDespachoMed).filter(v=>v!=null)),
+      cppSem:avgCpp,
+      adicionalTotal:ads,
+      cppComAd:avgCppComAd,
+      nSemanas:sems.length,
+    };
   }
 
-  const grupos=agruparTabelaPor(semanas, periodo);
+  // Célula com variação % colorida vs período anterior
+  function celVar(atual,ant,hiMelhor=false,fmt=v=>v){
+    if(ant===null||ant===undefined||atual===null)
+      return`<td style="padding:8px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)??'—'}</td>`;
+    const pct=ant!==0?((atual-ant)/ant*100):0;
+    const melhorou=hiMelhor?pct>0:pct<0;
+    const cor=melhorou?'#166534':'#dc2626';
+    const sinal=pct>=0?'+':'';
+    return`<td style="padding:8px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)} <span style="font-size:10px;color:${cor};font-weight:600">${sinal}${pct.toFixed(1)}%</span></td>`;
+  }
 
-  // Pré-calcular métricas de todas as semanas para comparativo entre grupos (modo semanal)
-  const todasMetricas = semanas.map(sem=>({
-    sem,
-    mt: calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub)
-  }));
+  // Célula simples (sem variação)
+  const cel=(v,extra='')=>`<td style="padding:8px 12px;font-size:12px;font-family:var(--mo);${extra}">${v??'—'}</td>`;
+
+  const cols=['Período','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
+  const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
+
+  // Linha de resumo (média/total) reutilizável
+  function linhaResumo(labelCell, med, prevMed, estiloTr=''){
+    if(!med) return '';
+    const cppFmt=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
+    const adFmt=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
+    return`<tr style="font-weight:700;border-top:2px solid var(--brd2);${estiloTr}">
+      ${labelCell}
+      ${celVar(med.volume,prevMed?.volume,true,v=>v.toLocaleString('pt-BR'))}
+      ${celVar(med.cancelamentos,prevMed?.cancelamentos,false,v=>v)}
+      ${celVar(med.pctCancel,prevMed?.pctCancel,false,v=>v.toFixed(2)+'%')}
+      ${cel(fmtTempo(med.tPreparoMed))}
+      ${cel(fmtTempo(med.tColetaMed))}
+      ${cel(fmtTempo(med.tDespachoMed))}
+      ${cel(cppFmt(med.cppSem))}
+      ${cel(adFmt(med.adicionalTotal/med.nSemanas))}
+      ${cel(cppFmt(med.cppComAd),med.cppComAd&&med.adicionalTotal>0?'color:#dc2626;font-weight:800':'')}
+    </tr>`;
+  }
 
   let tbody='<tbody>';
-  grupos.forEach((grupo,gi)=>{
-    // Cabeçalho do grupo (mensal / trimestral)
-    if(grupo.label){
-      tbody+=`<tr><td colspan="${cols.length}" style="background:#f0fdf4;color:#166534;font-weight:700;font-size:11px;padding:6px 12px;text-transform:capitalize;border-bottom:1px solid #bbf7d0">${grupo.label}</td></tr>`;
+
+  // ══════════════════════════════════════════════════
+  // MODO SEMANAL — apenas a semana mais recente
+  // ══════════════════════════════════════════════════
+  if(periodo==='semanal'){
+    const sem=hist[0]; // mais recente
+    const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
+    const cppSem=histEscMap[sem.de]||null;
+    const adicionalSem=getCppManualTotal(sem.semanaISO||'');
+    const cppComAdicional=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
+    tbody+=`<tr style="border-bottom:1px solid var(--brd)">
+      ${cel(`${sem.deBR}–${sem.ateBR}`,'font-weight:600;white-space:nowrap')}
+      ${cel(mt.volume.toLocaleString('pt-BR'))}
+      ${cel(mt.cancelamentos)}
+      ${cel(mt.pctCancel.toFixed(2)+'%')}
+      ${cel(fmtTempo(mt.tPreparoMed))}
+      ${cel(fmtTempo(mt.tColetaMed))}
+      ${cel(fmtTempo(mt.tDespachoMed))}
+      ${cel(cppSem!=null?'R$ '+cppSem.toFixed(2).replace('.',','):'—')}
+      ${cel(adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—','background:#fff7ed')}
+      ${cel(cppComAdicional!=null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—',cppComAdicional&&adicionalSem>0?'color:#dc2626;font-weight:700':'')}
+    </tr>`;
+
+  // ══════════════════════════════════════════════════
+  // MODO MENSAL — semanas do mês atual + linha de média
+  // ══════════════════════════════════════════════════
+  } else if(periodo==='mensal'){
+    // Semanas do mês atual (ou mês mais recente disponível)
+    let semanasDoMes=hist.filter(s=>{
+      if(!s.de) return false;
+      const d=new Date(s.de+'T12:00:00');
+      return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
+    }).slice().reverse(); // cronológico
+
+    if(!semanasDoMes.length){
+      // fallback: mês mais recente disponível
+      const d0=new Date(hist[0].de+'T12:00:00');
+      semanasDoMes=hist.filter(s=>{
+        if(!s.de) return false;
+        const d=new Date(s.de+'T12:00:00');
+        return d.getMonth()===d0.getMonth() && d.getFullYear()===d0.getFullYear();
+      }).slice().reverse();
     }
 
-    // Para trimestral: linha de totais do grupo (soma)
-    const isTrimestral = periodo==='trimestral';
-
-    if(isTrimestral && grupo.semanas.length>1){
-      // Linha de totais + linha de cada semana expandível
-      const mtGrupo = calcularMetricasSemana(
-        grupo.semanas.flatMap(s=>s.vendas||[]),
-        grupo.semanas.flatMap(s=>s.cancelamentos||[]),
-        hub
-      );
-      const cppsGrupo=grupo.semanas.map(s=>histEscMap[s.de]).filter(v=>v!=null);
-      const avgCpp=cppsGrupo.length?cppsGrupo.reduce((a,b)=>a+b,0)/cppsGrupo.length:null;
-      const adGrupo=grupo.semanas.reduce((s,sem)=>s+getCppManualTotal(sem.semanaISO||''),0);
-      const cppComAdGrupo=avgCpp!==null&&mtGrupo.volume>0?((avgCpp*mtGrupo.volume+adGrupo)/mtGrupo.volume):null;
-      tbody+=`<tr style="background:#f8f9fa;font-weight:700;border-top:1px solid var(--brd2)">
-        <td style="padding:6px 12px;font-size:11px;color:#374151">Total ${grupo.label} (${grupo.semanas.length} sem.)</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.volume.toLocaleString('pt-BR')}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.cancelamentos}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.pctCancel.toFixed(2)}%</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tPreparoMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tColetaMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tDespachoMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${avgCpp!==null?'R$ '+avgCpp.toFixed(2).replace('.',','):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${adGrupo>0?'R$ '+adGrupo.toFixed(2).replace('.',','):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:800;${cppComAdGrupo!==null&&adGrupo>0?'color:#dc2626':''}">${cppComAdGrupo!==null?'R$ '+cppComAdGrupo.toFixed(2).replace('.',','):'—'}</td>
-      </tr>`;
-    }
-
-    const metricas=grupo.semanas.map(sem=>{
+    const metricas=semanasDoMes.map(sem=>{
       const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
       const cppSem=histEscMap[sem.de]||null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
-      const cppComAdicional=cppSem!==null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
+      const cppComAdicional=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
       return{sem,mt,cppSem,adicionalSem,cppComAdicional};
     });
 
     metricas.forEach(({sem,mt,cppSem,adicionalSem,cppComAdicional},i)=>{
-      // Comparar com semana anterior:
-      // - semanal: usa índice global (semana anterior na lista completa)
-      // - mensal/trimestral: usa semana anterior dentro do grupo
-      let prevMt=null;
-      if(periodo==='semanal'){
-        const globalIdx=todasMetricas.findIndex(x=>x.sem===sem);
-        prevMt=globalIdx>0?todasMetricas[globalIdx-1].mt:null;
-      } else if(periodo==='mensal'){
-        prevMt=i>0?metricas[i-1].mt:null;
-      }
-      function celVar(atual,ant,hiMelhor=false,fmt=v=>v){
-        if(ant===null||ant===undefined||atual===null)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)??'—'}</td>`;
-        const pct=ant!==0?((atual-ant)/ant*100):0;
-        const melhorou=hiMelhor?pct>0:pct<0;
-        const cor=melhorou?'#166534':'#dc2626';
-        const estudo=pct>=0?`+${pct.toFixed(1)}%`:`${pct.toFixed(1)}%`;
-        return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)} <span style="font-size:10px;color:${cor};font-weight:600">${estudo}</span></td>`;
-      }
-      const rowBg=isTrimestral?'background:#fafafa':'';
-      const rowPad=isTrimestral?'padding-left:20px':'';
-      const cppAdicBg=adicionalSem>0?'background:#fff7ed':'';
-      tbody+=`<tr style="border-bottom:1px solid var(--brd);${rowBg}">
-        <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap;${rowPad}">${sem.deBR}–${sem.ateBR}</td>
+      const prevMt=i>0?metricas[i-1].mt:null;
+      tbody+=`<tr style="border-bottom:1px solid var(--brd)">
+        ${cel(`${sem.deBR}–${sem.ateBR}`,'font-weight:600;white-space:nowrap')}
         ${celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR'))}
         ${celVar(mt.cancelamentos,prevMt?.cancelamentos,false,v=>v)}
         ${celVar(mt.pctCancel,prevMt?.pctCancel,false,v=>v.toFixed(2)+'%')}
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tPreparoMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tColetaMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cppSem!==null?'R$ '+cppSem.toFixed(2).replace('.',','):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);${cppAdicBg}">${adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700;${cppComAdicional!==null&&adicionalSem>0?'color:#dc2626':''}">${cppComAdicional!==null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—'}</td>
+        ${cel(fmtTempo(mt.tPreparoMed))}
+        ${cel(fmtTempo(mt.tColetaMed))}
+        ${cel(fmtTempo(mt.tDespachoMed))}
+        ${cel(cppSem!=null?'R$ '+cppSem.toFixed(2).replace('.',','):'—')}
+        ${cel(adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—','background:#fff7ed')}
+        ${cel(cppComAdicional!=null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—',cppComAdicional&&adicionalSem>0?'color:#dc2626;font-weight:700':'')}
       </tr>`;
     });
 
-    // Linha de média do grupo (só mensal com 2+ semanas)
-    if(periodo==='mensal' && metricas.length>1){
-      const vols=metricas.map(x=>x.mt.volume);
-      const cancs=metricas.map(x=>x.mt.cancelamentos);
-      const pcts=metricas.map(x=>x.mt.pctCancel);
-      const preps=metricas.map(x=>x.mt.tPreparoMed).filter(v=>v!==null);
-      const colets=metricas.map(x=>x.mt.tColetaMed).filter(v=>v!==null);
-      const desps=metricas.map(x=>x.mt.tDespachoMed).filter(v=>v!==null);
-      const cpps=metricas.map(x=>x.cppSem).filter(v=>v!==null);
-      const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
-      tbody+=`<tr style="background:#f8f9fa;font-weight:600;border-top:2px solid var(--brd2)">
-        <td style="padding:6px 12px;font-size:11px;color:var(--mu)">Média do mês</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${Math.round(avg(vols)).toLocaleString('pt-BR')}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${Math.round(avg(cancs))}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${avg(pcts).toFixed(2)}%</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(preps))}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(colets))}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(desps))}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cpps.length?'R$ '+avg(cpps).toFixed(2).replace('.',','):'—'}</td>
-        <td colspan="2"></td>
-      </tr>`;
+    // Linha de média mensal (só se houver 2+ semanas)
+    if(metricas.length>=1){
+      const med=calcularMediaSemanas(semanasDoMes);
+      const labelMes=semanasDoMes.length===1?'Semana única':'Média do mês';
+      tbody+=linhaResumo(
+        `<td style="padding:8px 12px;font-size:11px;color:var(--mu)">${labelMes}</td>`,
+        med, null,
+        'background:#f0fdf4'
+      );
     }
-  });
+
+  // ══════════════════════════════════════════════════
+  // MODO TRIMESTRAL — 1 linha por mês do trimestre
+  //   cada linha = média das semanas daquele mês
+  //   mês atual marcado como (parcial)
+  //   + linha de média do trimestre no final
+  // ══════════════════════════════════════════════════
+  } else {
+    // Determinar meses do trimestre atual (ou trimestre mais recente disponível)
+    let triRef=triAtual, anoRef=anoAtual;
+    const semanasTri=hist.filter(s=>{
+      if(!s.de) return false;
+      const d=new Date(s.de+'T12:00:00');
+      return d.getFullYear()===anoRef && Math.ceil((d.getMonth()+1)/3)===triRef;
+    });
+    if(!semanasTri.length){
+      const d0=new Date(hist[0].de+'T12:00:00');
+      anoRef=d0.getFullYear();
+      triRef=Math.ceil((d0.getMonth()+1)/3);
+    }
+
+    // Meses do trimestre: ex T2 = [3,4,5] (0-based: abril=3, maio=4, junho=5)
+    const mesesDoTri=[(triRef-1)*3, (triRef-1)*3+1, (triRef-1)*3+2]; // 0-based
+
+    const dadosPorMes=mesesDoTri.map(mes=>{
+      const semsDoMes=hist.filter(s=>{
+        if(!s.de) return false;
+        const d=new Date(s.de+'T12:00:00');
+        return d.getFullYear()===anoRef && d.getMonth()===mes;
+      });
+      const ehMesAtual=mes===mesAtual && anoRef===anoAtual;
+      const nomeMes=new Date(anoRef,mes,15).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+      return{mes,nomeMes,sems:semsDoMes,ehMesAtual};
+    }).filter(g=>g.sems.length>0); // só meses com dados
+
+    let medAnterior=null;
+    dadosPorMes.forEach((grupo,gi)=>{
+      const med=calcularMediaSemanas(grupo.sems);
+      if(!med) return;
+      const parcialLabel=grupo.ehMesAtual?' <span style="font-size:9px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:3px;padding:1px 5px;font-weight:600">PARCIAL</span>':'';
+      const labelCell=`<td style="padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap;text-transform:capitalize">${grupo.nomeMes}${parcialLabel}<div style="font-size:10px;color:var(--mu);font-weight:400;margin-top:2px">${grupo.sems.length} semana${grupo.sems.length!==1?'s':''}</div></td>`;
+      tbody+=linhaResumo(labelCell, med, medAnterior, grupo.ehMesAtual?'background:#fffbeb':'');
+      medAnterior=med;
+    });
+
+    // Linha de média geral do trimestre
+    if(dadosPorMes.length>=1){
+      const todasSemsDoTri=dadosPorMes.flatMap(g=>g.sems);
+      const medTri=calcularMediaSemanas(todasSemsDoTri);
+      const labelTri=`<td style="padding:8px 12px;font-size:11px;color:var(--mu)">Média T${triRef}/${anoRef} · ${todasSemsDoTri.length} sem.</td>`;
+      tbody+=linhaResumo(labelTri, medTri, null, 'background:#f0fdf4;border-top:3px solid #16a34a');
+    }
+  }
+
   tbody+='</tbody>';
 
   // Insert informative note when 1 week only
@@ -4811,7 +4854,8 @@ function renderIndicadores(){
 
   const subTxt=`${periodoLabel} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''} · ${todasVendas.length.toLocaleString('pt-BR')} pedidos analisados`;
   document.getElementById('indSub').textContent=subTxt;
-  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · tabela exibe ${semanas.length === hist.length ? 'todas' : semanas.length}`;
+  const modoLabel={semanal:'semana',mensal:'mês',trimestral:'trimestre'}[periodo];
+  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · exibindo ${modoLabel} atual`;
 
   // Atualiza select hubs
   atualizarSelectHubs([]);
