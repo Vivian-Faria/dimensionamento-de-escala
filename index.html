@@ -635,7 +635,10 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <h4>💰 Custos adicionais para CPP</h4>
             <p style="font-size:11px;color:var(--mu);margin-top:2px">Informe custos que não são calculados automaticamente pela escala</p>
           </div>
-          <div id="cppManualSemanas" class="cpp-semana-sel"></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:var(--mu);white-space:nowrap">Semana:</span>
+            <select id="cppManualSemanas" class="btn bs sm" style="padding:5px 10px;font-size:11px;min-width:140px" onchange="selecionarSemanaManual(this.value)"></select>
+          </div>
         </div>
         <div class="cpp-manual-body">
           <div class="cpp-custo-grid">
@@ -4246,20 +4249,23 @@ function getCppManualTotal(semanaISO){
 let _cppManualSemanaAtiva='';
 
 function inicializarCppManual(){
-  const hist=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
-  if(!hist.length){document.getElementById('cppManualPanel').style.display='none';return;}
+  // Combina indicadores coletados + semanas da escala (sintéticas)
+  const histInd2=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
+  const histEsc2=JSON.parse(localStorage.getItem(KH)||'[]');
+  const p2b=v=>String(v).padStart(2,'0');
+  const fmtBR2=iso=>{const[y,m,d]=iso.split('-');return d+'/'+m;};
+  const semsMap2={};
+  histEsc2.forEach(e=>{ if(e.segISO&&e.domISO) semsMap2[e.segISO]={semanaISO:e.segISO+'/'+e.domISO,deBR:fmtBR2(e.segISO),ateBR:fmtBR2(e.domISO)}; });
+  histInd2.forEach(s=>{ if(s.semanaISO) semsMap2[s.de]={semanaISO:s.semanaISO,deBR:s.deBR,ateBR:s.ateBR}; });
+  const semanas=Object.values(semsMap2).sort((a,b)=>b.semanaISO.localeCompare(a.semanaISO));
+  if(!semanas.length){document.getElementById('cppManualPanel').style.display='none';return;}
   document.getElementById('cppManualPanel').style.display='block';
 
-  // Botões de semanas disponíveis (todas)
-  const semanas=hist.slice();
   if(!_cppManualSemanaAtiva||!semanas.find(s=>s.semanaISO===_cppManualSemanaAtiva)){
     _cppManualSemanaAtiva=semanas[0].semanaISO;
   }
   const sel=document.getElementById('cppManualSemanas');
-  sel.innerHTML=semanas.map(s=>{
-    const lbl=s.deBR+'–'+s.ateBR;
-    return`<button class="cpp-semana-btn${s.semanaISO===_cppManualSemanaAtiva?' on':''}" onclick="selecionarSemanaManual('${s.semanaISO}')">${lbl}</button>`;
-  }).join('');
+  sel.innerHTML=semanas.map(s=>`<option value="${s.semanaISO}"${s.semanaISO===_cppManualSemanaAtiva?' selected':''}>${s.deBR}–${s.ateBR}</option>`).join('');
 
   // Carregar valores salvos
   const d=getCppManualSemana(_cppManualSemanaAtiva);
@@ -4288,10 +4294,17 @@ function recalcularCppManual(){
 
   // Buscar custo escala + volume
   const custoEscala=getCustoEscalaSemana(_cppManualSemanaAtiva)||0;
-  const hist=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
-  const sem=hist.find(s=>s.semanaISO===_cppManualSemanaAtiva);
+  const hist2c=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
+  const sem2c=hist2c.find(s=>s.semanaISO===_cppManualSemanaAtiva);
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
-  const volume=sem?calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub).volume:0;
+  let volume=sem2c?calcularMetricasSemana(sem2c.vendas,sem2c.cancelamentos,hub).volume:0;
+  // Fallback: se sem. sintética, busca volume da escala
+  if(!volume){
+    const he2c=JSON.parse(localStorage.getItem(KH)||'[]');
+    const [de2c]=(_cppManualSemanaAtiva||'').split('/');
+    const heSem=he2c.filter(e=>e.segISO===de2c);
+    volume=heSem.reduce((t,e)=>t+(e.resumo?.totalPed||0),0);
+  }
 
   const fmtR=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
   const fmtCpp=v=>volume>0?'R$ '+(v/volume).toFixed(2).replace('.',','):'—';
@@ -4793,33 +4806,52 @@ function renderIndicadores(){
 
   const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
 
-  // Calcula métricas médias de um conjunto de semanas (para linhas de resumo)
-  // Volume e CPP: média de TODAS as semanas (sintéticas incluídas — têm dados da escala)
-  // Cancelamentos/Tempos: média só das semanas com dados reais (bookmarklet coletado)
+  // Consolida um conjunto de semanas para linha de resumo (mês / trimestre)
+  // Volume, cancelamentos, adicionais: SOMA
+  // % cancel: cancel_total / (volume_total + cancel_total)
+  // CPP s/ adicional: soma_custos_escala / soma_volume
+  // CPP c/ adicional: (soma_custos + soma_adicionais) / soma_volume
+  // Tempos: média ponderada pelo volume (só semanas com dados reais)
   function calcularMediaSemanas(sems){
     if(!sems.length) return null;
     const mts=sems.map(s=>metricasSem(s));
-    const cpps=sems.map(s=>cppSemFn(s)).filter(v=>v!=null);
-    const ads=sems.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
-    const avgVol=avg(mts.map(x=>x.volume));
-    const avgCpp=avg(cpps);
-    const avgCppComAd=avgCpp!=null&&avgVol>0?((avgCpp*avgVol+ads/sems.length)/avgVol):null;
-    // Métricas parciais: média das semanas que TÊM dados reais
-    const mtsReais=mts.filter(x=>!x._sintetica);
     const nSint=sems.filter(s=>s._soDaEscala).length;
-    // Cancelamentos/tempos: se há alguma semana real, mostra média parcial
-    const cancelMed=mtsReais.length?avg(mtsReais.map(x=>x.cancelamentos).filter(v=>v!=null)):null;
-    const pctMed=mtsReais.length?avg(mtsReais.map(x=>x.pctCancel).filter(v=>v!=null)):null;
+    const mtsReais=mts.filter(x=>!x._sintetica);
+
+    // Volumes e cancelamentos — SOMA de todas / SOMA das que têm dados
+    const volTotal=mts.reduce((t,x)=>t+x.volume,0);
+    const cancelTotal=mtsReais.reduce((t,x)=>t+(x.cancelamentos||0),0);
+    const cancelDisp=mtsReais.length>0;
+    const pctTotal=cancelDisp&&volTotal>0?(cancelTotal/(volTotal+cancelTotal))*100:null;
+
+    // Custos — SOMA para calcular CPP correto
+    const custoEscalaTotal=sems.reduce((t,s)=>{
+      const c=s._soDaEscala?s._custoEscala:(histEscMap[s.de]!=null?histEscMap[s.de]*metricasSem(s).volume:null);
+      return t+(c||0);
+    },0);
+    const ads=sems.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
+    const cppSemTotal=custoEscalaTotal>0&&volTotal>0?custoEscalaTotal/volTotal:null;
+    const cppComAdTotal=custoEscalaTotal>0&&volTotal>0?(custoEscalaTotal+ads)/volTotal:null;
+
+    // Tempos — média ponderada pelo volume das semanas com dados
+    function mediaTempoP(campo){
+      const pares=mtsReais.map(x=>({t:x[campo],v:x.volume})).filter(p=>p.t!=null&&p.v>0);
+      if(!pares.length) return null;
+      const sumP=pares.reduce((s,p)=>s+p.t*p.v,0);
+      const sumV=pares.reduce((s,p)=>s+p.v,0);
+      return sumV>0?sumP/sumV:null;
+    }
+
     return{
-      volume:Math.round(avgVol??0),
-      cancelamentos:cancelMed!=null?Math.round(cancelMed):null,
-      pctCancel:pctMed,
-      tPreparoMed:avg(mtsReais.map(x=>x.tPreparoMed).filter(v=>v!=null)),
-      tColetaMed:avg(mtsReais.map(x=>x.tColetaMed).filter(v=>v!=null)),
-      tDespachoMed:avg(mtsReais.map(x=>x.tDespachoMed).filter(v=>v!=null)),
-      cppSem:avgCpp,
+      volume:volTotal,
+      cancelamentos:cancelDisp?cancelTotal:null,
+      pctCancel:pctTotal,
+      tPreparoMed:mediaTempoP('tPreparoMed'),
+      tColetaMed:mediaTempoP('tColetaMed'),
+      tDespachoMed:mediaTempoP('tDespachoMed'),
+      cppSem:cppSemTotal,
       adicionalTotal:ads,
-      cppComAd:avgCppComAd,
+      cppComAd:cppComAdTotal,
       nSemanas:sems.length,
       nSinteticas:nSint,
     };
@@ -4842,26 +4874,26 @@ function renderIndicadores(){
   const cols=['Período','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
   const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
 
-  // Linha de resumo (média) reutilizável — suporta meses parciais (mix de dados reais + sintéticos)
+  // Linha de resumo consolidada (mês / trimestre)
+  // Volume, cancelamentos, adicionais: totais acumulados
+  // CPP e tempos: calculados sobre os totais
   function linhaResumo(labelCell, med, prevMed, estiloTr=''){
     if(!med) return '';
     const cppFmt=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
     const adFmt=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
-    // Cancels/% — mostra valores parciais quando disponíveis (média das semanas com dados)
-    // Tempos — "parcial" se mix, valor se todas com dados, "s/ dados" se nenhuma tem
-    const notaParcial=med.nSinteticas>0&&med.nSinteticas<med.nSemanas
-      ?` <span style="font-size:9px;color:#9ca3af;font-style:italic">(${med.nSemanas-med.nSinteticas}/${med.nSemanas} sem.)</span>`:
-       med.nSinteticas===med.nSemanas?' <span style="font-size:9px;color:#9ca3af;font-style:italic">(só escala)</span>':'';
+    // Nota discreta de parcialidade (só no label, não em cada célula)
+    const parcialNote=med.nSinteticas>0&&med.nSinteticas<med.nSemanas
+      ?'<div style="font-size:9px;color:#9ca3af;font-weight:400;font-style:italic;margin-top:2px">⚠ '+med.nSinteticas+' sem. sem coleta de tempos</div>':'';
     return`<tr style="font-weight:700;border-top:2px solid var(--brd2);${estiloTr}">
-      ${labelCell}
+      ${labelCell.replace(/<\/td>$/, parcialNote+'</td>')}
       ${celVar(med.volume,prevMed?.volume,true,v=>v.toLocaleString('pt-BR'))}
-      ${med.cancelamentos!=null?celVar(med.cancelamentos,prevMed?.cancelamentos,false,x=>x+''+notaParcial):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>'}
-      ${med.pctCancel!=null?celVar(med.pctCancel,prevMed?.pctCancel,false,x=>x.toFixed(2)+'%'+notaParcial):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>'}
+      ${med.cancelamentos!=null?celVar(med.cancelamentos,prevMed?.cancelamentos,false,x=>x.toLocaleString('pt-BR')):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>'}
+      ${med.pctCancel!=null?celVar(med.pctCancel,prevMed?.pctCancel,false,x=>x.toFixed(2)+'%'):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>'}
       ${celTempoResumo(med.tPreparoMed)}
       ${celTempoResumo(med.tColetaMed)}
       ${celTempoResumo(med.tDespachoMed)}
       ${cel(cppFmt(med.cppSem))}
-      ${cel(adFmt(med.adicionalTotal/med.nSemanas))}
+      ${cel(adFmt(med.adicionalTotal))}
       ${cel(cppFmt(med.cppComAd),med.cppComAd&&med.adicionalTotal>0?'color:#dc2626;font-weight:800':'')}
     </tr>`;
   }
@@ -5026,7 +5058,7 @@ function renderIndicadores(){
       if(!med) return;
       const parcialLabel=grupo.ehMesAtual?' <span style="font-size:9px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:3px;padding:1px 5px;font-weight:600">PARCIAL</span>':'';
       // Linha de média do mês (linha principal)
-      const labelCell=`<td style="padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap;text-transform:capitalize">${grupo.nomeMes}${parcialLabel}<div style="font-size:10px;color:var(--mu);font-weight:400;margin-top:2px">${grupo.sems.length} semana${grupo.sems.length!==1?'s':''} · média</div></td>`;
+      const labelCell=`<td style="padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap;text-transform:capitalize">${grupo.nomeMes}${parcialLabel}<div style="font-size:10px;color:var(--mu);font-weight:400;margin-top:2px">${grupo.sems.length} semana${grupo.sems.length!==1?'s':''} · consolidado</div></td>`;
       tbody+=linhaResumo(labelCell, med, medAnterior, grupo.ehMesAtual?'background:#fffbeb':'');
       // Sub-linhas: cada semana do mês (identadas, fundo suave)
       grupo.sems.slice().reverse().forEach((sem,si)=>{
@@ -5045,7 +5077,7 @@ function renderIndicadores(){
     if(dadosPorMes.length>=1){
       const todasSemsDoTri=dadosPorMes.flatMap(g=>g.sems);
       const medTri=calcularMediaSemanas(todasSemsDoTri);
-      const labelTri=`<td style="padding:8px 12px;font-size:11px;color:var(--mu)">Média T${triRef}/${anoRef} · ${todasSemsDoTri.length} sem.</td>`;
+      const labelTri=`<td style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--mu)">T${triRef}/${anoRef} · ${todasSemsDoTri.length} sem. consolidado</td>`;
       tbody+=linhaResumo(labelTri, medTri, null, 'background:#f0fdf4;border-top:3px solid #16a34a');
     }
   }
