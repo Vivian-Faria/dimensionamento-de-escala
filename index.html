@@ -387,9 +387,9 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <button class="btn bg sm" onclick="goT('co')">👥 Equipe</button>
   <button class="btn bg sm" onclick="goT('hm')">🌡 Demanda</button>
   <button class="btn bg sm" id="btnCol" onclick="iniciarColeta()">↻ Coletar dados</button>
-  <div style="position:relative;display:inline-block">
+  <div style="position:relative;display:inline-block;z-index:500">
     <button class="btn ba" onclick="abrirSeletorHub()">⚡ Montar escala</button>
-    <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:200;min-width:240px;padding:6px 0">
+    <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:1000;min-width:240px;padding:6px 0">
       <div style="padding:8px 14px;font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">SELECIONE OS HUBS</div>
       <div id="hubSeletorLista"></div>
       <div style="padding:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:6px">
@@ -619,6 +619,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
               </div>
             </div>
           </div>
+          <button class="btn bs sm" onclick="coletarIndicadores()">📥 Coletar semana</button>
+          <button class="btn bs sm" id="btnColetarHist" onclick="coletarHistoricoIndicadores()" style="display:none;background:#fef3c7;color:#92400e;border-color:#fde68a">📊 Coletar histórico</button>
           <button class="btn bs sm" onclick="limparIndicadores()">↺ Limpar</button>
         </div>
       </div>
@@ -887,6 +889,36 @@ const BM_SCRIPT=`(async()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 
 // ── Bookmarklet de INDICADORES — roda no Orion, coleta vendas+cancelamentos+tempos, envia para a plataforma via hash
 const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const de=fi(ds),ate=fi(da);const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};const dMin=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?+d.toFixed(2):null;};const base='https://admin.orioncloudkitchens.com.br';try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};} }).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const pl={de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(ds)+'\u2013'+fb(da),semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
+
+// ── Bookmarklet para coletar histórico de múltiplas semanas de uma vez
+// Recebe lista de semanas via hash e coleta cada uma sequencialmente
+const BM_SCRIPT_HIST=`(async()=>{
+const p=v=>String(v).padStart(2,'0');
+const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);
+const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[dd,mm,yy]=dp.split('/');return new Date(yy+'-'+mm+'-'+dd+'T'+tp+':00').getTime();};
+const raw=location.hash||'';
+const tag='#orion_hist_semanas=';
+if(!raw.startsWith(tag)){alert('Erro: sem lista de semanas no hash.');return;}
+const semanas=JSON.parse(decodeURIComponent(raw.slice(tag.length)));
+const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};}}).filter(Boolean);};
+const resultados=[];let ok=0,erros=0;
+for(const s of semanas){
+  try{
+    await new Promise(r=>setTimeout(r,700));
+    const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+s.de+'&start_time=00:00&end_date='+s.ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+s.de+'&start_time=00:00&end_date='+s.ate+'&end_time=23:59&business=',{credentials:'include'})]);
+    const[hv,hc]=[await rv.text(),await rc.text()];
+    const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');
+    const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();
+    resultados.push({de:s.de,ate:s.ate,deBR:fb(new Date(s.de+'T12:00:00')),ateBR:fb(new Date(s.ate+'T12:00:00')),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(new Date(s.de+'T12:00:00'))+'–'+fb(new Date(s.ate+'T12:00:00')),semanaISO:s.de+'/'+s.ate});
+    ok++;
+  }catch(e){erros++;console.warn('Erro '+s.de+':',e.message);}
+}
+location.hash='';
+const b64=btoa(unescape(encodeURIComponent(JSON.stringify(resultados))));
+window.open('https://orion-escala.netlify.app#ind_lote='+b64,'_blank');
+alert('\u2705 '+ok+' semana(s) coletada(s)'+(erros?' - '+erros+' erro(s)':'')+'. A plataforma será aberta com os dados.');
+})()`;
 
 // ── Colaboradores padrão com regras detalhadas
 const COLAB_DEF=[
@@ -3978,6 +4010,19 @@ try {
       }catch(e){ console.error('[OrionEscala] hash ind_dados erro:',e); }
     }
 
+    // ── LOTE DE INDICADORES: #ind_lote=BASE64 (multi-semanas do bookmarklet histórico)
+    var b64Lote=extrairParam(raw,'ind_lote');
+    if(b64Lote){
+      try{
+        var jsonLote=decodeURIComponent(escape(atob(b64Lote)));
+        var lote=JSON.parse(jsonLote);
+        if(Array.isArray(lote)&&lote.length>0){
+          window._INBOUND_IND_LOTE=lote;
+          temDados=true;
+        }
+      }catch(e){ console.error('[OrionEscala] hash ind_lote erro:',e); }
+    }
+
     // ── LINK CURTO: #s=CODE ou #s=CODE@APIHOST
     var shortCode=extrairParam(raw,'s');
     if(shortCode&&shortCode.length>=6){
@@ -4265,6 +4310,71 @@ function recalcularCppManual(){
   if(!_cppManualDebounce) _cppManualDebounce=setTimeout(()=>{_cppManualDebounce=null;renderIndicadores();},400);
 }
 let _cppManualDirty=false, _cppManualDebounce=null;
+
+
+// ── Coletar histórico de indicadores para múltiplas semanas de uma vez
+function coletarHistoricoIndicadores(){
+  // Monta lista de semanas que têm escala mas NÃO têm indicadores coletados
+  const histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const indISOs=new Set(histInd.map(h=>h.semanaISO));
+  const histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
+
+  // Agrupa por segISO (semana única)
+  const semanasMap={};
+  histEsc.forEach(e=>{
+    if(!e.segISO||!e.domISO) return;
+    const k=e.segISO;
+    if(!semanasMap[k]) semanasMap[k]={de:e.segISO,ate:e.domISO};
+  });
+
+  const semanasParaColeta=Object.values(semanasMap)
+    .filter(s=>!indISOs.has(s.de+'/'+s.ate))
+    .sort((a,b)=>a.de.localeCompare(b.de)); // cronológica
+
+  if(!semanasParaColeta.length){
+    toast('✓ Todas as semanas já têm indicadores coletados!','tok');
+    return;
+  }
+
+  const n=semanasParaColeta.length;
+  const listaLabel=semanasParaColeta.map(s=>{
+    const fb=iso=>{const[y,m,d]=iso.split('-');return d+'/'+m;};
+    return fb(s.de)+'–'+fb(s.ate);
+  }).join(', ');
+
+  // Monta a URL do Órion com o hash de semanas para o bookmarklet histórico
+  const hashSemanas=encodeURIComponent(JSON.stringify(semanasParaColeta));
+  const urlOrion='https://admin.orioncloudkitchens.com.br#orion_hist_semanas='+hashSemanas;
+
+  // Script para colar no console do Orion
+  const scriptConsole='/* Cole no console do Órion DEPOIS de navegar para a URL abaixo */\n'+BM_SCRIPT_HIST;
+
+  const banner=document.getElementById('indBanner');
+  banner.className='banner b-warn';
+  banner.innerHTML=`
+    <div class="b-title">📊 Coletar indicadores históricos — ${n} semana${n!==1?'s':''} pendente${n!==1?'s':''}</div>
+    <div style="font-size:11px;color:#92400e;margin-bottom:10px">Semanas sem dados de tempo: <strong>${listaLabel}</strong></div>
+    <div style="background:rgba(255,255,255,.7);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;margin-bottom:8px">Como coletar todas de uma vez:</div>
+      <ol class="b-steps">
+        <li>Abra o Órion no link abaixo (ele já tem as semanas no hash): <button onclick="window.open('${urlOrion.replace(/'/g,"\'")}','_blank')" class="btn ba sm" style="margin-left:6px">↗ Abrir Órion com semanas</button></li>
+        <li>Pressione <code>F12</code> → aba <strong>Console</strong></li>
+        <li>Se aparecer "allow pasting" → digite <code>allow pasting</code> e Enter</li>
+        <li>Cole o script abaixo e pressione Enter — ele coleta todas as semanas automaticamente</li>
+      </ol>
+      <button onclick="copiarScriptHist()" id="copyBtnHist" class="btn bs sm" style="margin-top:8px">📋 Copiar script histórico (${n} semanas)</button>
+    </div>
+    <div style="font-size:11px;color:var(--mu)">⏱ O script aguarda ~0,7s entre semanas para não sobrecarregar o servidor. Após concluir, esta página será reaberta automaticamente com todos os dados.</div>`;
+  document.getElementById('indEmp').style.display='none';
+}
+
+function copiarScriptHist(){
+  navigator.clipboard.writeText(BM_SCRIPT_HIST).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=BM_SCRIPT_HIST;ta.style.cssText='position:fixed;opacity:0';
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+  });
+  const b=document.getElementById('copyBtnHist');if(b){b.textContent='✓ Copiado!';setTimeout(()=>{b.textContent='📋 Copiar script histórico';},2500);}
+}
 
 function coletarIndicadores(){
   // A coleta direta via fetch falha por CORS (plataforma ≠ Orion).
@@ -4939,6 +5049,18 @@ function renderIndicadores(){
   document.getElementById('indSub').textContent=subTxt;
   const modoLabel={semanal:'semana',mensal:'mês',trimestral:'trimestre'}[periodo];
   document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · exibindo ${modoLabel} atual`;
+
+  // Mostra botão 'Coletar histórico' se houver semanas sem dados de tempo
+  const _btnHist=document.getElementById('btnColetarHist');
+  if(_btnHist){
+    const _indISOs=new Set(histInd.map(h=>h.semanaISO));
+    const _histEscBt=JSON.parse(localStorage.getItem(KH)||'[]');
+    const _semsMap={};
+    _histEscBt.forEach(e=>{ if(e.segISO&&e.domISO) _semsMap[e.segISO]={de:e.segISO,ate:e.domISO}; });
+    const _pendentes=Object.values(_semsMap).filter(s=>!_indISOs.has(s.de+'/'+s.ate));
+    _btnHist.style.display=_pendentes.length?'inline-flex':'none';
+    if(_pendentes.length) _btnHist.textContent='📊 Coletar histórico ('+_pendentes.length+' sem.)';
+  }
 
   // Atualiza select hubs
   atualizarSelectHubs([]);
@@ -7418,6 +7540,19 @@ if(window._LEILAO_HIST_ID){ renderLeilaoMode(); }
 
 // Inicialização — processa dados recebidos via hash ou postMessage
 {
+  // ── Lote de indicadores históricos (multi-semanas)
+  const _lote=window._INBOUND_IND_LOTE; window._INBOUND_IND_LOTE=null;
+  if(_lote&&Array.isArray(_lote)&&_lote.length>0){
+    setTimeout(()=>{
+      goT('ind');
+      let ok=0;
+      _lote.forEach(payload=>{
+        try{ receberDadosIndicadores(payload); ok++; }catch(e){}
+      });
+      toast(`✓ ${ok} semana(s) importada(s) com sucesso!`,'tok');
+    },400);
+  }
+
   const _pi=window._INBOUND_IND; window._INBOUND_IND=null;
   const _pe=window._INBOUND;     window._INBOUND=null;
 
