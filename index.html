@@ -4794,7 +4794,8 @@ function renderIndicadores(){
   const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
 
   // Calcula métricas médias de um conjunto de semanas (para linhas de resumo)
-  // Trata entradas sintéticas (só escala, sem bookmarklet): volume da escala, tempos null
+  // Volume e CPP: média de TODAS as semanas (sintéticas incluídas — têm dados da escala)
+  // Cancelamentos/Tempos: média só das semanas com dados reais (bookmarklet coletado)
   function calcularMediaSemanas(sems){
     if(!sems.length) return null;
     const mts=sems.map(s=>metricasSem(s));
@@ -4803,13 +4804,16 @@ function renderIndicadores(){
     const avgVol=avg(mts.map(x=>x.volume));
     const avgCpp=avg(cpps);
     const avgCppComAd=avgCpp!=null&&avgVol>0?((avgCpp*avgVol+ads/sems.length)/avgVol):null;
-    // Tempos: só das semanas com dados reais (não sintéticas)
+    // Métricas parciais: média das semanas que TÊM dados reais
     const mtsReais=mts.filter(x=>!x._sintetica);
-    const temAlgunsDados=mtsReais.length>0;
+    const nSint=sems.filter(s=>s._soDaEscala).length;
+    // Cancelamentos/tempos: se há alguma semana real, mostra média parcial
+    const cancelMed=mtsReais.length?avg(mtsReais.map(x=>x.cancelamentos).filter(v=>v!=null)):null;
+    const pctMed=mtsReais.length?avg(mtsReais.map(x=>x.pctCancel).filter(v=>v!=null)):null;
     return{
       volume:Math.round(avgVol??0),
-      cancelamentos:temAlgunsDados?Math.round(avg(mtsReais.map(x=>x.cancelamentos))??0):null,
-      pctCancel:temAlgunsDados?(avg(mtsReais.map(x=>x.pctCancel))??0):null,
+      cancelamentos:cancelMed!=null?Math.round(cancelMed):null,
+      pctCancel:pctMed,
       tPreparoMed:avg(mtsReais.map(x=>x.tPreparoMed).filter(v=>v!=null)),
       tColetaMed:avg(mtsReais.map(x=>x.tColetaMed).filter(v=>v!=null)),
       tDespachoMed:avg(mtsReais.map(x=>x.tDespachoMed).filter(v=>v!=null)),
@@ -4817,7 +4821,7 @@ function renderIndicadores(){
       adicionalTotal:ads,
       cppComAd:avgCppComAd,
       nSemanas:sems.length,
-      nSinteticas:sems.filter(s=>s._soDaEscala).length,
+      nSinteticas:nSint,
     };
   }
 
@@ -4838,28 +4842,24 @@ function renderIndicadores(){
   const cols=['Período','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
   const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
 
-  // Linha de resumo (média/total) reutilizável
+  // Linha de resumo (média) reutilizável — suporta meses parciais (mix de dados reais + sintéticos)
   function linhaResumo(labelCell, med, prevMed, estiloTr=''){
     if(!med) return '';
     const cppFmt=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
     const adFmt=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
-    const celTempoR=v=>v!=null?cel(fmtTempo(v)):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Semanas sem coleta de tempos">parcial</td>';
-    const celCancelR=(v,pct)=>v!=null
-      ?celVar(v,prevMed?.cancelamentos,false,x=>x)
-      :'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>';
-    const celPctR=v=>v!=null
-      ?celVar(v,prevMed?.pctCancel,false,x=>x.toFixed(2)+'%')
-      :'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>';
-    const notaSintetica=med.nSinteticas>0
-      ?'<div style="font-size:9px;color:#9ca3af;font-weight:400;margin-top:2px">'+med.nSinteticas+' sem. só c/ dados de escala</div>':''  ;
+    // Cancels/% — mostra valores parciais quando disponíveis (média das semanas com dados)
+    // Tempos — "parcial" se mix, valor se todas com dados, "s/ dados" se nenhuma tem
+    const notaParcial=med.nSinteticas>0&&med.nSinteticas<med.nSemanas
+      ?` <span style="font-size:9px;color:#9ca3af;font-style:italic">(${med.nSemanas-med.nSinteticas}/${med.nSemanas} sem.)</span>`:
+       med.nSinteticas===med.nSemanas?' <span style="font-size:9px;color:#9ca3af;font-style:italic">(só escala)</span>':'';
     return`<tr style="font-weight:700;border-top:2px solid var(--brd2);${estiloTr}">
       ${labelCell}
       ${celVar(med.volume,prevMed?.volume,true,v=>v.toLocaleString('pt-BR'))}
-      ${celCancelR(med.cancelamentos,med.pctCancel)}
-      ${celPctR(med.pctCancel)}
-      ${celTempoR(med.tPreparoMed)}
-      ${celTempoR(med.tColetaMed)}
-      ${celTempoR(med.tDespachoMed)}
+      ${med.cancelamentos!=null?celVar(med.cancelamentos,prevMed?.cancelamentos,false,x=>x+''+notaParcial):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>'}
+      ${med.pctCancel!=null?celVar(med.pctCancel,prevMed?.pctCancel,false,x=>x.toFixed(2)+'%'+notaParcial):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>'}
+      ${celTempoResumo(med.tPreparoMed)}
+      ${celTempoResumo(med.tColetaMed)}
+      ${celTempoResumo(med.tDespachoMed)}
       ${cel(cppFmt(med.cppSem))}
       ${cel(adFmt(med.adicionalTotal/med.nSemanas))}
       ${cel(cppFmt(med.cppComAd),med.cppComAd&&med.adicionalTotal>0?'color:#dc2626;font-weight:800':'')}
@@ -4867,11 +4867,10 @@ function renderIndicadores(){
   }
 
   // ── Função auxiliar: extrai métricas de uma semana (real ou sintética da escala)
+  // Entradas sintéticas têm volume/CPP da escala — cancelamentos e tempos são null (s/ bookmarklet)
   function metricasSem(sem){
     if(sem._soDaEscala){
-      // Entrada sintética: sem dados de tempo — usa volume/custo da escala diretamente
       const vol=sem._volEscala||0;
-      // Para cancelamentos: sem dados disponíveis (bookmarklet não foi rodado)
       return {volume:vol,cancelamentos:null,pctCancel:null,
               tPreparoMed:null,tColetaMed:null,tDespachoMed:null,_sintetica:true};
     }
@@ -4885,6 +4884,50 @@ function renderIndicadores(){
     return histEscMap[sem.de]||null;
   }
 
+  // ── Helpers de célula compartilhados entre todos os modos ──────────────────
+  // Célula de cancelamento: mostra valor real ou "s/ dados" em cinza
+  function celCancelamento(v, prevMt=null){
+    if(v===null||v===undefined)
+      return '<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Colete indicadores para ver cancelamentos">s/ dados</td>';
+    return celVar(v,prevMt?.cancelamentos,false,x=>x);
+  }
+  // Célula de % cancel
+  function celPctCancel(v, prevMt=null){
+    if(v===null||v===undefined)
+      return '<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>';
+    return celVar(v,prevMt?.pctCancel,false,x=>x.toFixed(2)+'%');
+  }
+  // Célula de tempo: mostra valor ou "s/ dados"
+  function celTempo(v){
+    if(v===null||v===undefined)
+      return '<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Colete indicadores para ver os tempos">s/ dados</td>';
+    return cel(fmtTempo(v));
+  }
+  // Célula de tempo em linha de resumo: "parcial" quando mistura semanas c/ e s/ dados
+  function celTempoResumo(v){
+    if(v===null||v===undefined)
+      return '<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">parcial</td>';
+    return cel(fmtTempo(v));
+  }
+  // Monta uma linha completa de semana (usada nos 3 modos)
+  function linhasSemana(sem, mt, cppSem, adicionalSem, cppComAdicional, prevMt=null, extraStyle='', extraLabel=''){
+    const sintetica=mt._sintetica;
+    const labelPeriodo=`${sem.deBR}–${sem.ateBR}`+(extraLabel?` ${extraLabel}`:'')
+      +(sintetica?' <span style="font-size:9px;color:#9ca3af;font-weight:400;font-style:italic">(só escala)</span>':'');
+    return '<tr style="border-bottom:1px solid var(--brd);'+extraStyle+'">'
+      +cel(labelPeriodo,'font-weight:600;white-space:nowrap')
+      +(sintetica?cel(mt.volume.toLocaleString('pt-BR')):celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR')))
+      +celCancelamento(mt.cancelamentos,prevMt)
+      +celPctCancel(mt.pctCancel,prevMt)
+      +celTempo(mt.tPreparoMed)
+      +celTempo(mt.tColetaMed)
+      +celTempo(mt.tDespachoMed)
+      +cel(cppSem!=null?'R$ '+cppSem.toFixed(2).replace('.',','):'—')
+      +cel(adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—',adicionalSem>0?'background:#fff7ed':'')
+      +cel(cppComAdicional!=null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—',cppComAdicional&&adicionalSem>0?'color:#dc2626;font-weight:700':'')
+      +'</tr>';
+  }
+
   let tbody='<tbody>';
 
   // ══════════════════════════════════════════════════
@@ -4896,27 +4939,7 @@ function renderIndicadores(){
     const cppSem=cppSemFn(sem);
     const adicionalSem=getCppManualTotal(sem.semanaISO||'');
     const cppComAdicional=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
-    const celTempo=(v,sintetica)=>sintetica
-      ?'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Colete os indicadores para ver os tempos">s/ dados</td>'
-      :cel(fmtTempo(v));
-    const celCancel=(v,pct,sintetica)=>sintetica
-      ?'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Colete os indicadores para ver cancelamentos">s/ dados</td>'
-      :cel(v);
-    const celPct=(v,sintetica)=>sintetica
-      ?'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>'
-      :cel(v!=null?v.toFixed(2)+'%':'—');
-    tbody+=`<tr style="border-bottom:1px solid var(--brd)">
-      ${cel(`${sem.deBR}–${sem.ateBR}`,'font-weight:600;white-space:nowrap')}
-      ${cel(mt.volume.toLocaleString('pt-BR'))}
-      ${celCancel(mt.cancelamentos,mt.pctCancel,mt._sintetica)}
-      ${celPct(mt.pctCancel,mt._sintetica)}
-      ${celTempo(mt.tPreparoMed,mt._sintetica)}
-      ${celTempo(mt.tColetaMed,mt._sintetica)}
-      ${celTempo(mt.tDespachoMed,mt._sintetica)}
-      ${cel(cppSem!=null?'R$ '+cppSem.toFixed(2).replace('.',','):'—')}
-      ${cel(adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—','background:#fff7ed')}
-      ${cel(cppComAdicional!=null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—',cppComAdicional&&adicionalSem>0?'color:#dc2626;font-weight:700':'')}
-    </tr>`;
+    tbody+=linhasSemana(sem,mt,cppSem,adicionalSem,cppComAdicional);
 
   // ══════════════════════════════════════════════════
   // MODO MENSAL — semanas do mês atual + linha de média
@@ -4948,19 +4971,8 @@ function renderIndicadores(){
     });
 
     metricas.forEach(({sem,mt,cppSem,adicionalSem,cppComAdicional},i)=>{
-      const prevMt=i>0&&!metricas[i-1].mt._sintetica?metricas[i-1].mt:null;
-      const sintetica=mt._sintetica;
-      const celT=v=>sintetica?'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Colete os indicadores para ver os tempos">s/ dados</td>':cel(fmtTempo(v));
-      tbody+=`<tr style="border-bottom:1px solid var(--brd)${sintetica?';background:#fafbfc':''}">`
-        +cel(`${sem.deBR}–${sem.ateBR}`+(sintetica?' <span style="font-size:9px;color:#9ca3af;font-weight:400;font-style:italic">(só escala)</span>':''),'font-weight:600;white-space:nowrap')
-        +(sintetica?cel(mt.volume.toLocaleString('pt-BR')):celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR')))
-        +(sintetica?'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>':celVar(mt.cancelamentos,prevMt?.cancelamentos,false,v=>v))
-        +(sintetica?'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>':celVar(mt.pctCancel,prevMt?.pctCancel,false,v=>v.toFixed(2)+'%'))
-        +celT(mt.tPreparoMed)+celT(mt.tColetaMed)+celT(mt.tDespachoMed)
-        +cel(cppSem!=null?'R$ '+cppSem.toFixed(2).replace('.',','):'—')
-        +cel(adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—',adicionalSem>0?'background:#fff7ed':'')
-        +cel(cppComAdicional!=null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—',cppComAdicional&&adicionalSem>0?'color:#dc2626;font-weight:700':'')
-        +'</tr>';
+      const prevMt=i>0?metricas[i-1].mt:null;
+      tbody+=linhasSemana(sem,mt,cppSem,adicionalSem,cppComAdicional,prevMt,mt._sintetica?'background:#fafbfc':'');
     });
 
     // Linha de média mensal (só se houver 2+ semanas)
@@ -5013,8 +5025,19 @@ function renderIndicadores(){
       const med=calcularMediaSemanas(grupo.sems);
       if(!med) return;
       const parcialLabel=grupo.ehMesAtual?' <span style="font-size:9px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:3px;padding:1px 5px;font-weight:600">PARCIAL</span>':'';
-      const labelCell=`<td style="padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap;text-transform:capitalize">${grupo.nomeMes}${parcialLabel}<div style="font-size:10px;color:var(--mu);font-weight:400;margin-top:2px">${grupo.sems.length} semana${grupo.sems.length!==1?'s':''}</div></td>`;
+      // Linha de média do mês (linha principal)
+      const labelCell=`<td style="padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap;text-transform:capitalize">${grupo.nomeMes}${parcialLabel}<div style="font-size:10px;color:var(--mu);font-weight:400;margin-top:2px">${grupo.sems.length} semana${grupo.sems.length!==1?'s':''} · média</div></td>`;
       tbody+=linhaResumo(labelCell, med, medAnterior, grupo.ehMesAtual?'background:#fffbeb':'');
+      // Sub-linhas: cada semana do mês (identadas, fundo suave)
+      grupo.sems.slice().reverse().forEach((sem,si)=>{
+        const mt=metricasSem(sem);
+        const cppSem=cppSemFn(sem);
+        const adSem=getCppManualTotal(sem.semanaISO||'');
+        const cppComAd=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+adSem)/mt.volume):null;
+        const prevMt=si>0?metricasSem(grupo.sems.slice().reverse()[si-1]):null;
+        const bgSub=grupo.ehMesAtual?'background:#fffdf5':'background:#fafafa';
+        tbody+=linhasSemana(sem,mt,cppSem,adSem,cppComAd,prevMt,bgSub+';font-size:11px','');
+      });
       medAnterior=med;
     });
 
