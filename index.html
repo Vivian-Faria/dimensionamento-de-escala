@@ -4778,639 +4778,438 @@ function atualizarSelectHubs(hubs){
 }
 
 function renderIndicadores(){
+  // ══════════════════════════════════════════════════════════════════
+  // FONTE ÚNICA DE VERDADE: histInd (dados reais do Órion via bookmarklet)
+  // Dados da escala (KH) são usados APENAS para custo/CPP, nunca para volume/cancelamentos
+  // ══════════════════════════════════════════════════════════════════
   const histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
 
-  // ── Mesclar com histórico de escalas: semanas que existem na escala mas não
-  //    nos indicadores entram com volume/custo preenchidos e tempos como null.
-  const histEsc2=JSON.parse(localStorage.getItem(KH)||'[]');
-  const _fmtBR2=iso=>{const[y,m,d]=iso.split('-');return d+'/'+m;};
-  const escPorSemana2={};
-  histEsc2.forEach(e=>{
-    const k=e.segISO; if(!k) return;
-    if(!escPorSemana2[k]) escPorSemana2[k]={
-      de:e.segISO,ate:e.domISO,deBR:_fmtBR2(e.segISO),ateBR:_fmtBR2(e.domISO),
-      semana:_fmtBR2(e.segISO)+'–'+_fmtBR2(e.domISO),
-      semanaISO:e.segISO+'/'+e.domISO,ts:e.ts||0,
-      totalPed:0,totalCusto:0,hubs:[],vendas:[],cancelamentos:[],_soDaEscala:true,
-    };
-    const s=escPorSemana2[k];
-    s.totalPed+=(e.resumo?.totalPed||0);
-    s.totalCusto+=(e.resumo?.totalCusto||0);
-    if(e.hub&&!s.hubs.includes(e.hub)) s.hubs.push(e.hub);
-  });
-  const indISOs2=new Set(histInd.map(h=>h.semanaISO));
-  const entradasSinteticas=Object.values(escPorSemana2)
-    .filter(s=>!indISOs2.has(s.semanaISO))
-    .map(s=>({...s,_volEscala:s.totalPed,_custoEscala:s.totalCusto}));
-  const hist=[...histInd,...entradasSinteticas].sort((a,b)=>(b.de||'').localeCompare(a.de||''));
-
-  if(!hist.length){
+  if(!histInd.length){
     document.getElementById('indEmp').style.display='block';
     document.getElementById('indKpis').innerHTML='';
     document.getElementById('indTabelaCard').style.display='none';
     return;
   }
-
   document.getElementById('indEmp').style.display='none';
   document.getElementById('indTabelaCard').style.display='block';
 
+  // ── Filtros ativos
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
-  const periodo=document.getElementById('indPeriodo')?.value||'semanal';
-
-  // ── Selecionar semanas conforme período
+  const periodo=document.getElementById('indPeriodo')?.value||'mensal';
   const agora=new Date();
   const mesAtual=agora.getMonth(), anoAtual=agora.getFullYear();
   const triAtual=Math.ceil((mesAtual+1)/3);
 
-  let semanasPerido;
-  if(periodo==='semanal'){
-    // Semana mais recente coletada (para KPIs — 1 semana, comparada com a anterior)
-    semanasPerido=hist.slice(0,1);
-  } else if(periodo==='mensal'){
-    // Todas as semanas do mês atual
-    semanasPerido=hist.filter(s=>{
-      if(!s.de) return false;
-      const d=new Date(s.de+'T12:00:00');
-      return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
-    });
-    if(!semanasPerido.length){
-      const maisRecente=hist[0];
-      if(maisRecente?.de){
-        const d=new Date(maisRecente.de+'T12:00:00');
-        const m=d.getMonth(), a=d.getFullYear();
-        semanasPerido=hist.filter(s=>{
-          if(!s.de) return false;
+  // ── Mapa de custo por segISO (da escala) — única coisa que vem do KH
+  // Agrupa por segISO somando todos os hubs
+  const custoMap={};  // segISO → totalCusto
+  const custoPorHubMap={}; // segISO+'|'+hub → {custo,ped}
+  histEsc.forEach(e=>{
+    if(!e.segISO||!e.resumo) return;
+    const seg=e.segISO;
+    custoMap[seg]=(custoMap[seg]||0)+(e.resumo.totalCusto||0);
+    const h2=e.hub||'Sem hub';
+    const hk=seg+'|'+h2;
+    if(!custoPorHubMap[hk]) custoPorHubMap[hk]={custo:0,ped:0,hub:h2,seg};
+    custoPorHubMap[hk].custo+=(e.resumo.totalCusto||0);
+    custoPorHubMap[hk].ped+=(e.resumo.totalPed||0);
+  });
+
+  // ── Selecionar semanas do período (APENAS semanas com dados reais do Órion)
+  function semanasDoPeriodo(todasSemanas, per){
+    if(per==='semanal') return todasSemanas.slice(0,1);
+    if(per==='mensal'){
+      const sems=todasSemanas.filter(s=>{
+        const d=new Date(s.de+'T12:00:00');
+        return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
+      });
+      if(sems.length) return sems;
+      // Fallback: mês mais recente com dados
+      if(todasSemanas[0]){
+        const d=new Date(todasSemanas[0].de+'T12:00:00');
+        return todasSemanas.filter(s=>{
           const dd=new Date(s.de+'T12:00:00');
-          return dd.getMonth()===m && dd.getFullYear()===a;
+          return dd.getMonth()===d.getMonth()&&dd.getFullYear()===d.getFullYear();
         });
       }
-      if(!semanasPerido.length) semanasPerido=hist.slice(0,1);
+      return todasSemanas.slice(0,1);
     }
-  } else {
-    // Trimestral: todas as semanas do trimestre atual
-    semanasPerido=hist.filter(s=>{
-      if(!s.de) return false;
+    // trimestral
+    const sems=todasSemanas.filter(s=>{
       const d=new Date(s.de+'T12:00:00');
+      return d.getFullYear()===anoAtual&&Math.ceil((d.getMonth()+1)/3)===triAtual;
+    });
+    if(sems.length) return sems;
+    if(todasSemanas[0]){
+      const d=new Date(todasSemanas[0].de+'T12:00:00');
       const tri=Math.ceil((d.getMonth()+1)/3);
-      return d.getFullYear()===anoAtual && tri===triAtual;
-    });
-    if(!semanasPerido.length){
-      const maisRecente=hist[0];
-      if(maisRecente?.de){
-        const d=new Date(maisRecente.de+'T12:00:00');
-        const triR=Math.ceil((d.getMonth()+1)/3), aR=d.getFullYear();
-        semanasPerido=hist.filter(s=>{
-          if(!s.de) return false;
-          const dd=new Date(s.de+'T12:00:00');
-          return Math.ceil((dd.getMonth()+1)/3)===triR && dd.getFullYear()===aR;
-        });
-      }
-      if(!semanasPerido.length) semanasPerido=hist.slice(0,4);
+      return todasSemanas.filter(s=>{
+        const dd=new Date(s.de+'T12:00:00');
+        return Math.ceil((dd.getMonth()+1)/3)===tri&&dd.getFullYear()===d.getFullYear();
+      });
     }
+    return todasSemanas.slice(0,4);
   }
 
-  // ── Métricas do período selecionado (para KPIs)
-  // Para entradas sintéticas: volume da escala, tempos/cancelamentos indisponíveis
-  const todasVendas=semanasPerido.flatMap(s=>s.vendas||[]);
-  const todosCancels=semanasPerido.flatMap(s=>s.cancelamentos||[]);
-  const mBase=calcularMetricasSemana(todasVendas,todosCancels,hub);
-  // Volume real: soma volume de todas (sintéticas usam _volEscala)
-  // Volume REAL: APENAS semanas com dados do Órion (bookmarklet coletado)
-  // Semanas sintéticas (_soDaEscala) têm só projeção de demanda — nunca somar aqui
-  const volumeReal=semanasPerido.reduce((t,s)=>{
-    if(s._soDaEscala) return t; // sem dados reais, não somar
-    const mt=calcularMetricasSemana(s.vendas||[],s.cancelamentos||[],hub);
-    return t+mt.volume;
-  },0);
-  const nSemsComDados=semanasPerido.filter(s=>!s._soDaEscala).length;
-  const m={...mBase, volume:volumeReal, _nSemsComDados:nSemsComDados, _nSemsTotais:semanasPerido.length};
+  // Semanas com dados reais — ordenadas mais recente primeiro
+  const todasReais=histInd.slice().sort((a,b)=>(b.de||'').localeCompare(a.de||''));
+  const semanasPerido=semanasDoPeriodo(todasReais, periodo);
 
-  // Período anterior (mesmo tamanho) para comparação
-  const nSems=semanasPerido.length;
-  const semanasAnt=hist.slice(nSems, nSems*2);
-  const mAnt=semanasAnt.length
-    ? (()=>{
-        const volAnt=semanasAnt.reduce((t,s)=>{
-          if(s._soDaEscala) return t+(s._volEscala||0);
-          return t+calcularMetricasSemana(s.vendas||[],s.cancelamentos||[],hub).volume;
-        },0);
-        const baseAnt=calcularMetricasSemana(semanasAnt.flatMap(s=>s.vendas||[]),semanasAnt.flatMap(s=>s.cancelamentos||[]),hub);
-        return {...baseAnt, volume:volAnt};
-      })()
-    : null;
+  if(!semanasPerido.length){
+    document.getElementById('indKpis').innerHTML='<div style="padding:32px;text-align:center;color:var(--mu)">Sem dados coletados para este período.<br>Execute o bookmarklet de coleta no Órion.</div>';
+    document.getElementById('indTabelaCard').style.display='none';
+    return;
+  }
 
-  // ── CPP do período
-  const semanaRef=semanasPerido[0]||hist[0]; // mais recente para CPP de escala
+  // ── Métricas consolidadas do período (só dados reais)
+  const vendas=semanasPerido.flatMap(s=>s.vendas||[]);
+  const cancels=semanasPerido.flatMap(s=>s.cancelamentos||[]);
+  const m=calcularMetricasSemana(vendas,cancels,hub);
+
+  // CPP do período: custo total da escala / volume real do Órion
   const custoEscalaPer=semanasPerido.reduce((t,s)=>{
-    if(s._soDaEscala) return t+(s._custoEscala||0);
-    const c=getCustoEscalaSemana(s.semanaISO);
-    return t+(c||0);
+    // Busca custo no mapa por segISO
+    const seg=s.de; // semanaISO = de+'/'+ate, de = segISO
+    return t+(custoMap[seg]||getCustoEscalaSemana(s.semanaISO)||0);
   },0);
   const custoManualPer=semanasPerido.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
-  const custoTotalPer=(custoEscalaPer||0)+custoManualPer;
   const cpp=custoEscalaPer>0&&m.volume>0?custoEscalaPer/m.volume:null;
-  const cppComAdicionais=custoTotalPer>0&&m.volume>0?custoTotalPer/m.volume:null;
+  const cppComAdicionais=(custoEscalaPer+custoManualPer)>0&&m.volume>0?(custoEscalaPer+custoManualPer)/m.volume:null;
   const temAdicionais=custoManualPer>0;
 
-  // Label do período — reflete o que está sendo mostrado
-  const primSem=semanasPerido[0];
-  const primMes=primSem?.de?new Date(primSem.de+'T12:00:00'):agora;
-  const periodoLabel={
-    semanal: primSem ? `${primSem.deBR}–${primSem.ateBR}` : 'Semana atual',
-    mensal: primMes.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}),
-    trimestral:`T${triAtual}/${anoAtual}`,
-  }[periodo];
+  // ── Período anterior para comparação (mesma quantidade de semanas, logo antes)
+  const nSems=semanasPerido.length;
+  const ultimaSem=semanasPerido[semanasPerido.length-1];
+  const semanasAnt=todasReais.filter(s=>s.de<(ultimaSem?.de||'9999')).slice(0,nSems);
+  const mAnt=semanasAnt.length?calcularMetricasSemana(semanasAnt.flatMap(s=>s.vendas||[]),semanasAnt.flatMap(s=>s.cancelamentos||[]),hub):null;
 
-  // Inicializar painel de custos manuais
-  setTimeout(()=>inicializarCppManual(), 50);
+  // ── Label do período — claro e preciso
+  const primeiraS=semanasPerido[semanasPerido.length-1]; // mais antiga do período
+  const ultimaS=semanasPerido[0]; // mais recente
+  const periodoLabel=periodo==='semanal'
+    ? `${ultimaS?.deBR}–${ultimaS?.ateBR}`
+    : periodo==='mensal'
+    ? (()=>{const d=new Date((primeiraS?.de||ultimaS?.de)+'T12:00:00');return d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});})()
+    : `T${triAtual}/${anoAtual}`;
 
-  // KPI Cards
-  const fmtCpp = v => v !== null ? `R$ ${v.toFixed(2).replace('.',',')}` : '—';
+  const intervaloLabel=semanasPerido.length>1
+    ? `${primeiraS?.deBR}/${primeiraS?.ate?.slice(5,7)} – ${ultimaS?.deBR}/${ultimaS?.ate?.slice(5,7)}`
+    : `${ultimaS?.deBR}–${ultimaS?.ateBR}`;
+
+  // ── Hubs disponíveis nas semanas selecionadas
+  const hubsDisp=[...new Set(semanasPerido.flatMap(s=>s.hubs||[]))].filter(hubVisivel);
+  atualizarSelectHubs(hubsDisp);
+
+  // Inicializar painel CPP manual
+  setTimeout(()=>inicializarCppManual(),50);
+
+  // ── KPI Cards
+  const fmtCpp=v=>v!=null?`R$ ${v.toFixed(2).replace('.',',')}`:'—';
   const kpis=[
     {icon:'📦',label:'Volume de pedidos',
-      val:m.volume>0?m.volume.toLocaleString('pt-BR'):'—',
-      prev:mAnt&&mAnt.volume>0?mAnt.volume:null,unit:'',big:true,hiMelhor:true,
-      rawVal:m.volume>0?m.volume:null,prevRaw:mAnt&&mAnt.volume>0?mAnt.volume:null,
-      extraHtml:m._nSemsComDados<m._nSemsTotais?`<div style="font-size:9px;color:#9ca3af;margin-top:1px">${m._nSemsComDados}/${m._nSemsTotais} sem. c/ dados reais</div>`:
-                m.volume>0?`<div style="font-size:9px;color:#16a34a;margin-top:1px">${periodoLabel}</div>`:''},
-    {icon:'❌',label:'Cancelamentos',val:m.cancelamentos,prev:mAnt?mAnt.cancelamentos:null,unit:'',big:false,hiMelhor:false},
-    {icon:'📉',label:'% Cancelamentos',val:m.pctCancel!=null?m.pctCancel.toFixed(2)+'%':'—',prev:mAnt?mAnt.pctCancel:null,unit:'%',big:false,hiMelhor:false,rawVal:m.pctCancel,prevRaw:mAnt?mAnt.pctCancel:null},
-    {icon:'🧑‍🍳',label:'Tempo médio preparo',val:fmtTempo(m.tPreparoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tPreparoMed,prevRaw:mAnt?mAnt.tPreparoMed:null},
-    {icon:'🛵',label:'Tempo médio coleta',val:fmtTempo(m.tColetaMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tColetaMed,prevRaw:mAnt?mAnt.tColetaMed:null},
-    {icon:'🏁',label:'Tempo médio despacho',val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null},
-    {icon:'💰',label:'CPP s/ adicionais',val:fmtCpp(cpp),prev:null,unit:'',big:false,raw:cpp,extraHtml: temAdicionais&&cpp!==null?`<div style="font-size:9px;color:#6b7280;margin-top:1px">Só escala</div>`:''},
-    ...(temAdicionais?[{icon:'💸',label:'CPP c/ adicionais',val:fmtCpp(cppComAdicionais),prev:null,unit:'',big:false,raw:cppComAdicionais,destaque:true,extraHtml:`<div style="font-size:9px;color:#dc2626;margin-top:1px">+R$ ${custoManualPer.toFixed(2).replace('.',',')} adicionais</div>`}]:[]),
+      val:m.volume.toLocaleString('pt-BR'),rawVal:m.volume,
+      prev:mAnt?.volume||null,prevRaw:mAnt?.volume||null,
+      big:true,hiMelhor:true,
+      extraHtml:`<div style="font-size:9px;color:var(--mu);margin-top:2px">${semanasPerido.length} sem. · ${periodoLabel}</div>`},
+    {icon:'❌',label:'Cancelamentos',
+      val:m.cancelamentos!=null?m.cancelamentos.toLocaleString('pt-BR'):'—',rawVal:m.cancelamentos,
+      prev:mAnt?.cancelamentos||null,hiMelhor:false},
+    {icon:'📉',label:'% Cancelamentos',
+      val:m.pctCancel!=null?m.pctCancel.toFixed(2)+'%':'—',rawVal:m.pctCancel,
+      prev:mAnt?.pctCancel||null,prevRaw:mAnt?.pctCancel||null,hiMelhor:false},
+    {icon:'🧑‍🍳',label:'Tempo médio preparo',
+      val:fmtTempo(m.tPreparoMed),rawVal:m.tPreparoMed,
+      prev:null,prevRaw:mAnt?.tPreparoMed||null,hiMelhor:false,
+      extraHtml:m.amostras?.preparo?`<div style="font-size:9px;color:var(--mu)">${m.amostras.preparo} amostras</div>`:'' },
+    {icon:'🛵',label:'Tempo médio coleta',
+      val:fmtTempo(m.tColetaMed),rawVal:m.tColetaMed,
+      prev:null,prevRaw:mAnt?.tColetaMed||null,hiMelhor:false,
+      extraHtml:m.amostras?.coleta?`<div style="font-size:9px;color:var(--mu)">${m.amostras.coleta} amostras</div>`:'' },
+    {icon:'🏁',label:'Tempo médio despacho',
+      val:fmtTempo(m.tDespachoMed),rawVal:m.tDespachoMed,
+      prev:null,prevRaw:mAnt?.tDespachoMed||null,hiMelhor:false,
+      extraHtml:m.amostras?.despacho?`<div style="font-size:9px;color:var(--mu)">${m.amostras.despacho} amostras</div>`:'' },
+    {icon:'💰',label:'CPP s/ adicionais',val:fmtCpp(cpp),rawVal:cpp,
+      prev:null,big:false,hiMelhor:false,
+      extraHtml:cpp!=null?`<div style="font-size:9px;color:var(--mu)">Só escala</div>`:''},
+    ...(temAdicionais?[{icon:'💸',label:'CPP c/ adicionais',val:fmtCpp(cppComAdicionais),rawVal:cppComAdicionais,
+      prev:null,big:false,hiMelhor:false,destaque:true,
+      extraHtml:`<div style="font-size:9px;color:#dc2626">+R$ ${custoManualPer.toFixed(2).replace('.',',')} adicionais</div>`}]:[]),
   ];
 
-  // Painel de distribuição por hub (só aparece quando 2+ hubs selecionados)
-  const semanaAtual=semanasPerido[0]||hist[0]; // para lookup de hubs disponíveis
-  const hubsAtivos = (hub instanceof Set
-    ? (hub.has('todos') ? (semanaAtual.hubs||[]) : [...hub])
-    : (hub === 'todos' ? (semanaAtual.hubs||[]) : [hub])
-  ).filter(h => !HUB_EXCLUIR || !HUB_EXCLUIR.has(h));
-
-  const distHubHtml = (() => {
-    if(hubsAtivos.length < 2) return '';
-    const totalGeral = m.volume;
-    if(!totalGeral) return '';
-
-    // Calcula volume e custo por hub — usa escala (KH) como fonte primária
-    // para semanas sintéticas que não têm dados do Órion
-    const volPorHub={}, custoPorHub={};
-    const volRealPorHub={};
-    semanasPerido.forEach(sem=>{
-      if(sem._soDaEscala){
-        // Semana sintética: volume é PROJEÇÃO, não real. Usa só para custo.
-        histEsc2.filter(e=>e.segISO===sem.de).forEach(e=>{
-          const h2=e.hub||'Sem hub';
-          if(!hubVisivel(h2)) return;
-          volPorHub[h2]=(volPorHub[h2]||0)+(e.resumo?.totalPed||0); // projetado
-          custoPorHub[h2]=(custoPorHub[h2]||0)+(e.resumo?.totalCusto||0);
-        });
-      } else {
-        // Semana com dados reais do Órion
-        hubsAtivos.forEach(h2=>{
-          const mH=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],new Set([h2]));
-          volPorHub[h2]=(volPorHub[h2]||0)+mH.volume;
-          volRealPorHub[h2]=(volRealPorHub[h2]||0)+mH.volume; // rastreia só reais
-          histEsc2.filter(e=>e.segISO===sem.de&&e.hub===h2).forEach(e=>{
-            custoPorHub[h2]=(custoPorHub[h2]||0)+(e.resumo?.totalCusto||0);
-          });
-        });
-      }
-    });
-
-    // Só usa volume real (Órion) para percentuais — não mistura com projeção
-    const volRealTotal=Object.values(volRealPorHub||{}).reduce((t,v)=>t+v,0) || totalGeral;
-    const rows = hubsAtivos.map(h2=>{
-      const vol=volPorHub[h2]||0; // pode ser projeção para semanas sintéticas
-      const volReal=volRealPorHub?.[h2]||0; // só dados do Órion
-      const custo=custoPorHub[h2]||0;
-      const cpp=custo>0&&(vol>0)?custo/vol:null;
-      const pct=volRealTotal>0&&volReal>0?(volReal/volRealTotal*100):(totalGeral>0?(vol/totalGeral*100):0);
-      const temReal=volReal>0;
-      return{nome:nomeHub(h2),vol:temReal?volReal:vol,custo,cpp,pct,projetado:!temReal&&vol>0};
-    }).filter(r=>r.vol>0||r.custo>0).sort((a,b)=>b.vol-a.vol);
-
-    if(!rows.length) return '';
-    const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
-    return `<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:16px;margin-bottom:16px">
-      <div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:4px;letter-spacing:.03em">DISTRIBUIÇÃO POR HUB</div>
-      <div style="font-size:10px;color:var(--mu);margin-bottom:10px">${periodoLabel}</div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        ${rows.map((r,i)=>{
-          const cor=cores[i%cores.length];
-          return `<div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:4px">
-              <span style="font-size:13px;font-weight:700;color:var(--tx)">${r.nome}</span>
-              <span style="font-size:11px;color:var(--mu);display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-                <span><strong style="color:var(--tx)">${r.vol.toLocaleString('pt-BR')}</strong> ped</span>
-                ${r.custo>0?`<span>R$ ${r.custo.toFixed(2).replace('.',',')}</span>`:''}
-                ${r.cpp!=null?`<span style="font-weight:700;color:${cor}">CPP R$ ${r.cpp.toFixed(2).replace('.',',')}</span>`:''}
-                <span style="font-weight:700;color:${cor}">${r.pct.toFixed(1)}%</span>
-              </span>
-            </div>
-            <div style="background:var(--card2);border-radius:4px;height:7px;overflow:hidden">
-              <div style="background:${cor};height:100%;width:${Math.min(r.pct,100).toFixed(1)}%;border-radius:4px;transition:.4s"></div>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
-  })();
-  document.getElementById('indDistHub').innerHTML = distHubHtml;
-
+  // ── Renderizar KPIs
   document.getElementById('indKpis').innerHTML=kpis.map(k=>{
     let varHtml='';
-    const rawAtual=k.rawVal!==undefined?k.rawVal:parseFloat(String(k.val).replace(',','.'));
-    const rawPrev=k.prevRaw!==undefined?k.prevRaw:(k.prev!==null?k.prev:null);
-    if(rawPrev!==null&&rawAtual!==null&&!isNaN(rawAtual)&&!isNaN(rawPrev)&&rawPrev!==0){
-      const pct=((rawAtual-rawPrev)/rawPrev*100);
-      const melhorou=k.hiMelhor?pct>0:pct<0;
-      const cor=melhorou?'#166534':'#dc2626';
-      const bg=melhorou?'#dcfce7':'#fee2e2';
+    if(k.prevRaw!=null&&k.rawVal!=null&&k.prevRaw!==0){
+      const pct=((k.rawVal-k.prevRaw)/k.prevRaw*100);
+      const ok=k.hiMelhor?pct>0:pct<0;
+      const cor=ok?'#166534':'#dc2626';const bg=ok?'#dcfce7':'#fee2e2';
       varHtml=`<div style="margin-top:4px;font-size:10px;font-weight:600;color:${cor};background:${bg};border-radius:4px;padding:2px 6px;display:inline-block">${pct>=0?'+':''}${pct.toFixed(1)}% vs sem. ant.</div>`;
     }
-    const borderColor=k.destaque?'border:2px solid #dc2626':'';
-    const bgColor=k.destaque?'background:#fff5f5':'';
-    return`<div class="sc" style="text-align:center;${borderColor};${bgColor}">
+    return`<div class="sc" style="text-align:center;${k.destaque?'border:2px solid #dc2626;background:#fff5f5':''}">
       <div class="sc-l">${k.icon} ${k.label}</div>
       <div class="sc-v" style="font-size:${k.big?'20':'17'}px;${k.destaque?'color:#dc2626':''}">${k.val}</div>
-      ${k.extraHtml||''}
-      ${varHtml}
+      ${k.extraHtml||''}${varHtml}
     </div>`;
   }).join('');
 
-  // ── helpers de cálculo de métricas de escala ──────────────────────────────
-  // histEscMap: segISO → CPP médio (custo total / pedidos totais de todos hubs)
-  // histEscMapHub: segISO+'_'+hub → {totalPed, totalCusto, cpp}
-  let histEscMap={}, histEscMapHub={};
-  try{
-    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
-    // Agrupa por segISO para calcular CPP consolidado
-    const _porSeg={};
-    he.forEach(e=>{
-      const seg=e.segISO; if(!seg||!e.resumo?.totalPed) return;
-      if(!_porSeg[seg]) _porSeg[seg]={custo:0,ped:0};
-      _porSeg[seg].custo+=(e.resumo.totalCusto||0);
-      _porSeg[seg].ped+=(e.resumo.totalPed||0);
-      // Por hub
-      const h2=e.hub||'Sem hub';
-      const hk=seg+'_'+h2;
-      if(!histEscMapHub[hk]) histEscMapHub[hk]={totalPed:0,totalCusto:0,hub:h2};
-      histEscMapHub[hk].totalPed+=(e.resumo.totalPed||0);
-      histEscMapHub[hk].totalCusto+=(e.resumo.totalCusto||0);
-    });
-    Object.entries(_porSeg).forEach(([seg,v])=>{
-      if(v.ped>0) histEscMap[seg]=v.custo/v.ped;
-    });
-    // Calcular CPP por hub
-    Object.values(histEscMapHub).forEach(v=>{
-      if(v.totalPed>0) v.cpp=v.totalCusto/v.totalPed;
-    });
-  }catch(e){}
+  // ── Distribuição por hub
+  const hubsAtivos=(hub instanceof Set?hub.has('todos')?hubsDisp:[...hub]:hubsDisp.filter(h=>h===hub)).filter(hubVisivel);
+  const distHubHtml=(()=>{
+    if(hubsAtivos.length<2) return '';
+    // Volume por hub: filtra vendas reais
+    const rows=hubsAtivos.map(h2=>{
+      const mH=calcularMetricasSemana(vendas,cancels,new Set([h2]));
+      // Custo: busca no mapa por hub somando as semanas do período
+      let custoH=0;
+      semanasPerido.forEach(s=>{
+        const hk=s.de+'|'+h2;
+        custoH+=(custoPorHubMap[hk]?.custo||0);
+      });
+      const cppH=custoH>0&&mH.volume>0?custoH/mH.volume:null;
+      const pct=m.volume>0?mH.volume/m.volume*100:0;
+      return{nome:nomeHub(h2),vol:mH.volume,custo:custoH,cpp:cppH,pct,cancel:mH.cancelamentos,pctCancel:mH.pctCancel};
+    }).filter(r=>r.vol>0||r.custo>0).sort((a,b)=>b.vol-a.vol);
+    if(!rows.length)return'';
+    const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
+    return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:800;color:var(--mu);margin-bottom:2px;letter-spacing:.04em;text-transform:uppercase">Distribuição por hub</div>
+      <div style="font-size:10px;color:var(--mu);margin-bottom:12px">${periodoLabel} · ${intervaloLabel}</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${rows.map((r,i)=>{const cor=cores[i%cores.length];return`<div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;flex-wrap:wrap;gap:6px">
+            <span style="font-size:14px;font-weight:700;color:var(--tx)">${r.nome}</span>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:13px;font-weight:700;color:var(--tx)">${r.vol.toLocaleString('pt-BR')} ped</span>
+              ${r.pctCancel!=null?`<span style="font-size:11px;color:var(--mu)">${r.pctCancel.toFixed(1)}% cancel.</span>`:''}
+              ${r.custo>0?`<span style="font-size:11px;color:var(--mu)">R$ ${r.custo.toFixed(2).replace('.',',')}</span>`:''}
+              ${r.cpp!=null?`<span style="font-size:12px;font-weight:700;color:${cor}">CPP R$ ${r.cpp.toFixed(2).replace('.',',')}</span>`:''}
+              <span style="font-size:12px;font-weight:700;color:${cor}">${r.pct.toFixed(1)}%</span>
+            </div>
+          </div>
+          <div style="background:var(--card2);border-radius:4px;height:8px;overflow:hidden">
+            <div style="background:${cor};height:100%;width:${Math.min(r.pct,100).toFixed(1)}%;border-radius:4px;transition:.4s"></div>
+          </div>
+        </div>`}).join('')}
+      </div>
+    </div>`;
+  })();
+  document.getElementById('indDistHub').innerHTML=distHubHtml;
+
+  // ── Atualizar meta info
+  const metaEl=document.getElementById('indTabelaMeta');
+  if(metaEl) metaEl.textContent=`${todasReais.length} semana${todasReais.length!==1?'s':''} coletadas · ${periodoLabel}`;
+
+  // ── Header da seção indicadores
+  const indTituloEl=document.getElementById('indTituloSub');
+  if(indTituloEl) indTituloEl.textContent=`${periodoLabel} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''} · ${m.volume.toLocaleString('pt-BR')} pedidos analisados`;
+
+  // ══════════════════════════════════════════════════════════════════
+  // TABELA HISTÓRICA — mesma lógica, mesmo filtro de hub
+  // ══════════════════════════════════════════════════════════════════
+
+  // Mapa custo escala por semana para tabela
+  let histEscMap={},histEscMapHub={};
+  histEsc.forEach(e=>{
+    const seg=e.segISO; if(!seg||!e.resumo?.totalPed) return;
+    if(!histEscMap[seg]) histEscMap[seg]={custo:0,ped:0};
+    histEscMap[seg].custo+=(e.resumo.totalCusto||0);
+    histEscMap[seg].ped+=(e.resumo.totalPed||0);
+    const h2=e.hub||'Sem hub';
+    const hk=seg+'|'+h2;
+    if(!histEscMapHub[hk]) histEscMapHub[hk]={hub:h2,totalPed:0,totalCusto:0,cpp:0};
+    histEscMapHub[hk].totalPed+=(e.resumo.totalPed||0);
+    histEscMapHub[hk].totalCusto+=(e.resumo.totalCusto||0);
+  });
+  Object.values(histEscMapHub).forEach(v=>{if(v.totalPed>0)v.cpp=v.totalCusto/v.totalPed;});
 
   const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
 
-  // Consolida um conjunto de semanas para linha de resumo (mês / trimestre)
-  // Volume, cancelamentos, adicionais: SOMA
-  // % cancel: cancel_total / (volume_total + cancel_total)
-  // CPP s/ adicional: soma_custos_escala / soma_volume
-  // CPP c/ adicional: (soma_custos + soma_adicionais) / soma_volume
-  // Tempos: média ponderada pelo volume (só semanas com dados reais)
-  function calcularMediaSemanas(sems){
+  function cppDaSem(sem){
+    const seg=sem.de;
+    const d=histEscMap[seg];
+    if(d&&d.ped>0) return d.custo/d.ped;
+    return getCustoEscalaSemana(sem.semanaISO)||null;
+  }
+
+  function calcConsolid(sems){
     if(!sems.length) return null;
-    const mts=sems.map(s=>metricasSem(s));
-    const nSint=sems.filter(s=>s._soDaEscala).length;
-    const mtsReais=mts.filter(x=>!x._sintetica);
-
-    // Volume REAL: só semanas com dados do Órion. Projeção de escala NÃO entra.
-    const volTotal=mts.reduce((t,x)=>t+(x.volume!=null?x.volume:0),0);
-    const volProjetadoTotal=sems.reduce((t,s)=>t+(s._volEscala||0),0); // apenas para referência
-    const nSemsReais=mts.filter(x=>x.volume!=null).length;
-    const cancelTotal=mtsReais.reduce((t,x)=>t+(x.cancelamentos||0),0);
-    const cancelDisp=mtsReais.length>0;
-    const pctTotal=cancelDisp&&volTotal>0?(cancelTotal/(volTotal+cancelTotal))*100:null;
-
-    // Custos — SOMA para calcular CPP correto
-    const custoEscalaTotal=sems.reduce((t,s)=>{
-      const c=s._soDaEscala?s._custoEscala:(histEscMap[s.de]!=null?histEscMap[s.de]*metricasSem(s).volume:null);
-      return t+(c||0);
-    },0);
+    const v=sems.flatMap(s=>s.vendas||[]);
+    const c=sems.flatMap(s=>s.cancelamentos||[]);
+    const mt=calcularMetricasSemana(v,c,hub);
+    const custoTotal=sems.reduce((t,s)=>{const cpp2=cppDaSem(s);return t+(cpp2!=null?cpp2*calcularMetricasSemana(s.vendas||[],s.cancelamentos||[],hub).volume:0);},0);
     const ads=sems.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
-    const cppSemTotal=custoEscalaTotal>0&&volTotal>0?custoEscalaTotal/volTotal:null;
-    const cppComAdTotal=custoEscalaTotal>0&&volTotal>0?(custoEscalaTotal+ads)/volTotal:null;
-
-    // Tempos — média ponderada pelo volume das semanas com dados
-    function mediaTempoP(campo){
-      const pares=mtsReais.map(x=>({t:x[campo],v:x.volume})).filter(p=>p.t!=null&&p.v>0);
-      if(!pares.length) return null;
-      const sumP=pares.reduce((s,p)=>s+p.t*p.v,0);
-      const sumV=pares.reduce((s,p)=>s+p.v,0);
-      return sumV>0?sumP/sumV:null;
-    }
-
     return{
-      volume:volTotal,
-      cancelamentos:cancelDisp?cancelTotal:null,
-      pctCancel:pctTotal,
-      tPreparoMed:mediaTempoP('tPreparoMed'),
-      tColetaMed:mediaTempoP('tColetaMed'),
-      tDespachoMed:mediaTempoP('tDespachoMed'),
-      cppSem:cppSemTotal,
+      volume:mt.volume,cancelamentos:mt.cancelamentos,pctCancel:mt.pctCancel,
+      tPreparoMed:mt.tPreparoMed,tColetaMed:mt.tColetaMed,tDespachoMed:mt.tDespachoMed,
+      cppSem:custoTotal>0&&mt.volume>0?custoTotal/mt.volume:null,
       adicionalTotal:ads,
-      cppComAd:cppComAdTotal,
-      nSemanas:sems.length,
-      nSinteticas:nSint,
+      cppComAd:(custoTotal+ads)>0&&mt.volume>0?(custoTotal+ads)/mt.volume:null,
+      nSems:sems.length,
     };
   }
 
-  // Célula com variação % colorida vs período anterior
-  function celVar(atual,ant,hiMelhor=false,fmt=v=>v){
-    if(ant===null||ant===undefined||atual===null)
-      return`<td style="padding:8px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)??'—'}</td>`;
-    const pct=ant!==0?((atual-ant)/ant*100):0;
-    const melhorou=hiMelhor?pct>0:pct<0;
-    const cor=melhorou?'#166534':'#dc2626';
-    const sinal=pct>=0?'+':'';
-    return`<td style="padding:8px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)} <span style="font-size:10px;color:${cor};font-weight:600">${sinal}${pct.toFixed(1)}%</span></td>`;
+  // Helpers de célula
+  const cel=(v,st='')=>`<td style="padding:8px 12px;${st}">${v}</td>`;
+  function celVar(atual,ant,hiMelhor,fmt){
+    const v=fmt?fmt(atual):atual;
+    if(ant==null||isNaN(ant)||ant===0)return cel(v);
+    const pct=((atual-ant)/ant*100);const ok=hiMelhor?pct>0:pct<0;
+    const cor=ok?'#166534':'#991b1b';const bg=ok?'#dcfce7':'#fee2e2';
+    return cel(`${v} <span style="font-size:9px;font-weight:700;color:${cor};background:${bg};border-radius:3px;padding:1px 4px">${pct>=0?'+':''}${pct.toFixed(1)}%</span>`);
   }
+  const celSD=(label='s/ dados')=>`<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">${label}</td>`;
+  const celT=v=>v!=null?cel(fmtTempo(v)):celSD();
+  const fmtR=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
 
-  // Célula simples (sem variação)
-  const cel=(v,extra='')=>`<td style="padding:8px 12px;font-size:12px;font-family:var(--mo);${extra}">${v??'—'}</td>`;
-
-  const cols=['Período','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
-  const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
-
-  // Linha de resumo consolidada (mês / trimestre)
-  // Volume, cancelamentos, adicionais: totais acumulados
-  // CPP e tempos: calculados sobre os totais
-  function linhaResumo(labelCell, med, prevMed, estiloTr=''){
-    if(!med) return '';
-    const cppFmt=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
-    const adFmt=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
-    // Nota discreta de parcialidade (só no label, não em cada célula)
-    const parcialNote=med.nSinteticas>0&&med.nSinteticas<med.nSemanas
-      ?'<div style="font-size:9px;color:#9ca3af;font-weight:400;font-style:italic;margin-top:2px">⚠ '+med.nSinteticas+' sem. sem coleta de tempos</div>':'';
-    return`<tr style="font-weight:700;border-top:2px solid var(--brd2);${estiloTr}">
-      ${labelCell.replace(/<\/td>$/, parcialNote+'</td>')}
-      ${med.volume>0?celVar(med.volume,prevMed?.volume,true,v=>v.toLocaleString('pt-BR')):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>'}
-      ${med.cancelamentos!=null?celVar(med.cancelamentos,prevMed?.cancelamentos,false,x=>x.toLocaleString('pt-BR')):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>'}
-      ${med.pctCancel!=null?celVar(med.pctCancel,prevMed?.pctCancel,false,x=>x.toFixed(2)+'%'):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>'}
-      ${celTempoResumo(med.tPreparoMed)}
-      ${celTempoResumo(med.tColetaMed)}
-      ${celTempoResumo(med.tDespachoMed)}
-      ${cel(cppFmt(med.cppSem))}
-      ${cel(adFmt(med.adicionalTotal))}
-      ${cel(cppFmt(med.cppComAd),med.cppComAd&&med.adicionalTotal>0?'color:#dc2626;font-weight:800':'')}
-    </tr>`;
-  }
-
-  // ── Função auxiliar: extrai métricas de uma semana (real ou sintética da escala)
-  // Entradas sintéticas têm volume/CPP da escala — cancelamentos e tempos são null (s/ bookmarklet)
-  function metricasSem(sem){
-    if(sem._soDaEscala){
-      // Semana sem dados do Órion: volume REAL desconhecido.
-      // _volEscala é PROJEÇÃO de demanda (cell.ped), NÃO pedidos reais.
-      // Retorna null para volume — nunca misturar projeção com dados reais.
-      return {volume:null,cancelamentos:null,pctCancel:null,
-              tPreparoMed:null,tColetaMed:null,tDespachoMed:null,_sintetica:true,
-              _custoEscala:sem._custoEscala||0, _volProjetado:sem._volEscala||0};
-    }
-    return calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
-  }
-
-  // ── Para entradas sintéticas, CPP vem do histEscMap (custo total/volume)
-  function cppSemFn(sem){
-    if(sem._soDaEscala && sem._custoEscala && sem._volEscala>0)
-      return sem._custoEscala/sem._volEscala;
-    return histEscMap[sem.de]||null;
-  }
-
-  // ── Helpers de célula compartilhados entre todos os modos ──────────────────
-  // Célula de cancelamento: mostra valor real ou "s/ dados" em cinza
-  function celCancelamento(v, prevMt=null){
-    if(v===null||v===undefined)
-      return '<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Colete indicadores para ver cancelamentos">s/ dados</td>';
-    return celVar(v,prevMt?.cancelamentos,false,x=>x);
-  }
-  // Célula de % cancel
-  function celPctCancel(v, prevMt=null){
-    if(v===null||v===undefined)
-      return '<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>';
-    return celVar(v,prevMt?.pctCancel,false,x=>x.toFixed(2)+'%');
-  }
-  // Célula de tempo: mostra valor ou "s/ dados"
-  function celTempo(v){
-    if(v===null||v===undefined)
-      return '<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Colete indicadores para ver os tempos">s/ dados</td>';
-    return cel(fmtTempo(v));
-  }
-  // Célula de tempo em linha de resumo: "parcial" quando mistura semanas c/ e s/ dados
-  function celTempoResumo(v){
-    if(v===null||v===undefined)
-      return '<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">parcial</td>';
-    return cel(fmtTempo(v));
-  }
-  // Monta uma linha completa de semana (usada nos 3 modos)
-  function linhasSemana(sem, mt, cppSem, adicionalSem, cppComAdicional, prevMt=null, extraStyle='', extraLabel=''){
-    const sintetica=mt._sintetica;
-    const labelPeriodo=`${sem.deBR}–${sem.ateBR}`+(extraLabel?` ${extraLabel}`:'')
-      +(sintetica?' <span style="font-size:9px;color:#9ca3af;font-weight:400;font-style:italic">(só escala)</span>':'');
-
-    // Linha principal da semana
-    // Volume: só mostra real (Órion). Sintéticas mostram projeção com aviso claro.
-    const volCell = sintetica
-      ? `<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Volume real não coletado no Órion. Projeção da escala: ${(mt._volProjetado||0).toLocaleString('pt-BR')} ped.">s/ dados${mt._volProjetado?` <span style="font-size:9px">(≈${mt._volProjetado.toLocaleString('pt-BR')} proj.)</span>`:''}</td>`
-      : celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR'));
-    let html='<tr style="border-bottom:1px solid var(--brd);'+extraStyle+'">'
-      +cel(labelPeriodo,'font-weight:600;white-space:nowrap')
-      +volCell
-      +celCancelamento(mt.cancelamentos,prevMt)
-      +celPctCancel(mt.pctCancel,prevMt)
-      +celTempo(mt.tPreparoMed)
-      +celTempo(mt.tColetaMed)
-      +celTempo(mt.tDespachoMed)
-      +cel(cppSem!=null?'R$ '+cppSem.toFixed(2).replace('.',','):'—')
-      +cel(adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—',adicionalSem>0?'background:#fff7ed':'')
-      +cel(cppComAdicional!=null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—',cppComAdicional&&adicionalSem>0?'color:#dc2626;font-weight:700':'')
-      +'</tr>';
-
-    // Sub-linhas por hub (quando há dados de escala com múltiplos hubs)
-    const hubsNaSemana=Object.entries(histEscMapHub)
-      .filter(([k])=>k.startsWith(sem.de+'_'))
-      .map(([,v])=>v)
-      .filter(v=>v.totalPed>0)
+  function linhaSemana(sem,mt,prev=null,subStyle=''){
+    const cppSem=cppDaSem(sem);
+    const ads=getCppManualTotal(sem.semanaISO||'');
+    const cppComAd=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+ads)/mt.volume):null;
+    // Sub-linhas por hub
+    const hubsNaSem=Object.entries(histEscMapHub)
+      .filter(([k])=>k.startsWith(sem.de+'|'))
+      .map(([,v])=>v).filter(v=>v.totalPed>0)
       .sort((a,b)=>b.totalPed-a.totalPed);
-
-    if(hubsNaSemana.length>=2){
-      const cores=['#2563eb','#16a34a','#d97706','#7c3aed','#dc2626'];
-      hubsNaSemana.forEach((hd,i)=>{
-        const cor=cores[i%cores.length];
-        const cppH=hd.cpp!=null?'R$ '+hd.cpp.toFixed(2).replace('.',','):'—';
-        const volH=hd.totalPed.toLocaleString('pt-BR');
-        html+='<tr style="background:var(--card2);font-size:10px;border-bottom:1px solid var(--brd)">'
-          +`<td style="padding:4px 12px 4px 22px;color:${cor};font-weight:600;white-space:nowrap">`
-          +`<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${cor};margin-right:5px;vertical-align:middle"></span>`
-          +`${nomeHub(hd.hub)}</td>`
-          +`<td style="padding:4px 10px;color:var(--mu)">${volH} ped</td>`
-          +`<td colspan="5" style="padding:4px 10px;color:var(--mu)">R$ ${hd.totalCusto.toFixed(2).replace('.',',')}</td>`
-          +`<td style="padding:4px 10px;font-weight:700;color:${cor}">${cppH}</td>`
-          +`<td colspan="2" style="padding:4px 10px;color:var(--mu)">${(hd.totalPed/mt.volume*100).toFixed(1)}% do total</td>`
-          +'</tr>';
-      });
-    }
-
+    const cores=['#2563eb','#16a34a','#d97706','#7c3aed'];
+    let html='<tr style="border-bottom:1px solid var(--brd);'+subStyle+'">'
+      +cel(`${sem.deBR}–${sem.ateBR}`,'font-weight:600;white-space:nowrap')
+      +celVar(mt.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))
+      +(mt.cancelamentos!=null?celVar(mt.cancelamentos,prev?.cancelamentos,false,v=>v.toLocaleString('pt-BR')):celSD())
+      +(mt.pctCancel!=null?celVar(mt.pctCancel,prev?.pctCancel,false,v=>v.toFixed(2)+'%'):celSD('—'))
+      +celT(mt.tPreparoMed)+celT(mt.tColetaMed)+celT(mt.tDespachoMed)
+      +cel(fmtR(cppSem))
+      +cel(ads>0?fmtR(ads):'—',ads>0?'background:#fff7ed':'')
+      +cel(fmtR(cppComAd),cppComAd&&ads>0?'color:#dc2626;font-weight:700':'')
+      +'</tr>';
+    if(hubsNaSem.length>=2) hubsNaSem.forEach((hd,i)=>{
+      const cor=cores[i%cores.length];
+      html+='<tr style="background:var(--card2);font-size:10px;border-bottom:1px solid var(--brd)">'
+        +`<td style="padding:3px 12px 3px 24px;color:${cor};font-weight:600;white-space:nowrap"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${cor};margin-right:4px;vertical-align:middle"></span>${nomeHub(hd.hub)}</td>`
+        +`<td style="padding:3px 10px;color:var(--mu)">${hd.totalPed.toLocaleString('pt-BR')} ped (${(hd.totalPed/(mt.volume||1)*100).toFixed(0)}%)</td>`
+        +`<td colspan="5" style="padding:3px 10px;color:var(--mu)">Custo R$ ${hd.totalCusto.toFixed(2).replace('.',',')}</td>`
+        +`<td style="padding:3px 10px;font-weight:700;color:${cor}">${hd.cpp>0?fmtR(hd.cpp):'—'}</td>`
+        +`<td colspan="2"></td>`+'</tr>';
+    });
     return html;
   }
 
+  function linhaResumo(label,med,prev=null,style=''){
+    if(!med||!med.volume) return'';
+    const ads=med.adicionalTotal||0;
+    return`<tr style="font-weight:700;border-top:2px solid var(--brd2);${style}">
+      <td style="padding:8px 12px">${label}</td>
+      ${celVar(med.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))}
+      ${med.cancelamentos!=null?celVar(med.cancelamentos,prev?.cancelamentos,false,v=>v.toLocaleString('pt-BR')):celSD()}
+      ${med.pctCancel!=null?celVar(med.pctCancel,prev?.pctCancel,false,v=>v.toFixed(2)+'%'):celSD('—')}
+      ${celT(med.tPreparoMed)}${celT(med.tColetaMed)}${celT(med.tDespachoMed)}
+      ${cel(fmtR(med.cppSem))}
+      ${cel(ads>0?fmtR(ads):'—',ads>0?'background:#fff7ed':'')}
+      ${cel(fmtR(med.cppComAd),med.cppComAd&&ads>0?'color:#dc2626;font-weight:800':'')}
+    </tr>`;
+  }
+
+  // Agrupamento da tabela
+  const todasOrdem=todasReais.slice().reverse(); // cronológico
+  function gruposMes(sems){
+    const mp={};
+    sems.forEach(s=>{
+      const d=new Date(s.de+'T12:00:00');
+      const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+      if(!mp[k])mp[k]={label,sems:[]};
+      mp[k].sems.push(s);
+    });
+    return Object.entries(mp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
+  }
+  function gruposTri(sems){
+    const mp={};
+    sems.forEach(s=>{
+      const d=new Date(s.de+'T12:00:00');
+      const q=Math.ceil((d.getMonth()+1)/3);
+      const k=`${d.getFullYear()}-T${q}`;
+      if(!mp[k])mp[k]={label:`T${q}/${d.getFullYear()}`,sems:[]};
+      mp[k].sems.push(s);
+    });
+    return Object.entries(mp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
+  }
+
   let tbody='<tbody>';
+  const thead=`<thead><tr style="background:var(--tx)">
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">PERÍODO</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">VOLUME PEDIDOS</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CANCELAMENTOS</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">% CANCEL.</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">T. PREPARO</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">T. COLETA</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">T. DESPACHO</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CPP S/ ADICIONAL</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">ADICIONAIS</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CPP C/ ADICIONAL</th>
+  </tr></thead>`;
 
-  // ══════════════════════════════════════════════════
-  // MODO SEMANAL — apenas a semana mais recente
-  // ══════════════════════════════════════════════════
   if(periodo==='semanal'){
-    const sem=hist[0]; // mais recente
-    const mt=metricasSem(sem);
-    const cppSem=cppSemFn(sem);
-    const adicionalSem=getCppManualTotal(sem.semanaISO||'');
-    const cppComAdicional=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
-    tbody+=linhasSemana(sem,mt,cppSem,adicionalSem,cppComAdicional);
-
-  // ══════════════════════════════════════════════════
-  // MODO MENSAL — semanas do mês atual + linha de média
-  // ══════════════════════════════════════════════════
+    const sem=todasReais[0];
+    const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+    tbody+=linhaSemana(sem,mt);
   } else if(periodo==='mensal'){
-    // Semanas do mês atual (ou mês mais recente disponível)
-    let semanasDoMes=hist.filter(s=>{
-      if(!s.de) return false;
-      const d=new Date(s.de+'T12:00:00');
-      return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
-    }).slice().reverse(); // cronológico
-
-    if(!semanasDoMes.length){
-      // fallback: mês mais recente disponível
-      const d0=new Date(hist[0].de+'T12:00:00');
-      semanasDoMes=hist.filter(s=>{
-        if(!s.de) return false;
-        const d=new Date(s.de+'T12:00:00');
-        return d.getMonth()===d0.getMonth() && d.getFullYear()===d0.getFullYear();
-      }).slice().reverse();
-    }
-
-    const metricas=semanasDoMes.map(sem=>{
-      const mt=metricasSem(sem);
-      const cppSem=cppSemFn(sem);
-      const adicionalSem=getCppManualTotal(sem.semanaISO||'');
-      const cppComAdicional=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
-      return{sem,mt,cppSem,adicionalSem,cppComAdicional};
+    const grupos=gruposMes(todasOrdem);
+    grupos.forEach((g,gi)=>{
+      // Cabeçalho do mês
+      tbody+=`<tr><td colspan="10" style="background:#f0fdf4;color:#166534;font-weight:700;font-size:11px;padding:6px 12px;text-transform:capitalize;border-bottom:1px solid #bbf7d0">${g.label}</td></tr>`;
+      let prevMt=null;
+      g.sems.forEach((sem,si)=>{
+        const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+        tbody+=linhaSemana(sem,mt,prevMt,'font-size:11px');
+        prevMt=mt;
+      });
+      // Média do mês
+      const med=calcConsolid(g.sems);
+      const prevGrupo=gi>0?calcConsolid(grupos[gi-1].sems):null;
+      tbody+=linhaResumo(`<span style="font-size:10px;font-weight:700">Consolidado ${g.label}</span>`,med,prevGrupo,'background:#f0fdf4');
     });
-
-    metricas.forEach(({sem,mt,cppSem,adicionalSem,cppComAdicional},i)=>{
-      const prevMt=i>0?metricas[i-1].mt:null;
-      tbody+=linhasSemana(sem,mt,cppSem,adicionalSem,cppComAdicional,prevMt,mt._sintetica?'background:#fafbfc':'');
-    });
-
-    // Linha de média mensal (só se houver 2+ semanas)
-    if(metricas.length>=1){
-      const med=calcularMediaSemanas(semanasDoMes);
-      const labelMes=semanasDoMes.length===1?'Semana única':'Média do mês';
-      tbody+=linhaResumo(
-        `<td style="padding:8px 12px;font-size:11px;color:var(--mu)">${labelMes}</td>`,
-        med, null,
-        'background:#f0fdf4'
-      );
-    }
-
-  // ══════════════════════════════════════════════════
-  // MODO TRIMESTRAL — 1 linha por mês do trimestre
-  //   cada linha = média das semanas daquele mês
-  //   mês atual marcado como (parcial)
-  //   + linha de média do trimestre no final
-  // ══════════════════════════════════════════════════
   } else {
-    // Determinar meses do trimestre atual (ou trimestre mais recente disponível)
-    let triRef=triAtual, anoRef=anoAtual;
-    const semanasTri=hist.filter(s=>{
-      if(!s.de) return false;
-      const d=new Date(s.de+'T12:00:00');
-      return d.getFullYear()===anoRef && Math.ceil((d.getMonth()+1)/3)===triRef;
-    });
-    if(!semanasTri.length){
-      const d0=new Date(hist[0].de+'T12:00:00');
-      anoRef=d0.getFullYear();
-      triRef=Math.ceil((d0.getMonth()+1)/3);
-    }
-
-    // Meses do trimestre: ex T2 = [3,4,5] (0-based: abril=3, maio=4, junho=5)
-    const mesesDoTri=[(triRef-1)*3, (triRef-1)*3+1, (triRef-1)*3+2]; // 0-based
-
-    const dadosPorMes=mesesDoTri.map(mes=>{
-      const semsDoMes=hist.filter(s=>{
-        if(!s.de) return false;
-        const d=new Date(s.de+'T12:00:00');
-        return d.getFullYear()===anoRef && d.getMonth()===mes;
+    // Trimestral
+    const grupos=gruposTri(todasOrdem);
+    grupos.forEach((gTri,gt)=>{
+      tbody+=`<tr><td colspan="10" style="background:#eff6ff;color:#1e40af;font-weight:800;font-size:12px;padding:8px 12px;border-bottom:1px solid #bfdbfe">${gTri.label}</td></tr>`;
+      const mesMeses=gruposMes(gTri.sems);
+      mesMeses.forEach((g,gi)=>{
+        tbody+=`<tr><td colspan="10" style="background:#f8fafc;color:#374151;font-weight:600;font-size:10px;padding:4px 12px;border-bottom:1px solid var(--brd);text-transform:capitalize">  ${g.label}</td></tr>`;
+        let prevMt=null;
+        g.sems.forEach(sem=>{
+          const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+          tbody+=linhaSemana(sem,mt,prevMt,'font-size:11px');
+          prevMt=mt;
+        });
+        const medMes=calcConsolid(g.sems);
+        const prevMes=gi>0?calcConsolid(mesMeses[gi-1].sems):null;
+        tbody+=linhaResumo(`Consolidado ${g.label}`,medMes,prevMes,'background:#f8fafc');
       });
-      const ehMesAtual=mes===mesAtual && anoRef===anoAtual;
-      const nomeMes=new Date(anoRef,mes,15).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-      return{mes,nomeMes,sems:semsDoMes,ehMesAtual};
-    }).filter(g=>g.sems.length>0); // só meses com dados
-
-    let medAnterior=null;
-    dadosPorMes.forEach((grupo,gi)=>{
-      const med=calcularMediaSemanas(grupo.sems);
-      if(!med) return;
-      const parcialLabel=grupo.ehMesAtual?' <span style="font-size:9px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:3px;padding:1px 5px;font-weight:600">PARCIAL</span>':'';
-      // Linha de média do mês (linha principal)
-      const labelCell=`<td style="padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap;text-transform:capitalize">${grupo.nomeMes}${parcialLabel}<div style="font-size:10px;color:var(--mu);font-weight:400;margin-top:2px">${grupo.sems.length} semana${grupo.sems.length!==1?'s':''} · consolidado</div></td>`;
-      tbody+=linhaResumo(labelCell, med, medAnterior, grupo.ehMesAtual?'background:#fffbeb':'');
-      // Sub-linhas: cada semana do mês (identadas, fundo suave)
-      grupo.sems.slice().reverse().forEach((sem,si)=>{
-        const mt=metricasSem(sem);
-        const cppSem=cppSemFn(sem);
-        const adSem=getCppManualTotal(sem.semanaISO||'');
-        const cppComAd=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+adSem)/mt.volume):null;
-        const prevMt=si>0?metricasSem(grupo.sems.slice().reverse()[si-1]):null;
-        const bgSub=grupo.ehMesAtual?'background:#fffdf5':'background:#fafafa';
-        tbody+=linhasSemana(sem,mt,cppSem,adSem,cppComAd,prevMt,bgSub+';font-size:11px','');
-      });
-      medAnterior=med;
+      // Consolidado do trimestre
+      const medTri=calcConsolid(gTri.sems);
+      const prevTri=gt>0?calcConsolid(grupos[gt-1].sems):null;
+      tbody+=linhaResumo(`<strong>Consolidado ${gTri.label}</strong>`,medTri,prevTri,'background:#eff6ff;border-top:3px solid #3b82f6');
     });
-
-    // Linha de média geral do trimestre
-    if(dadosPorMes.length>=1){
-      const todasSemsDoTri=dadosPorMes.flatMap(g=>g.sems);
-      const medTri=calcularMediaSemanas(todasSemsDoTri);
-      const labelTri=`<td style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--mu)">T${triRef}/${anoRef} · ${todasSemsDoTri.length} sem. consolidado</td>`;
-      tbody+=linhaResumo(labelTri, medTri, null, 'background:#f0fdf4;border-top:3px solid #16a34a');
-    }
   }
 
   tbody+='</tbody>';
 
-  // Insert informative note when 1 week only
+  const tabelaEl=document.getElementById('indTabela');
+  if(tabelaEl) tabelaEl.innerHTML=thead+tbody;
+
+  // Nota de aviso se dados são parciais
   const tabelaCard=document.getElementById('indTabelaCard');
   let notaEl=tabelaCard?.querySelector('.ind-nota-semanas');
-  if(hist.length<=1&&!notaEl){
+  const notaTexto=`📊 Exibindo ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''} com dados reais do Órion — período: ${periodoLabel} (${intervaloLabel})`;
+  if(!notaEl){
     notaEl=document.createElement('div');
     notaEl.className='ind-nota-semanas';
-    notaEl.style.cssText='padding:10px 16px 0';
-    notaEl.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:11px;color:#92400e">ℹ️ <strong>Apenas ${hist.length} semana coletada.</strong> Comparações % e visões mensais/trimestrais ficam melhores com mais semanas coletadas.</div>`;
-    const cardBody=tabelaCard?.querySelector('.card-body');
-    if(cardBody)cardBody.insertBefore(notaEl,cardBody.firstChild);
-  } else if(notaEl&&hist.length>1){
-    notaEl.remove();
+    notaEl.style.cssText='padding:8px 16px 0';
+    tabelaCard?.querySelector('.card-body')?.insertBefore(notaEl,tabelaCard.querySelector('.card-body').firstChild);
   }
-
-  document.getElementById('indTabela').innerHTML=thead+tbody;
-
-  const subTxt=`${periodoLabel} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''} · ${todasVendas.length.toLocaleString('pt-BR')} pedidos analisados`;
-  document.getElementById('indSub').textContent=subTxt;
-  const modoLabel={semanal:'semana',mensal:'mês',trimestral:'trimestre'}[periodo];
-  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · exibindo ${modoLabel} atual`;
-
-  // Atualiza select hubs
-  atualizarSelectHubs([]);
+  notaEl.innerHTML=`<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;font-size:11px;color:#1e40af;margin-bottom:8px">${notaTexto}</div>`;
 }
 
 function limparIndicadores(){
