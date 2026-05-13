@@ -1560,6 +1560,8 @@ async function buscarConfirmacoesAPI(){
             if(!cell) continue;
             if(removeu&&removeu!=='Sistema') cell.alocados=cell.alocados.filter(n=>n!==removeu);
             if(adicionou&&!cell.alocados.includes(adicionou)) cell.alocados.push(adicionou);
+            // Sincroniza a troca no histórico imediatamente
+            if(removeu&&adicionou) sincronizarTrocaNaHistoria(removeu,adicionou,subst.dia,subst.ini,subst.fim);
             nRemovidos++;
           }
         }
@@ -3103,6 +3105,7 @@ function ptDrop(e, el){
   if(trocados>0){
     calcularCustos();
     save();
+    sincronizarTrocaNaHistoria(oriNome,destNome,dia,ini,fim);
     toast(`✅ Turno de ${oriNome} transferido para ${destNome} (${dia} ${fH(ini)}–${fH(fim)}).`,'tok');
     // Re-abre o painel já atualizado
     setTimeout(()=>abrirPainelTurnos(),300);
@@ -3158,6 +3161,90 @@ function ptSlotClick(e, el){
   modal.appendChild(pop);
   setTimeout(()=>document.addEventListener('click',()=>document.querySelectorAll('.pt-popover').forEach(p=>p.remove()),{once:true}),10);
 }
+
+// ── Sincroniza qualquer troca de turno (painel, leilão, drag) no histórico ──────
+// Deve ser chamada SEMPRE que a escala da semana atual for alterada.
+// Atualiza: hist[0].escala, hist[0].confirmacoes (move turnos entre colaboradores),
+//           hist[0].resumo.totalCusto (recalculado a partir da escala real).
+function sincronizarTrocaNaHistoria(oriNome, destNome, dia, ini, fim){
+  try{
+    const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+    if(!hist.length) return;
+    const h=hist[0];
+
+    // 1. Atualizar escala salva no histórico
+    if(!h.escala) h.escala={};
+    if(!h.escala[dia]) h.escala[dia]={};
+    for(let hr=ini;hr<fim;hr++){
+      const cell=h.escala[dia][hr];
+      if(!cell) continue;
+      if(!cell.alocados) cell.alocados=[];
+      cell.alocados=cell.alocados.filter(n=>n!==oriNome);
+      if(destNome && !cell.alocados.includes(destNome)) cell.alocados.push(destNome);
+    }
+
+    // 2. Mover os turnos de confirmacoes de oriNome para destNome
+    if(!h.confirmacoes) h.confirmacoes={};
+    const confOri=h.confirmacoes[oriNome];
+    if(confOri && confOri.turnos){
+      // Separar os turnos que correspondem ao intervalo trocado
+      const trocados=confOri.turnos.filter(t=>t.dia===dia && t.ini<=ini && t.fim>=fim);
+      const restantes=confOri.turnos.filter(t=>!(t.dia===dia && t.ini<=ini && t.fim>=fim));
+      
+      if(trocados.length){
+        // Remover da origem
+        h.confirmacoes[oriNome].turnos=restantes;
+        if(!restantes.length) delete h.confirmacoes[oriNome]; // sem mais turnos
+
+        // Adicionar no destino
+        if(destNome){
+          if(!h.confirmacoes[destNome]) h.confirmacoes[destNome]={status:'confirmado',turnos:[],horasAbatidas:0};
+          trocados.forEach(t=>{
+            const dup=h.confirmacoes[destNome].turnos.find(x=>x.dia===t.dia&&x.ini===t.ini);
+            if(!dup) h.confirmacoes[destNome].turnos.push({...t,substituiuDe:oriNome});
+          });
+        }
+      }
+    }
+
+    // 3. Recalcular custo total com base na escala real do histórico
+    const colabsMap={};
+    (h.colabs||[]).forEach(c=>{colabsMap[c.nome]=c;});
+    S.colabs.forEach(c=>{colabsMap[c.nome]=colabsMap[c.nome]||c;}); // fallback ao S.colabs atual
+    
+    let novoTotalCusto=0;
+    const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+    // Para cada colaborador na escala do histórico, contar horas e calcular custo
+    const horasPorColab={};
+    const diasPorColab={};
+    diasO.forEach(d=>{
+      const diaEsc=h.escala[d]||{};
+      Object.entries(diaEsc).forEach(([hrStr,cell])=>{
+        if(!cell||!cell.alocados) return;
+        cell.alocados.forEach(nome=>{
+          if(!horasPorColab[nome]) horasPorColab[nome]=0;
+          if(!diasPorColab[nome]) diasPorColab[nome]=new Set();
+          horasPorColab[nome]++;
+          diasPorColab[nome].add(d);
+        });
+      });
+    });
+    Object.entries(horasPorColab).forEach(([nome,horas])=>{
+      const c=colabsMap[nome];
+      if(!c) return;
+      const custo=(c.custo||0)*horas + (c.passagem||0)*(diasPorColab[nome]?.size||0);
+      novoTotalCusto+=custo;
+    });
+    h.resumo.totalCusto=novoTotalCusto;
+
+    localStorage.setItem(KH,JSON.stringify(hist));
+
+    // Atualiza histórico de colaboradores se visível
+    if(typeof renderColHist==='function') try{renderColHist();}catch(e){}
+  }catch(e){
+    console.warn('[sincronizarTrocaNaHistoria] erro:',e.message);
+  }
+}
 function ptTrocarPor(oriNome, dia, ini, fim, destNome){
   document.querySelectorAll('.pt-popover').forEach(p=>p.remove());
   dia=dia.trim();
@@ -3171,6 +3258,7 @@ function ptTrocarPor(oriNome, dia, ini, fim, destNome){
   }
   if(trocados>0){
     calcularCustos();save();
+    sincronizarTrocaNaHistoria(oriNome,destNome,dia,ini,fim);
     toast(`✅ ${oriNome} → ${destNome} (${dia} ${fH(ini)}–${fH(fim)})`, 'tok');
     setTimeout(()=>abrirPainelTurnos(),300);
   } else {
@@ -3185,6 +3273,7 @@ function ptRemoverSlot(nome, dia, ini, fim){
     if(cell)cell.alocados=cell.alocados.filter(n=>n!==nome);
   }
   calcularCustos();save();
+  sincronizarTrocaNaHistoria(nome,null,dia,ini,fim); // null destNome = apenas remove
   toast(`Turno de ${nome} removido (${dia} ${fH(ini)}–${fH(fim)}).`,'tok');
   setTimeout(()=>abrirPainelTurnos(),300);
 }
