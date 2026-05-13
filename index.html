@@ -6425,8 +6425,29 @@ function renderLeilaoMode(){
     document.body.appendChild(overlay);
   }
 
+  // Busca turnos do servidor e mescla com localStorage
+  async function sincronizarDoServidor(){
+    const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||''
+    if(!apiUrl) return false;
+    try{
+      const r=await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId),{signal:AbortSignal.timeout(6000)});
+      if(!r.ok) return false;
+      const d=await r.json();
+      if(!d.ok||!Array.isArray(d.turnos)||!d.turnos.length) return false;
+      const local=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+      let mudou=false;
+      d.turnos.forEach(t=>{
+        const dup=local.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
+        if(!dup){local.push(t);mudou=true;}
+        else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;mudou=true;}
+      });
+      if(mudou) localStorage.setItem(leilaoKey,JSON.stringify(local));
+      return mudou;
+    }catch(e){ return false; }
+  }
+
   function renderPagina(){
-    // Renderizar imediatamente do localStorage — sem await, sem bloqueio
+    // Renderizar do localStorage (que pode ter sido populado pelo servidor)
     const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
     const disponiveis=leilao.filter(t=>!t.pegoPor);
     const tomados=leilao.filter(t=>t.pegoPor);
@@ -6501,27 +6522,12 @@ function renderLeilaoMode(){
         </div>
       </div>`;
 
-    // Busca do servidor em background e re-renderiza se houver novidades
+    // Botão "Atualizar" — reutiliza sincronizarDoServidor
     window.atualizarDoServidor = async function(){
       const btnAtualizar=document.querySelector('button[onclick="atualizarDoServidor()"]');
       if(btnAtualizar){btnAtualizar.disabled=true;btnAtualizar.textContent='Buscando...';}
-      const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||'';
-      if(apiUrl){
-        try{
-          const r=await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId),{signal:AbortSignal.timeout(5000)});
-          const d=await r.json();
-          if(d.ok&&d.turnos?.length>0){
-            const local=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-            let mudou=false;
-            d.turnos.forEach(t=>{
-              const dup=local.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
-              if(!dup){local.push(t);mudou=true;}
-              else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;mudou=true;}
-            });
-            if(mudou){localStorage.setItem(leilaoKey,JSON.stringify(local));renderPagina();}
-          }
-        }catch(e){}
-      }
+      const mudou=await sincronizarDoServidor();
+      if(mudou) renderPagina();
       if(btnAtualizar){btnAtualizar.disabled=false;btnAtualizar.textContent='🔄 Atualizar';}
     };
 
@@ -6597,7 +6603,24 @@ function renderLeilaoMode(){
     };
   }
 
-  renderPagina();
+  // ── INICIALIZAÇÃO: busca do servidor primeiro, renderiza depois ──────
+  // Garante que dispositivos sem localStorage local (celular, outro PC)
+  // vejam os mesmos turnos que o gestor publicou
+  (async function iniciarLeilao(){
+    // Mostrar loading enquanto busca
+    document.body.style.cssText='margin:0;padding:0;background:#0d0d10;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center';
+    document.body.innerHTML=`<div style="text-align:center;padding:32px 20px">
+      <div style="font-size:40px;margin-bottom:12px">⚡</div>
+      <div style="color:#c8f135;font-size:17px;font-weight:800;margin-bottom:6px">Carregando leilão...</div>
+      <div style="color:#6b7280;font-size:13px">Buscando turnos disponíveis</div>
+    </div>`;
+    
+    // Tenta buscar do servidor (essencial para celular/outros dispositivos)
+    await sincronizarDoServidor();
+    
+    // Renderiza com os dados (locais + servidor)
+    renderPagina();
+  })();
 }
 
 // Botão de leilão na plataforma (para gestor enviar link do leilão)
