@@ -5043,6 +5043,7 @@ function renderIndicadores(){
     return{
       volume:mt.volume,cancelamentos:mt.cancelamentos,pctCancel:mt.pctCancel,
       tPreparoMed:mt.tPreparoMed,tColetaMed:mt.tColetaMed,tDespachoMed:mt.tDespachoMed,
+      custoEscala:custoTotal,
       cppSem:custoTotal>0&&mt.volume>0?custoTotal/mt.volume:null,
       adicionalTotal:ads,
       cppComAd:(custoTotal+ads)>0&&mt.volume>0?(custoTotal+ads)/mt.volume:null,
@@ -5073,12 +5074,15 @@ function renderIndicadores(){
       .map(([,v])=>v).filter(v=>v.totalPed>0)
       .sort((a,b)=>b.totalPed-a.totalPed);
     const cores=['#2563eb','#16a34a','#d97706','#7c3aed'];
+    // Custo escala da semana
+    const custoEscalaSem=custoMap[sem.de]||getCustoEscalaSemana(sem.semanaISO)||null;
     let html='<tr style="border-bottom:1px solid var(--brd);'+subStyle+'">'
       +cel(`${sem.deBR}–${sem.ateBR}`,'font-weight:600;white-space:nowrap')
       +celVar(mt.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))
       +(mt.cancelamentos!=null?celVar(mt.cancelamentos,prev?.cancelamentos,false,v=>v.toLocaleString('pt-BR')):celSD())
       +(mt.pctCancel!=null?celVar(mt.pctCancel,prev?.pctCancel,false,v=>v.toFixed(2)+'%'):celSD('—'))
       +celT(mt.tPreparoMed)+celT(mt.tColetaMed)+celT(mt.tDespachoMed)
+      +cel(custoEscalaSem!=null?fmtR(custoEscalaSem):'—','background:#f0fdf4;font-weight:600;color:#166534')
       +cel(fmtR(cppSem))
       +cel(ads>0?fmtR(ads):'—',ads>0?'background:#fff7ed':'')
       +cel(fmtR(cppComAd),cppComAd&&ads>0?'color:#dc2626;font-weight:700':'')
@@ -5089,6 +5093,7 @@ function renderIndicadores(){
         +`<td style="padding:3px 12px 3px 24px;color:${cor};font-weight:600;white-space:nowrap"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${cor};margin-right:4px;vertical-align:middle"></span>${nomeHub(hd.hub)}</td>`
         +`<td style="padding:3px 10px;color:var(--mu)">${hd.totalPed.toLocaleString('pt-BR')} ped (${(hd.totalPed/(mt.volume||1)*100).toFixed(0)}%)</td>`
         +`<td colspan="5" style="padding:3px 10px;color:var(--mu)">Custo R$ ${hd.totalCusto.toFixed(2).replace('.',',')}</td>`
+        +`<td style="padding:3px 10px;font-weight:600;color:#166534;background:#f0fdf4">R$ ${hd.totalCusto.toFixed(2).replace('.',',')}</td>`
         +`<td style="padding:3px 10px;font-weight:700;color:${cor}">${hd.cpp>0?fmtR(hd.cpp):'—'}</td>`
         +`<td colspan="2"></td>`+'</tr>';
     });
@@ -5098,12 +5103,14 @@ function renderIndicadores(){
   function linhaResumo(label,med,prev=null,style=''){
     if(!med||!med.volume) return'';
     const ads=med.adicionalTotal||0;
+    const custoEscalaRes=med.custoEscala>0?med.custoEscala:null;
     return`<tr style="font-weight:700;border-top:2px solid var(--brd2);${style}">
       <td style="padding:8px 12px">${label}</td>
       ${celVar(med.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))}
       ${med.cancelamentos!=null?celVar(med.cancelamentos,prev?.cancelamentos,false,v=>v.toLocaleString('pt-BR')):celSD()}
       ${med.pctCancel!=null?celVar(med.pctCancel,prev?.pctCancel,false,v=>v.toFixed(2)+'%'):celSD('—')}
       ${celT(med.tPreparoMed)}${celT(med.tColetaMed)}${celT(med.tDespachoMed)}
+      ${cel(custoEscalaRes!=null?fmtR(custoEscalaRes):'—','background:#f0fdf4;font-weight:700;color:#166534')}
       ${cel(fmtR(med.cppSem))}
       ${cel(ads>0?fmtR(ads):'—',ads>0?'background:#fff7ed':'')}
       ${cel(fmtR(med.cppComAd),med.cppComAd&&ads>0?'color:#dc2626;font-weight:800':'')}
@@ -5111,7 +5118,9 @@ function renderIndicadores(){
   }
 
   // Agrupamento da tabela
-  const todasOrdem=todasReais.slice().reverse(); // cronológico
+  // ── Tabela: usa as mesmas semanas dos KPIs, em ordem cronológica
+  // Garante que KPIs e tabela mostrem SEMPRE o mesmo período
+  const semanasTabela=semanasPerido.slice().sort((a,b)=>(a.de||'').localeCompare(b.de||''));
   function gruposMes(sems){
     const mp={};
     sems.forEach(s=>{
@@ -5138,23 +5147,24 @@ function renderIndicadores(){
   let tbody='<tbody>';
   const thead=`<thead><tr style="background:var(--tx)">
     <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">PERÍODO</th>
-    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">VOLUME PEDIDOS</th>
-    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CANCELAMENTOS</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">VOL. PEDIDOS</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CANCEL.</th>
     <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">% CANCEL.</th>
     <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">T. PREPARO</th>
     <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">T. COLETA</th>
     <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">T. DESPACHO</th>
-    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CPP S/ ADICIONAL</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px;background:#1e3a2f">CUSTO ESCALA</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CPP S/ ADIC.</th>
     <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">ADICIONAIS</th>
-    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CPP C/ ADICIONAL</th>
+    <th style="padding:8px 12px;text-align:left;color:var(--bg);font-size:10px">CPP C/ ADIC.</th>
   </tr></thead>`;
 
   if(periodo==='semanal'){
-    const sem=todasReais[0];
+    const sem=semanasTabela[semanasTabela.length-1]||semanasTabela[0];
     const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
     tbody+=linhaSemana(sem,mt);
   } else if(periodo==='mensal'){
-    const grupos=gruposMes(todasOrdem);
+    const grupos=gruposMes(semanasTabela);
     grupos.forEach((g,gi)=>{
       // Cabeçalho do mês
       tbody+=`<tr><td colspan="10" style="background:#f0fdf4;color:#166534;font-weight:700;font-size:11px;padding:6px 12px;text-transform:capitalize;border-bottom:1px solid #bbf7d0">${g.label}</td></tr>`;
@@ -5171,7 +5181,7 @@ function renderIndicadores(){
     });
   } else {
     // Trimestral
-    const grupos=gruposTri(todasOrdem);
+    const grupos=gruposTri(semanasTabela);
     grupos.forEach((gTri,gt)=>{
       tbody+=`<tr><td colspan="10" style="background:#eff6ff;color:#1e40af;font-weight:800;font-size:12px;padding:8px 12px;border-bottom:1px solid #bfdbfe">${gTri.label}</td></tr>`;
       const mesMeses=gruposMes(gTri.sems);
