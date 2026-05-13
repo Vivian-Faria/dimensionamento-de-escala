@@ -4868,11 +4868,8 @@ function renderIndicadores(){
   const m=calcularMetricasSemana(vendas,cancels,hub);
 
   // CPP do período: custo total da escala / volume real do Órion
-  const custoEscalaPer=semanasPerido.reduce((t,s)=>{
-    // Busca custo no mapa por segISO
-    const seg=s.de; // semanaISO = de+'/'+ate, de = segISO
-    return t+(custoMap[seg]||getCustoEscalaSemana(s.semanaISO)||0);
-  },0);
+  // custoMap[seg] = soma de TODOS os hubs da semana (fonte correta)
+  const custoEscalaPer=semanasPerido.reduce((t,s)=>t+(custoMap[s.de]||0),0);
   const custoManualPer=semanasPerido.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
   const cpp=custoEscalaPer>0&&m.volume>0?custoEscalaPer/m.volume:null;
   const cppComAdicionais=(custoEscalaPer+custoManualPer)>0&&m.volume>0?(custoEscalaPer+custoManualPer)/m.volume:null;
@@ -5026,11 +5023,14 @@ function renderIndicadores(){
 
   const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
 
-  function cppDaSem(sem){
+  // Retorna o CUSTO BRUTO da escala para a semana (soma de TODOS os hubs)
+  // CPP = custoDaSem(sem) / volume_real_Órion
+  function custoDaSem(sem){
     const seg=sem.de;
+    // histEscMap[seg].custo = suma de todos os hubs (correto)
     const d=histEscMap[seg];
-    if(d&&d.ped>0) return d.custo/d.ped;
-    return getCustoEscalaSemana(sem.semanaISO)||null;
+    if(d&&d.custo>0) return d.custo;
+    return null;
   }
 
   function calcConsolid(sems){
@@ -5038,7 +5038,8 @@ function renderIndicadores(){
     const v=sems.flatMap(s=>s.vendas||[]);
     const c=sems.flatMap(s=>s.cancelamentos||[]);
     const mt=calcularMetricasSemana(v,c,hub);
-    const custoTotal=sems.reduce((t,s)=>{const cpp2=cppDaSem(s);return t+(cpp2!=null?cpp2*calcularMetricasSemana(s.vendas||[],s.cancelamentos||[],hub).volume:0);},0);
+    // Custo total = soma dos custos de escala de cada semana (não multiplica por volume)
+    const custoTotal=sems.reduce((t,s)=>t+(custoDaSem(s)||0),0);
     const ads=sems.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
     return{
       volume:mt.volume,cancelamentos:mt.cancelamentos,pctCancel:mt.pctCancel,
@@ -5065,17 +5066,18 @@ function renderIndicadores(){
   const fmtR=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
 
   function linhaSemana(sem,mt,prev=null,subStyle=''){
-    const cppSem=cppDaSem(sem);
     const ads=getCppManualTotal(sem.semanaISO||'');
-    const cppComAd=cppSem!=null&&mt.volume>0?((cppSem*mt.volume+ads)/mt.volume):null;
+    const cppComAd=cppSemCorr!=null&&mt.volume>0?((custoEscalaSem+ads)/mt.volume):null;
     // Sub-linhas por hub
     const hubsNaSem=Object.entries(histEscMapHub)
       .filter(([k])=>k.startsWith(sem.de+'|'))
       .map(([,v])=>v).filter(v=>v.totalPed>0)
       .sort((a,b)=>b.totalPed-a.totalPed);
     const cores=['#2563eb','#16a34a','#d97706','#7c3aed'];
-    // Custo escala da semana
-    const custoEscalaSem=custoMap[sem.de]||getCustoEscalaSemana(sem.semanaISO)||null;
+    // Custo BRUTO da escala para esta semana
+    const custoEscalaSem=custoDaSem(sem);
+    // CPP correto = custo_bruto / volume_real_Órion
+    const cppSemCorr=custoEscalaSem!=null&&mt.volume>0?custoEscalaSem/mt.volume:null;
     let html='<tr style="border-bottom:1px solid var(--brd);'+subStyle+'">'
       +cel(`${sem.deBR}–${sem.ateBR}`,'font-weight:600;white-space:nowrap')
       +celVar(mt.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))
@@ -5083,7 +5085,7 @@ function renderIndicadores(){
       +(mt.pctCancel!=null?celVar(mt.pctCancel,prev?.pctCancel,false,v=>v.toFixed(2)+'%'):celSD('—'))
       +celT(mt.tPreparoMed)+celT(mt.tColetaMed)+celT(mt.tDespachoMed)
       +cel(custoEscalaSem!=null?fmtR(custoEscalaSem):'—','background:#f0fdf4;font-weight:600;color:#166534')
-      +cel(fmtR(cppSem))
+      +cel(fmtR(cppSemCorr))
       +cel(ads>0?fmtR(ads):'—',ads>0?'background:#fff7ed':'')
       +cel(fmtR(cppComAd),cppComAd&&ads>0?'color:#dc2626;font-weight:700':'')
       +'</tr>';
