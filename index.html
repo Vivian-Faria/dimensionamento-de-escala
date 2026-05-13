@@ -6426,14 +6426,26 @@ function renderLeilaoMode(){
   }
 
   // Busca turnos do servidor e mescla com localStorage
+  // Essencial para celulares e outros dispositivos sem localStorage local
   async function sincronizarDoServidor(){
-    const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||''
-    if(!apiUrl) return false;
+    const apiUrl=window._LEILAO_API_URL||localStorage.getItem('orion_api_url')||(typeof getApiUrl==='function'?getApiUrl():'')||'';
+    if(!apiUrl){
+      console.warn('[Leilão] sem apiUrl — não é possível buscar do servidor');
+      return false;
+    }
     try{
-      const r=await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId),{signal:AbortSignal.timeout(6000)});
-      if(!r.ok) return false;
+      console.log('[Leilão] buscando do servidor:', apiUrl+'/leilao/'+histId);
+      const r=await fetch(apiUrl+'/leilao/'+encodeURIComponent(histId),{signal:AbortSignal.timeout(8000)});
+      if(!r.ok){
+        console.warn('[Leilão] resposta não-ok:', r.status);
+        return false;
+      }
       const d=await r.json();
-      if(!d.ok||!Array.isArray(d.turnos)||!d.turnos.length) return false;
+      console.log('[Leilão] resposta servidor:', JSON.stringify(d).substring(0,200));
+      if(!d.ok||!Array.isArray(d.turnos)||!d.turnos.length){
+        console.warn('[Leilão] sem turnos no servidor. d.ok='+d.ok+' turnos='+(d.turnos?.length||0));
+        return false;
+      }
       const local=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
       let mudou=false;
       d.turnos.forEach(t=>{
@@ -6442,8 +6454,12 @@ function renderLeilaoMode(){
         else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;mudou=true;}
       });
       if(mudou) localStorage.setItem(leilaoKey,JSON.stringify(local));
-      return mudou;
-    }catch(e){ return false; }
+      console.log('[Leilão] sincronizado. mudou='+mudou+' total local='+JSON.parse(localStorage.getItem(leilaoKey)||'[]').length);
+      return true; // sempre retorna true se chegou dados do servidor (mesmo sem mudança local)
+    }catch(e){
+      console.warn('[Leilão] erro na sincronização:', e.message);
+      return false;
+    }
   }
 
   function renderPagina(){
@@ -6603,23 +6619,38 @@ function renderLeilaoMode(){
     };
   }
 
-  // ── INICIALIZAÇÃO: busca do servidor primeiro, renderiza depois ──────
-  // Garante que dispositivos sem localStorage local (celular, outro PC)
-  // vejam os mesmos turnos que o gestor publicou
+  // ── INICIALIZAÇÃO: sempre busca do servidor primeiro ──────────────
+  // Garante que celular e outros dispositivos vejam os mesmos turnos
   (async function iniciarLeilao(){
-    // Mostrar loading enquanto busca
+    // Loading
     document.body.style.cssText='margin:0;padding:0;background:#0d0d10;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center';
     document.body.innerHTML=`<div style="text-align:center;padding:32px 20px">
-      <div style="font-size:40px;margin-bottom:12px">⚡</div>
-      <div style="color:#c8f135;font-size:17px;font-weight:800;margin-bottom:6px">Carregando leilão...</div>
+      <div style="font-size:40px;margin-bottom:16px">⚡</div>
+      <div style="color:#c8f135;font-size:17px;font-weight:800;margin-bottom:8px">Carregando leilão...</div>
       <div style="color:#6b7280;font-size:13px">Buscando turnos disponíveis</div>
     </div>`;
-    
-    // Tenta buscar do servidor (essencial para celular/outros dispositivos)
-    await sincronizarDoServidor();
-    
-    // Renderiza com os dados (locais + servidor)
+
+    // Busca do servidor — sempre, independente do localStorage
+    const ok=await sincronizarDoServidor();
+
+    // Renderiza com dados do servidor + locais
     renderPagina();
+
+    // Se não conseguiu sincronizar e não tem nada local, mostra aviso
+    if(!ok){
+      const local=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+      if(!local.length){
+        // Pode ser falha de rede — mostra botão de tentar novamente proeminente
+        const btnRetry=document.createElement('div');
+        btnRetry.style.cssText='position:fixed;bottom:80px;left:0;right:0;text-align:center;z-index:999';
+        btnRetry.innerHTML=`<div style="background:#1a1d23;border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:14px 20px;display:inline-block;max-width:320px">
+          <div style="color:#f87171;font-size:13px;font-weight:700;margin-bottom:8px">⚠️ Não foi possível carregar os turnos</div>
+          <div style="color:#6b7280;font-size:11px;margin-bottom:10px">Verifique sua conexão</div>
+          <button onclick="window.atualizarDoServidor()" style="background:#c8f135;color:#0d0d10;border:none;border-radius:8px;padding:10px 24px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit;width:100%">🔄 Tentar novamente</button>
+        </div>`;
+        document.body.appendChild(btnRetry);
+      }
+    }
   })();
 }
 
@@ -6629,6 +6660,21 @@ async function abrirLinkLeilao(histId){
   const entrada=hist.find(h=>h.id===histId)||{semana:'?'};
   const nomes=(entrada.colabs||S.colabs||[]).map(c=>c.nome).sort();
   const apiUrl=getApiUrl();
+
+  // ── SEMPRE sincronizar turnos do leilão com o servidor antes de gerar o link
+  // Garante que outros dispositivos (celular) verão os mesmos turnos
+  const leilaoKey='orion_v7_leilao_'+histId;
+  const turnosLeilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+  if(turnosLeilao.length>0 && apiUrl){
+    try{
+      await fetch(apiUrl+'/leilao',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({histId, turnos:turnosLeilao})
+      });
+    }catch(e){ console.warn('[Leilão] Falha ao sincronizar com servidor:',e.message); }
+  }
+
   const payload={tipo:'leilao',histId,semana:entrada.semana,nomes,apiUrl};
 
   let link;
