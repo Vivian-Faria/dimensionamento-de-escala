@@ -1605,6 +1605,8 @@ async function buscarConfirmacoesAPI(){
       // Salvar histórico atualizado
       hist[0]=ultima;
       localStorage.setItem(KH,JSON.stringify(hist));
+      // Atualizar histórico de colaboradores se visível
+      if(typeof renderColHist==='function') try{renderColHist();}catch(e){}
     }
 
     // Buscar leilão do servidor (para pegas feitas por outros)
@@ -5116,172 +5118,206 @@ function limparIndicadores(){
 }
 
 function gerarRelatorioIndicadores(){
-  // Usa os mesmos dados consolidados do painel principal
-  const histInd2=JSON.parse(localStorage.getItem(KIND)||'[]');
-  const histEsc2=JSON.parse(localStorage.getItem(KH)||'[]');
-
-  // Mescla escala + indicadores (mesma lógica do renderIndicadores)
-  const _fmtBR=iso=>{const[y,m,d]=iso.split('-');return d+'/'+m;};
-  const escMap2={};
-  histEsc2.forEach(e=>{
-    if(!e.segISO||!e.domISO)return;
+  // ── 1. Monta hist com mesma lógica do renderIndicadores (sintéticas + reais)
+  const histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
+  const _fb=iso=>{const[y,m,d]=iso.split('-');return d+'/'+m;};
+  const escM={};
+  histEsc.forEach(e=>{
+    if(!e.segISO||!e.domISO) return;
     const k=e.segISO;
-    if(!escMap2[k]) escMap2[k]={de:e.segISO,ate:e.domISO,deBR:_fmtBR(e.segISO),ateBR:_fmtBR(e.domISO),
-      semana:_fmtBR(e.segISO)+'–'+_fmtBR(e.domISO),semanaISO:e.segISO+'/'+e.domISO,ts:e.ts||0,
+    if(!escM[k]) escM[k]={de:e.segISO,ate:e.domISO,deBR:_fb(e.segISO),ateBR:_fb(e.domISO),
+      semana:_fb(e.segISO)+'–'+_fb(e.domISO),semanaISO:e.segISO+'/'+e.domISO,ts:e.ts||0,
       totalPed:0,totalCusto:0,hubs:[],vendas:[],cancelamentos:[],_soDaEscala:true};
-    const s=escMap2[k];
-    s.totalPed+=(e.resumo?.totalPed||0); s.totalCusto+=(e.resumo?.totalCusto||0);
-    if(e.hub&&!s.hubs.includes(e.hub)) s.hubs.push(e.hub);
+    escM[k].totalPed+=(e.resumo?.totalPed||0);
+    escM[k].totalCusto+=(e.resumo?.totalCusto||0);
+    if(e.hub&&!escM[k].hubs.includes(e.hub)) escM[k].hubs.push(e.hub);
   });
-  const indISOs2=new Set(histInd2.map(h=>h.semanaISO));
-  const sinteticas2=Object.values(escMap2).filter(s=>!indISOs2.has(s.semanaISO))
+  const indISOs=new Set(histInd.map(h=>h.semanaISO));
+  const sint=Object.values(escM).filter(s=>!indISOs.has(s.semanaISO))
     .map(s=>({...s,_volEscala:s.totalPed,_custoEscala:s.totalCusto}));
-  const hist=[...histInd2,...sinteticas2].sort((a,b)=>(b.de||'').localeCompare(a.de||''));
+  const hist=[...histInd,...sint].sort((a,b)=>(b.de||'').localeCompare(a.de||''));
 
   if(!hist.length){toast('Sem dados para gerar relatório.','ter');return;}
 
+  // ── 2. Período e hub — iguais ao painel
   const periodo=document.getElementById('indPeriodo')?.value||'trimestral';
   const hub=typeof _hubsSel!=='undefined'&&_hubsSel instanceof Set?_hubsSel:new Set(['todos']);
   const eTodos=!hub||hub.has('todos')||hub.size===0;
+  const agora=new Date();
+  const mesAtual=agora.getMonth(), anoAtual=agora.getFullYear();
+  const triAtual=Math.ceil((mesAtual+1)/3);
 
-  // Mapa custo/pedido por semana (da escala)
-  const relEscMap={};
-  histEsc2.forEach(e=>{if(e.segISO&&e.resumo?.totalPed>0) relEscMap[e.segISO]=(relEscMap[e.segISO]||0)+(e.resumo?.totalCusto||0);});
-  const relEscVol={};
-  histEsc2.forEach(e=>{if(e.segISO&&e.resumo?.totalPed>0) relEscVol[e.segISO]=(relEscVol[e.segISO]||0)+(e.resumo?.totalPed||0);});
+  // ── 3. semanasPerido — IDÊNTICO ao renderIndicadores
+  let semanasPerido;
+  if(periodo==='semanal'){
+    semanasPerido=hist.slice(0,1);
+  } else if(periodo==='mensal'){
+    semanasPerido=hist.filter(s=>{
+      if(!s.de) return false;
+      const d=new Date(s.de+'T12:00:00');
+      return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
+    });
+    if(!semanasPerido.length){
+      const mr=hist[0];
+      if(mr?.de){const d=new Date(mr.de+'T12:00:00');const mm=d.getMonth(),aa=d.getFullYear();
+        semanasPerido=hist.filter(s=>{if(!s.de)return false;const dd=new Date(s.de+'T12:00:00');return dd.getMonth()===mm&&dd.getFullYear()===aa;});}
+      if(!semanasPerido.length) semanasPerido=hist.slice(0,1);
+    }
+  } else {
+    semanasPerido=hist.filter(s=>{
+      if(!s.de) return false;
+      const d=new Date(s.de+'T12:00:00');
+      return d.getFullYear()===anoAtual && Math.ceil((d.getMonth()+1)/3)===triAtual;
+    });
+    if(!semanasPerido.length){
+      const mr=hist[0];
+      if(mr?.de){const d=new Date(mr.de+'T12:00:00');const triR=Math.ceil((d.getMonth()+1)/3),aR=d.getFullYear();
+        semanasPerido=hist.filter(s=>{if(!s.de)return false;const dd=new Date(s.de+'T12:00:00');return Math.ceil((dd.getMonth()+1)/3)===triR&&dd.getFullYear()===aR;});}
+      if(!semanasPerido.length) semanasPerido=hist.slice(0,4);
+    }
+  }
 
-  // Função de métricas que trata sintéticas
+  // ── 4. Funções de métrica — IGUAIS ao renderIndicadores
+  // Mapa custo escala: segISO → custo total acumulado e volume
+  const escMapCusto={}, escMapVol={};
+  histEsc.forEach(e=>{
+    if(!e.segISO||!e.resumo?.totalPed) return;
+    escMapCusto[e.segISO]=(escMapCusto[e.segISO]||0)+(e.resumo.totalCusto||0);
+    escMapVol[e.segISO]=(escMapVol[e.segISO]||0)+(e.resumo.totalPed||0);
+  });
+
   function mtSem(sem){
-    if(sem._soDaEscala) return{volume:sem._volEscala||0,cancelamentos:null,pctCancel:null,tPreparoMed:null,tColetaMed:null,tDespachoMed:null,_s:true,amostras:{}};
+    if(sem._soDaEscala) return{volume:sem._volEscala||0,cancelamentos:null,pctCancel:null,
+      tPreparoMed:null,tColetaMed:null,tDespachoMed:null,_s:true,amostras:{}};
     return calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
   }
-  function cppSem(sem){
+  function cppDaSem(sem){
     if(sem._soDaEscala&&sem._custoEscala&&sem._volEscala>0) return sem._custoEscala/sem._volEscala;
-    if(relEscMap[sem.de]&&relEscVol[sem.de]) return relEscMap[sem.de]/relEscVol[sem.de];
+    if(escMapCusto[sem.de]&&escMapVol[sem.de]) return escMapCusto[sem.de]/escMapVol[sem.de];
     return null;
   }
 
-  // Consolida array de semanas em totais
-  function consolidar(sems){
+  // ── 5. Consolidar array de semanas em totais (igual calcularMediaSemanas do painel)
+  function consolid(sems){
     if(!sems.length) return null;
     const mts=sems.map(s=>mtSem(s));
-    const mtsReais=mts.filter(x=>!x._s);
+    const mtsR=mts.filter(x=>!x._s);
     const volTotal=mts.reduce((t,x)=>t+x.volume,0);
-    const cancelTotal=mtsReais.reduce((t,x)=>t+(x.cancelamentos||0),0);
-    const pctTotal=mtsReais.length&&volTotal>0?(cancelTotal/(volTotal+cancelTotal))*100:null;
-    // custo total: sum(cpp*vol) por semana
+    const cancelTotal=mtsR.reduce((t,x)=>t+(x.cancelamentos||0),0);
+    const pctTotal=mtsR.length&&volTotal>0?(cancelTotal/(volTotal+cancelTotal))*100:null;
     let custoTotal=0;
-    sems.forEach(s=>{const c=cppSem(s); const mt=mtSem(s); if(c!=null) custoTotal+=c*mt.volume;});
+    sems.forEach(s=>{const c=cppDaSem(s);const mt=mtSem(s);if(c!=null) custoTotal+=c*mt.volume;});
     const cppT=custoTotal>0&&volTotal>0?custoTotal/volTotal:null;
     const ads=sems.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
     const cppComAd=custoTotal>0&&volTotal>0?(custoTotal+ads)/volTotal:null;
-    // Tempos: média ponderada
-    function tP(campo){const ps=mtsReais.map(x=>({t:x[campo],v:x.volume})).filter(p=>p.t!=null&&p.v>0);if(!ps.length)return null;return ps.reduce((s,p)=>s+p.t*p.v,0)/ps.reduce((s,p)=>s+p.v,0);}
-    const amostP=mtsReais.reduce((t,x)=>t+(x.amostras?.preparo||0),0);
-    const amostC=mtsReais.reduce((t,x)=>t+(x.amostras?.coleta||0),0);
-    const amostD=mtsReais.reduce((t,x)=>t+(x.amostras?.despacho||0),0);
-    return{volume:volTotal,cancelamentos:mtsReais.length?cancelTotal:null,pctCancel:pctTotal,
-      tPreparoMed:tP('tPreparoMed'),tColetaMed:tP('tColetaMed'),tDespachoMed:tP('tDespachoMed'),
-      cppSem:cppT,adicionalTotal:ads,cppComAd,amostP,amostC,amostD,nSems:sems.length,nSint:sems.filter(s=>s._soDaEscala).length};
-  }
-
-  // Agrupamento por período
-  function agrupar(semanas, tipo){
-    if(tipo==='semanal') return semanas.slice().reverse().map(s=>({label:s.semana||s.semanaISO,sems:[s]}));
-    if(tipo==='mensal'){
-      const mp={};
-      semanas.forEach(s=>{
-        const d=new Date((s.de||'')+'T12:00:00');
-        const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        const nome=d.toLocaleString('pt-BR',{month:'long',year:'numeric'});
-        if(!mp[k])mp[k]={label:nome,sems:[]};
-        mp[k].sems.push(s);
-      });
-      return Object.entries(mp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
+    function tP(campo){
+      const ps=mtsR.map(x=>({t:x[campo],v:x.volume})).filter(p=>p.t!=null&&p.v>0);
+      if(!ps.length) return null;
+      return ps.reduce((s,p)=>s+p.t*p.v,0)/ps.reduce((s,p)=>s+p.v,0);
     }
-    // trimestral
-    const tp={};
-    semanas.forEach(s=>{
-      const d=new Date((s.de||'')+'T12:00:00');
-      const q=Math.ceil((d.getMonth()+1)/3);
-      const k=`${d.getFullYear()}-T${q}`;
-      if(!tp[k])tp[k]={label:`T${q}/${d.getFullYear()}`,sems:[]};
-      tp[k].sems.push(s);
-    });
-    return Object.entries(tp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
+    return{volume:volTotal,cancelamentos:mtsR.length?cancelTotal:null,pctCancel:pctTotal,
+      tPreparoMed:tP('tPreparoMed'),tColetaMed:tP('tColetaMed'),tDespachoMed:tP('tDespachoMed'),
+      cppSem:cppT,adicionalTotal:ads,cppComAd,
+      amostP:mtsR.reduce((t,x)=>t+(x.amostras?.preparo||0),0),
+      amostC:mtsR.reduce((t,x)=>t+(x.amostras?.coleta||0),0),
+      amostD:mtsR.reduce((t,x)=>t+(x.amostras?.despacho||0),0),
+      nSems:sems.length, nSint:sems.filter(s=>s._soDaEscala).length};
   }
 
-  const agora=new Date(), mesAtual=agora.getMonth(), anoAtual=agora.getFullYear(), triAtual=Math.ceil((agora.getMonth()+1)/3);
-
-  // Período do relatório: usa mesma lógica do painel — período selecionado
-  let semsRelatorio=hist;
-  if(periodo==='semanal') semsRelatorio=[hist[0]].filter(Boolean);
-  else if(periodo==='mensal') semsRelatorio=hist.filter(s=>{if(!s.de)return false;const d=new Date(s.de+'T12:00:00');return d.getMonth()===mesAtual&&d.getFullYear()===anoAtual;});
-  else semsRelatorio=hist.filter(s=>{if(!s.de)return false;const d=new Date(s.de+'T12:00:00');return d.getFullYear()===anoAtual&&Math.ceil((d.getMonth()+1)/3)===triAtual;});
-  if(!semsRelatorio.length) semsRelatorio=hist;
-
-  const mTotal=consolidar(semsRelatorio);
+  // ── 6. KPIs do período (mesmas semanasPerido do painel)
+  const mTotal=consolid(semanasPerido);
   if(!mTotal){toast('Sem dados suficientes.','ter');return;}
 
-  // Detalhamento adicionais
-  const adDet={limpezaFixo:0,freela:0,atendimento:0,outros:0};
-  semsRelatorio.forEach(s=>{const d=getCppManualSemana(s.semanaISO||'');adDet.limpezaFixo+=(d.limpezaFixo||0);adDet.freela+=(d.freela||0);adDet.atendimento+=(d.atendimento||0);adDet.outros+=(d.outros||0);});
+  // ── 7. Agrupamento para a tabela histórica (mesmo que o painel)
+  function agrupar(sems, tipo){
+    if(tipo==='semanal') return sems.slice().reverse().map(s=>({label:s.semana||s.semanaISO,sems:[s]}));
+    const mp={};
+    sems.forEach(s=>{
+      const d=new Date((s.de||'')+'T12:00:00');
+      let k,nome;
+      if(tipo==='mensal'){
+        k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        nome=d.toLocaleString('pt-BR',{month:'long',year:'numeric'});
+      } else {
+        const q=Math.ceil((d.getMonth()+1)/3);
+        k=`${d.getFullYear()}-T${q}`; nome=`T${q}/${d.getFullYear()}`;
+      }
+      if(!mp[k]) mp[k]={label:nome,sems:[]};
+      mp[k].sems.push(s);
+    });
+    return Object.entries(mp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
+  }
 
-  // Hubs disponíveis
+  const grupos=agrupar(semanasPerido, periodo);
+
+  // ── 8. Hubs
   const todosHubs=[...new Set(hist.flatMap(s=>s.hubs||[]))].filter(hubVisivel);
   const hubsAtivos=eTodos?todosHubs:[...hub].filter(hubVisivel);
   const hubLabel=hubsAtivos.length===0||eTodos?'Todos os hubs':hubsAtivos.map(nomeHub).join(' + ');
 
+  // ── 9. Detalhamento adicionais
+  const adDet={limpezaFixo:0,freela:0,atendimento:0,outros:0};
+  semanasPerido.forEach(s=>{const d=getCppManualSemana(s.semanaISO||'');
+    adDet.limpezaFixo+=(d.limpezaFixo||0);adDet.freela+=(d.freela||0);
+    adDet.atendimento+=(d.atendimento||0);adDet.outros+=(d.outros||0);});
+
   const periodoLabels={semanal:'Semanal',mensal:'Mensal',trimestral:'Trimestral'};
+  const periodoNome=periodoLabels[periodo]||'Trimestral';
   const dataGeracao=new Date().toLocaleString('pt-BR');
   const fmtR=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
   const fmtN=v=>v!=null?v.toLocaleString('pt-BR'):'—';
-
-  // Variação colorida
-  function varHtml(atual, ant, inverso=false){
+  function varHtml(atual,ant,inv=false){
     if(ant==null||atual==null||ant===0) return '';
-    const p=((atual-ant)/ant*100);
-    const ok=inverso?p<0:p>0;
+    const p=((atual-ant)/ant*100), ok=inv?p<0:p>0;
     return `<span style="font-size:9px;font-weight:700;color:${ok?'#166534':'#991b1b'};background:${ok?'#dcfce7':'#fee2e2'};border-radius:3px;padding:1px 4px;margin-left:3px">${p>=0?'+':''}${p.toFixed(1)}%</span>`;
   }
+  const semDados=v=>v!=null?v:'<span style="color:#9ca3af;font-style:italic">s/ dados</span>';
+  const semDadosT=v=>v!=null?fmtTempo(v):'<span style="color:#9ca3af;font-style:italic">s/ dados</span>';
 
-  // Linhas de histórico (agrupadas pelo período)
-  const grupos=agrupar(semsRelatorio, periodo);
+  // ── 10. Linhas da tabela histórica
   const linhasHist=grupos.map((g,i)=>{
-    const m=consolidar(g.sems);
-    const mAnt=i>0?consolidar(grupos[i-1].sems):null;
+    const m=consolid(g.sems);
+    const mAnt=i>0?consolid(grupos[i-1].sems):null;
     if(!m) return '';
-    const parcial=m.nSint>0?`<span style="font-size:9px;color:#9ca3af;font-style:italic"> (${m.nSems-m.nSint}/${m.nSems} c/ tempos)</span>`:'';
+    const parcial=m.nSint>0&&m.nSint<m.nSems?` <span style="font-size:9px;color:#9ca3af;font-style:italic">(${m.nSems-m.nSint}/${m.nSems} c/ tempos)</span>`:'';
+    const soEscala=m.nSint===m.nSems?' <span style="font-size:9px;color:#9ca3af;font-style:italic">(só escala)</span>':'';
     return `<tr style="background:${i%2?'#f9fafb':'#fff'}">
-      <td style="font-weight:700">${g.label}${parcial}</td>
+      <td style="font-weight:700">${g.label}${parcial}${soEscala}</td>
       <td>${fmtN(m.volume)}${varHtml(m.volume,mAnt?.volume,false)}</td>
-      <td>${m.cancelamentos!=null?fmtN(m.cancelamentos)+''+varHtml(m.cancelamentos,mAnt?.cancelamentos,true):'<span style="color:#9ca3af">s/ dados</span>'}</td>
+      <td>${m.cancelamentos!=null?fmtN(m.cancelamentos)+varHtml(m.cancelamentos,mAnt?.cancelamentos,true):semDados(null)}</td>
       <td>${m.pctCancel!=null?m.pctCancel.toFixed(2)+'%'+varHtml(m.pctCancel,mAnt?.pctCancel,true):'—'}</td>
-      <td>${m.tPreparoMed!=null?fmtTempo(m.tPreparoMed)+'<span style="font-size:9px;color:#9ca3af;margin-left:2px">('+m.amostP+')</span>'+varHtml(m.tPreparoMed,mAnt?.tPreparoMed,true):'<span style="color:#9ca3af">s/ dados</span>'}</td>
-      <td>${m.tColetaMed!=null?fmtTempo(m.tColetaMed)+'<span style="font-size:9px;color:#9ca3af;margin-left:2px">('+m.amostC+')</span>'+varHtml(m.tColetaMed,mAnt?.tColetaMed,true):'<span style="color:#9ca3af">s/ dados</span>'}</td>
-      <td>${m.tDespachoMed!=null?fmtTempo(m.tDespachoMed)+'<span style="font-size:9px;color:#9ca3af;margin-left:2px">('+m.amostD+')</span>'+varHtml(m.tDespachoMed,mAnt?.tDespachoMed,true):'<span style="color:#9ca3af">s/ dados</span>'}</td>
+      <td>${semDadosT(m.tPreparoMed)}${m.tPreparoMed!=null?'<span style="font-size:9px;color:#9ca3af;margin-left:2px">('+m.amostP+')</span>'+varHtml(m.tPreparoMed,mAnt?.tPreparoMed,true):''}</td>
+      <td>${semDadosT(m.tColetaMed)}${m.tColetaMed!=null?'<span style="font-size:9px;color:#9ca3af;margin-left:2px">('+m.amostC+')</span>'+varHtml(m.tColetaMed,mAnt?.tColetaMed,true):''}</td>
+      <td>${semDadosT(m.tDespachoMed)}${m.tDespachoMed!=null?'<span style="font-size:9px;color:#9ca3af;margin-left:2px">('+m.amostD+')</span>'+varHtml(m.tDespachoMed,mAnt?.tDespachoMed,true):''}</td>
       <td style="font-weight:700">${fmtR(m.cppSem)}</td>
       <td style="font-weight:700;color:${m.cppComAd&&m.adicionalTotal>0?'#dc2626':'#111'}">${m.adicionalTotal>0?fmtR(m.cppComAd):'—'}</td>
     </tr>`;
   }).join('');
 
-  // Distribuição por hub
+  // ── 11. Distribuição por hub
   let distRows='';
   if(hubsAtivos.length>1){
-    const todasVendas=semsRelatorio.filter(s=>!s._soDaEscala).flatMap(s=>s.vendas||[]);
-    const todosCancels=semsRelatorio.filter(s=>!s._soDaEscala).flatMap(s=>s.cancelamentos||[]);
+    const todasVendas=semanasPerido.filter(s=>!s._soDaEscala).flatMap(s=>s.vendas||[]);
+    const todosCancels=semanasPerido.filter(s=>!s._soDaEscala).flatMap(s=>s.cancelamentos||[]);
     const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
+    // CPP por hub: soma custo das escalas desse hub / volume
+    const hubCusto={}, hubVol={};
+    histEsc.forEach(e=>{
+      if(!e.hub||!e.resumo?.totalPed) return;
+      hubCusto[e.hub]=(hubCusto[e.hub]||0)+(e.resumo.totalCusto||0);
+      hubVol[e.hub]=(hubVol[e.hub]||0)+(e.resumo.totalPed||0);
+    });
+    const HUBS_SION=['DS Sion','Sem hub'];
+    const temSion=HUBS_SION.every(h=>hubsAtivos.includes(h));
     distRows=hubsAtivos.map((h,i)=>{
       const mH=calcularMetricasSemana(todasVendas,todosCancels,new Set([h]));
-      // CPP ponderado por hub: soma custo hubs onde este hub aparece
-      let custoH=0,volH=0;
-      histEsc2.filter(e=>e.hub===h||(!e.hub&&h==='Sem hub')).forEach(e=>{custoH+=(e.resumo?.totalCusto||0);volH+=(e.resumo?.totalPed||0);});
-      const cppH=custoH>0&&mH.volume>0?custoH/mH.volume:null;
+      const cppH=hubCusto[h]&&hubVol[h]?hubCusto[h]/hubVol[h]:null;
       const pct=mTotal.volume>0?(mH.volume/mTotal.volume*100).toFixed(1):'0';
       return`<tr>
         <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cores[i%cores.length]};margin-right:6px"></span>${nomeHub(h)}</td>
         <td style="font-weight:700">${fmtN(mH.volume)}</td>
-        <td>${mH.cancelamentos!=null?mH.cancelamentos+' ('+mH.pctCancel.toFixed(1)+'%)'  :'—'}</td>
+        <td>${mH.cancelamentos!=null?mH.cancelamentos+' ('+mH.pctCancel.toFixed(1)+'%)':'—'}</td>
         <td>${mH.tPreparoMed!=null?fmtTempo(mH.tPreparoMed):'—'}</td>
         <td>${mH.tColetaMed!=null?fmtTempo(mH.tColetaMed):'—'}</td>
         <td>${mH.tDespachoMed!=null?fmtTempo(mH.tDespachoMed):'—'}</td>
@@ -5289,16 +5325,33 @@ function gerarRelatorioIndicadores(){
         <td style="font-weight:700;color:${cores[i%cores.length]}">${pct}%</td>
       </tr>`;
     }).join('');
+    if(temSion){
+      const mS=calcularMetricasSemana(todasVendas,todosCancels,new Set(HUBS_SION));
+      const custoS=HUBS_SION.reduce((t,h)=>t+(hubCusto[h]||0),0);
+      const volS=HUBS_SION.reduce((t,h)=>t+(hubVol[h]||0),0);
+      const cppS=custoS>0&&mS.volume>0?custoS/mS.volume:null;
+      const pctS=mTotal.volume>0?(mS.volume/mTotal.volume*100).toFixed(1):'0';
+      distRows+=`<tr style="background:#f0fdf4;border-top:2px solid #16a34a">
+        <td><strong>⊕ Sion unificado (DS + Cozinhas)</strong></td>
+        <td style="font-weight:700">${fmtN(mS.volume)}</td>
+        <td>${mS.cancelamentos!=null?mS.cancelamentos+' ('+mS.pctCancel.toFixed(1)+'%)':'—'}</td>
+        <td>${mS.tPreparoMed!=null?fmtTempo(mS.tPreparoMed):'—'}</td>
+        <td>${mS.tColetaMed!=null?fmtTempo(mS.tColetaMed):'—'}</td>
+        <td>${mS.tDespachoMed!=null?fmtTempo(mS.tDespachoMed):'—'}</td>
+        <td style="font-weight:900;color:#16a34a">${fmtR(cppS)}</td>
+        <td style="font-weight:700;color:#16a34a">${pctS}%</td>
+      </tr>`;
+    }
   }
 
-  const periodoNome=periodoLabels[periodo]||'Trimestral';
+  // ── 12. HTML do relatório
   const html=`<!DOCTYPE html><html lang="pt-BR"><head>
   <meta charset="UTF-8"><title>Relatório Indicadores — ${hubLabel}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:32px 40px;max-width:1050px;margin:0 auto;font-size:13px}
     .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid #111}
-    .header h1{font-size:22px;font-weight:900} .header .sub{font-size:11px;color:#6b7280;margin-top:3px}
+    .header h1{font-size:22px;font-weight:900}.header .sub{font-size:11px;color:#6b7280;margin-top:3px}
     .badge{background:#d1fae5;color:#065f46;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px}
     .print-btn{background:#16a34a;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px}
     h2{font-size:11px;font-weight:800;color:#374151;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.06em;padding-bottom:4px;border-bottom:1px solid #e5e7eb}
@@ -5310,10 +5363,10 @@ function gerarRelatorioIndicadores(){
     .kpi.dest{border:2px solid #dc2626;background:#fff5f5}
     .kpi.dest .kpi-l,.kpi.dest .kpi-v,.kpi.dest .kpi-s{color:#dc2626}
     table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px}
-    thead tr{background:#111} th{color:#fff;padding:7px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}
+    thead tr{background:#111}th{color:#fff;padding:7px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}
     td{padding:6px 8px;border-bottom:1px solid #f3f4f6;vertical-align:middle}
     .legenda{font-size:10px;color:#6b7280;margin-bottom:10px;background:#f9fafb;border-radius:6px;padding:8px 12px;border-left:3px solid #d1fae5}
-    .parcial-note{font-size:9px;color:#f59e0b;margin-bottom:8px;padding:6px 10px;background:#fffbeb;border-radius:4px;border:1px solid #fde68a}
+    .parcial-note{font-size:9px;color:#92400e;margin-bottom:8px;padding:6px 10px;background:#fffbeb;border-radius:4px;border:1px solid #fde68a}
     .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af}
     @media print{body{padding:16px 20px}.print-btn,.no-print{display:none!important}@page{margin:1.5cm;size:A4 landscape}}
   </style></head><body>
@@ -5321,17 +5374,17 @@ function gerarRelatorioIndicadores(){
   <div class="header">
     <div>
       <h1>Indicadores Operacionais <span class="badge">${hubLabel}</span></h1>
-      <div class="sub">${periodoNome} · Gerado em ${dataGeracao} · ${hist.length} semana${hist.length>1?'s':''} no histórico</div>
+      <div class="sub">${periodoNome} · ${semanasPerido.length} semana${semanasPerido.length>1?'s':''} · Gerado em ${dataGeracao}</div>
     </div>
     <button class="print-btn no-print" onclick="window.print()">🖨 Salvar PDF</button>
   </div>
 
-  ${mTotal.nSint>0&&mTotal.nSint<mTotal.nSems?`<div class="parcial-note">⚠ ${mTotal.nSint} semana${mTotal.nSint>1?'s':''} sem coleta de tempos (apenas dados de escala). Tempos e cancelamentos são parciais.</div>`:''}
+  ${mTotal.nSint>0?`<div class="parcial-note">⚠ ${mTotal.nSint} semana${mTotal.nSint>1?'s':''} sem coleta de tempos (dados de escala apenas). Cancelamentos e tempos são parciais para essas semanas.</div>`:''}
 
   <h2>Resumo consolidado — ${periodoNome}</h2>
   <div class="kpi-grid">
     <div class="kpi"><div class="kpi-l">📦 Volume pedidos</div><div class="kpi-v">${fmtN(mTotal.volume)}</div><div class="kpi-s">${mTotal.nSems} semana${mTotal.nSems>1?'s':''}</div></div>
-    <div class="kpi"><div class="kpi-l">❌ Cancelamentos</div><div class="kpi-v">${mTotal.cancelamentos!=null?fmtN(mTotal.cancelamentos):'—'}</div><div class="kpi-s">${mTotal.pctCancel!=null?mTotal.pctCancel.toFixed(2)+'% dos pedidos':'s/ dados de coleta'}</div></div>
+    <div class="kpi"><div class="kpi-l">❌ Cancelamentos</div><div class="kpi-v">${mTotal.cancelamentos!=null?fmtN(mTotal.cancelamentos):'—'}</div><div class="kpi-s">${mTotal.pctCancel!=null?mTotal.pctCancel.toFixed(2)+'% dos pedidos':'s/ coleta de tempos'}</div></div>
     <div class="kpi"><div class="kpi-l">🧑‍🍳 T. Médio preparo</div><div class="kpi-v">${mTotal.tPreparoMed!=null?fmtTempo(mTotal.tPreparoMed):'—'}</div><div class="kpi-s">${mTotal.amostP||0} amostras</div></div>
     <div class="kpi"><div class="kpi-l">🛵 T. Médio coleta</div><div class="kpi-v">${mTotal.tColetaMed!=null?fmtTempo(mTotal.tColetaMed):'—'}</div><div class="kpi-s">${mTotal.amostC||0} amostras</div></div>
     <div class="kpi"><div class="kpi-l">🏁 T. Médio despacho</div><div class="kpi-v">${mTotal.tDespachoMed!=null?fmtTempo(mTotal.tDespachoMed):'—'}</div><div class="kpi-s">${mTotal.amostD||0} amostras</div></div>
@@ -5341,13 +5394,12 @@ function gerarRelatorioIndicadores(){
 
   ${mTotal.adicionalTotal>0?`
   <h2>Composição dos custos adicionais</h2>
-  <div class="legenda">Custos inseridos manualmente — distribuídos sobre o volume total para calcular CPP completo.</div>
+  <div class="legenda">Custos inseridos manualmente, distribuídos sobre o volume total para calcular o CPP completo.</div>
   <table>
     <thead><tr><th>Item</th><th>Valor total</th><th>R$/pedido</th><th>% do adicional</th></tr></thead>
     <tbody>
       ${[['🧹 Limpeza Fixo',adDet.limpezaFixo],['🧽 Freela Limpeza',adDet.freela],['🎧 Atendimento',adDet.atendimento],['➕ Outros',adDet.outros]].filter(([,v])=>v>0).map(([l,v])=>`<tr>
-        <td style="font-weight:600">${l}</td>
-        <td>${fmtR(v)}</td>
+        <td style="font-weight:600">${l}</td><td>${fmtR(v)}</td>
         <td>${mTotal.volume>0?fmtR(v/mTotal.volume):'—'}</td>
         <td style="font-weight:700;color:#dc2626">${mTotal.adicionalTotal>0?(v/mTotal.adicionalTotal*100).toFixed(1)+'%':'—'}</td>
       </tr>`).join('')}
@@ -5362,13 +5414,10 @@ function gerarRelatorioIndicadores(){
     <tbody>${distRows}</tbody>
   </table>`:''}
 
-  <h2>Histórico ${periodoNome.toLowerCase()} — detalhado</h2>
+  <h2>Histórico ${periodoNome.toLowerCase()}</h2>
+  <div class="legenda">Os números entre parênteses indicam amostras usadas no cálculo. Variações verde/vermelho comparam com período anterior.</div>
   <table>
-    <thead><tr>
-      <th>Período</th><th>Pedidos</th><th>Cancelamentos</th><th>% Cancel.</th>
-      <th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th>
-      <th>CPP s/ adic.</th><th>CPP c/ adic.</th>
-    </tr></thead>
+    <thead><tr><th>Período</th><th>Pedidos</th><th>Cancelamentos</th><th>% Cancel.</th><th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th><th>CPP s/ adic.</th><th>CPP c/ adic.</th></tr></thead>
     <tbody>${linhasHist}</tbody>
   </table>
 
@@ -5391,19 +5440,8 @@ function renderColHist(){
   if(!con) return;
 
   const histEsc = JSON.parse(localStorage.getItem(KH)||'[]');
-  const histInd = JSON.parse(localStorage.getItem(KIND)||'[]');
-
-  // Mesmo sem histórico de escalas, mostrar colaboradores cadastrados
   if(!histEsc.length){
-    const colabsAtuais = S.colabs.filter(c=>{
-      if(hubFiltro==='todos') return true;
-      return (c.hub||'Sion')===hubFiltro;
-    });
-    if(!colabsAtuais.length){
-      con.innerHTML='<div class="empty"><div class="empty-ico">👤</div><h3>Nenhum colaborador cadastrado para este hub</h3></div>';
-    } else {
-      con.innerHTML='<div class="empty"><div class="empty-ico">📭</div><h3>Nenhuma escala publicada ainda</h3><p>Publique escalas para ver histórico de desempenho.</p></div>';
-    }
+    con.innerHTML='<div class="empty"><div class="empty-ico">📭</div><h3>Nenhuma escala publicada ainda</h3><p>Publique escalas para ver histórico de desempenho.</p></div>';
     return;
   }
 
@@ -5413,207 +5451,223 @@ function renderColHist(){
 
   const agora = Date.now();
   const histFilt = histEsc.filter(h=>{
-    const diff = (agora - new Date(h.segISO).getTime())/(1000*60*60*24);
+    const diff = (agora - new Date(h.segISO+'T00:00:00').getTime())/(1000*60*60*24);
     return diff <= diasLimite;
   });
 
-  // Coletar colaboradores: S.colabs é a fonte de verdade para hub/custo
-  // Histórico de escalas pode ter cópias antigas sem hub — não usar para isso
+  const diasO = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+
+  // ── Para cada semana, derive o estado REAL da escala:
+  // semana.escala = estado atual (já com substituições aplicadas)
+  // semana.confirmacoes + leilaoKey = quem negou / quem pegou
+  // A fonte de verdade é QUEM ESTÁ EM escala[dia][hora].alocados
+  // Não se usa semana.colabs para saber quem trabalhou — apenas para custo/hub
+
+  // Mapa nome → { hub, custo, passagem } — prioriza S.colabs (mais atualizado)
+  const infoColab = {};
+  S.colabs.forEach(c=>{ infoColab[c.nome]={hub:c.hub||'Sion',custo:c.custo||0,passagem:c.passagem||0}; });
+
+  // Mapa nome → { semanas: [...] }
   const colabsMap = {};
-  // Primeiro, pré-popular com colaboradores atuais
-  S.colabs.forEach(c=>{
-    colabsMap[c.nome] = { nome:c.nome, hub:c.hub||'Sion', custo:c.custo||0, passagem:c.passagem||0, semanas:[] };
-  });
-  // Complementar com colaboradores que aparecem no histórico mas não estão mais no S.colabs
+
   histFilt.forEach(semana=>{
-    (semana.colabs||[]).forEach(c=>{
-      if(!colabsMap[c.nome]){
-        // Hub: preferir S.colabs; se não existir, usar o do histórico
-        const atual = S.colabs.find(x=>x.nome===c.nome);
-        colabsMap[c.nome] = { nome:c.nome, hub:(atual?.hub||c.hub)||'Sion', custo:atual?.custo||c.custo||0, passagem:atual?.passagem||c.passagem||0, semanas:[] };
+    const escala   = semana.escala||{};
+    const confs    = semana.confirmacoes||{};
+    // Confirmações locais (inclui quem pegou do leilão)
+    const resKey   = 'orion_v7_confres_'+(semana.id||semana.histId||('semana_'+semana.segISO));
+    const confsLocal = JSON.parse(localStorage.getItem(resKey)||'{}');
+    // Leilão: para saber quem negou E quem pegou
+    const leilaoKey = 'orion_v7_leilao_'+(semana.id||semana.histId||('semana_'+semana.segISO));
+    const leilao    = JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+
+    // Conjunto de nomes que APARECEM NA ESCALA ATUAL (após substituições)
+    const nomesNaEscala = new Set();
+    diasO.forEach(dia=>{
+      for(let h=9;h<=25;h++){
+        const cell = escala[dia]?.[h];
+        if(cell?.alocados) cell.alocados.forEach(n=>nomesNaEscala.add(n));
       }
+    });
+
+    // Turnos por pessoa CONFORME A ESCALA REAL
+    nomesNaEscala.forEach(nome=>{
+      // Info de custo/hub: preferir infoColab (atual); fallback: semana.colabs
+      if(!infoColab[nome]){
+        const c = semana.colabs?.find(x=>x.nome===nome);
+        infoColab[nome]={hub:(c?.hub)||'Sion',custo:c?.custo||0,passagem:c?.passagem||0};
+      }
+
+      const turnosEscalados = [];
+      diasO.forEach(dia=>{
+        let ini=null;
+        for(let h=9;h<=25;h++){
+          const al = escala[dia]?.[h]?.alocados?.includes(nome);
+          if(al && ini===null) ini=h;
+          if(!al && ini!==null){ turnosEscalados.push({dia,ini,fim:h,horas:h-ini}); ini=null; }
+        }
+        if(ini!==null) turnosEscalados.push({dia,ini,fim:26,horas:26-ini});
+      });
+
+      if(!turnosEscalados.length) return; // não está escalado nesta semana
+
+      // Confirmações: merge escala + locais
+      const confObj = confsLocal[nome] || confs[nome] || {};
+      const turnosConf = confObj.turnos||[];
+
+      // Turnos negados: no leilão com ofertadoPor===nome e sem pegoPor ainda
+      const turnosNegados = leilao.filter(t=>t.ofertadoPor===nome&&!t.pegoPor);
+      // Turnos pegos do leilão por este colaborador
+      const turnosPegos  = leilao.filter(t=>t.pegoPor===nome);
+
+      // Falta: marcado como faltou em algum turno confirmado
+      const turnosFaltados = turnosConf.filter(t=>t.faltou).length;
+      const turnosCumpridos = turnosConf.filter(t=>!t.faltou&&!t.indisponivel).length
+        + turnosPegos.length; // pegou do leilão = cumpriu
+      const horasAbatidas = turnosConf.reduce((s,t)=>s+(t.horasAbatidas||0),0);
+
+      const horasTotal = turnosEscalados.reduce((s,t)=>s+t.horas,0) - horasAbatidas;
+      const diasTrabalhados = new Set(turnosEscalados.map(t=>t.dia)).size;
+      const info = infoColab[nome];
+      const custoSemana = (horasTotal>0&&info.custo>0?horasTotal*info.custo:0)
+        + (info.passagem||0)*diasTrabalhados;
+
+      if(!colabsMap[nome]) colabsMap[nome]={nome,...info,semanas:[]};
+      colabsMap[nome].semanas.push({
+        semana: semana.semana, segISO: semana.segISO,
+        turnosEscalados: turnosEscalados.length,
+        turnosCumpridos, turnosFaltados,
+        turnosNegados: turnosNegados.length,
+        horasAbatidas, horasTotal, diasTrabalhados,
+        custoSemana,
+        faltou: turnosFaltados>0,
+        pegouDoLeilao: turnosPegos.length,
+      });
     });
   });
 
-  // Atualizar select de colaboradores filtrado pelo hub selecionado
+  // Atualizar select colaboradores
   const sel = document.getElementById('colHistColab');
   if(sel){
     const nomesHub = Object.values(colabsMap)
       .filter(c=>hubFiltro==='todos'||c.hub===hubFiltro)
       .map(c=>c.nome).sort();
     const atual = sel.value;
-    sel.innerHTML = '<option value="todos">Todos os colaboradores</option>' + nomesHub.map(n=>`<option value="${n}"${atual===n?' selected':''} >${n}</option>`).join('');
+    sel.innerHTML = '<option value="todos">Todos os colaboradores</option>'
+      + nomesHub.map(n=>`<option value="${n}"${atual===n?' selected':''}>${n}</option>`).join('');
   }
 
-  // Para cada semana, extrair dados de cada colaborador
-  histFilt.forEach(semana=>{
-    const confs = semana.confirmacoes||{};
-    const escala = semana.escala||{};
-    const diasO = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-
-    Object.keys(colabsMap).forEach(nome=>{
-      const c = semana.colabs?.find(x=>x.nome===nome);
-      if(!c) return;
-
-      // Turnos escalados
-      const turnosEscalados = [];
-      diasO.forEach(dia=>{
-        let ini=null;
-        for(let h=9;h<=25;h++){
-          const cell=escala[dia]?.[h];
-          const al=cell&&cell.alocados.includes(nome);
-          if(al&&ini===null) ini=h;
-          if(!al&&ini!==null){ turnosEscalados.push({dia,ini,fim:h,horas:h-ini}); ini=null; }
-        }
-        if(ini!==null) turnosEscalados.push({dia,ini,fim:26,horas:26-ini});
-      });
-
-      // Confirmações e faltas
-      const conf = confs[nome]||{};
-      const turnos = conf.turnos||[];
-      const faltou = conf.status==='faltou' || turnos.some(t=>t.faltou);
-      const turnosCumpridos = turnos.filter(t=>!t.faltou).length;
-      const turnosFaltados  = turnos.filter(t=>t.faltou).length;
-      const horasAbatidas   = turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
-
-      // Pedidos no horário do colaborador (dos indicadores)
-      let pedidosSemana = 0, maxPedHora = 0;
-      const indSemana = histInd.find(i=>i.semanaISO===semana.segISO+'/'+semana.domISO);
-      if(indSemana){
-        diasO.forEach(dia=>{
-          turnosEscalados.forEach(t=>{
-            for(let h=t.ini;h<t.fim;h++){
-              // Pedidos nessa hora
-              const chave = semana.matrix?.[dia]?.[String(h).padStart(2,'0')];
-              const ped = chave||0;
-              pedidosSemana += ped;
-              if(ped > maxPedHora) maxPedHora = ped;
-            }
-          });
-        });
-      } else if(semana.matrix){
-        diasO.forEach(dia=>{
-          turnosEscalados.forEach(t=>{
-            for(let h=t.ini;h<t.fim;h++){
-              const ped = semana.matrix?.[dia]?.[String(h).padStart(2,'0')]||0;
-              pedidosSemana += ped;
-              if(ped > maxPedHora) maxPedHora = ped;
-            }
-          });
-        });
-      }
-
-      // Custo desta semana
-      const horasTotal = turnosEscalados.reduce((s,t)=>s+t.horas,0) - horasAbatidas;
-      const diasTrabalhados = new Set(turnosEscalados.map(t=>t.dia)).size;
-      const custoSemana = (horasTotal>0&&c.custo>0?horasTotal*c.custo:0) + (c.passagem||0)*diasTrabalhados;
-
-      colabsMap[nome].semanas.push({
-        semana:semana.semana, segISO:semana.segISO,
-        turnosEscalados:turnosEscalados.length,
-        turnosCumpridos, turnosFaltados, horasAbatidas,
-        pedidosSemana, maxPedHora,
-        custoSemana, horasTotal, diasTrabalhados,
-        faltou,
-      });
-    });
-  });
-
-  // Agregar por colaborador
+  // Agregar stats por colaborador
   const stats = Object.values(colabsMap).map(c=>{
     const s = c.semanas;
     if(!s.length) return null;
-    const totalEscalados  = s.reduce((a,x)=>a+x.turnosEscalados,0);
-    const totalCumpridos  = s.reduce((a,x)=>a+x.turnosCumpridos,0);
-    const totalFaltas     = s.reduce((a,x)=>a+x.turnosFaltados,0);
-    const assiduidade     = totalEscalados>0?((totalEscalados-totalFaltas)/totalEscalados*100):100;
-    const totalPedidos    = s.reduce((a,x)=>a+x.pedidosSemana,0);
-    const maxPedHora      = Math.max(...s.map(x=>x.maxPedHora));
-    const totalCusto      = s.reduce((a,x)=>a+x.custoSemana,0);
-    const totalHoras      = s.reduce((a,x)=>a+x.horasTotal,0);
-    const semanasAtivas   = s.filter(x=>x.turnosEscalados>0).length;
-    const pedPorHora      = totalHoras>0?totalPedidos/totalHoras:0;
-    return { ...c, totalEscalados, totalCumpridos, totalFaltas, assiduidade, totalPedidos, maxPedHora, totalCusto, totalHoras, semanasAtivas, pedPorHora };
+    const totalEscalados = s.reduce((a,x)=>a+x.turnosEscalados,0);
+    const totalCumpridos = s.reduce((a,x)=>a+x.turnosCumpridos,0);
+    const totalFaltas    = s.reduce((a,x)=>a+x.turnosFaltados,0);
+    const totalNegados   = s.reduce((a,x)=>a+x.turnosNegados,0);
+    const totalPegos     = s.reduce((a,x)=>a+x.pegouDoLeilao,0);
+    const assiduidade    = totalEscalados>0?((totalEscalados-totalFaltas)/totalEscalados*100):100;
+    const totalCusto     = s.reduce((a,x)=>a+x.custoSemana,0);
+    const totalHoras     = s.reduce((a,x)=>a+x.horasTotal,0);
+    const semanasAtivas  = s.filter(x=>x.turnosEscalados>0).length;
+    return{...c,totalEscalados,totalCumpridos,totalFaltas,totalNegados,totalPegos,
+      assiduidade,totalCusto,totalHoras,semanasAtivas};
   }).filter(Boolean);
 
-  // Aplicar filtros
+  // Filtrar
   const statsFilt = stats.filter(c=>{
     if(hubFiltro!=='todos'&&c.hub!==hubFiltro) return false;
     if(colFiltro!=='todos'&&c.nome!==colFiltro) return false;
     return true;
   }).sort((a,b)=>a.nome.localeCompare(b.nome));
-  // Debug log
-  console.log('[ColHist] hubFiltro='+hubFiltro+' total='+stats.length+' filtrados='+statsFilt.length, stats.map(c=>c.nome+':'+c.hub));
 
   if(!statsFilt.length){
     con.innerHTML='<div class="empty"><div class="empty-ico">👤</div><h3>Nenhum dado para os filtros selecionados</h3></div>';
     return;
   }
 
-  // Renderizar cards
   const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626','#0891b2','#be185d'];
   function badge(label,val,sub,cor){
     return `<div style="background:var(--card2);border-radius:8px;padding:10px 12px;border-left:3px solid ${cor||'var(--ac)'}">
-      <div style="font-size:9px;color:var(--mu);font-weight:700;text-transform:uppercase;margin-bottom:3px">${label}</div>
+      <div style="font-size:9px;color:var(--mu);font-weight:700;text-transform:uppercase;margin-bottom:3px;line-height:1.3">${label}</div>
       <div style="font-size:16px;font-weight:900;color:var(--tx)">${val}</div>
-      ${sub?`<div style="font-size:10px;color:var(--mu);margin-top:1px">${sub}</div>`:''}
+      ${sub?`<div style="font-size:10px;color:var(--mu);margin-top:2px">${sub}</div>`:''}
     </div>`;
   }
-  function assiduidadeColor(p){ return p>=95?'#16a34a':p>=80?'#d97706':'#dc2626'; }
-
-  const semanaRows = (c) => c.semanas.slice(0,8).map((s,i)=>`
-    <tr style="background:${i%2===0?'var(--card2)':''}">
-      <td style="padding:5px 8px;font-size:11px">${s.semana}</td>
-      <td style="padding:5px 8px;font-size:11px;text-align:center">${s.turnosEscalados}</td>
-      <td style="padding:5px 8px;font-size:11px;text-align:center;color:${s.turnosFaltados>0?'#dc2626':'var(--mu)'}">${s.turnosFaltados}</td>
-      <td style="padding:5px 8px;font-size:11px;text-align:center">${s.horasTotal.toFixed(1)}h</td>
-      <td style="padding:5px 8px;font-size:11px;text-align:center">${s.pedidosSemana.toLocaleString('pt-BR')}</td>
-      <td style="padding:5px 8px;font-size:11px;text-align:right;font-weight:600">R$ ${s.custoSemana.toFixed(2).replace('.',',')}</td>
-    </tr>`).join('');
+  function assidCor(p){ return p>=95?'#16a34a':p>=80?'#d97706':'#dc2626'; }
 
   con.innerHTML = statsFilt.map((c,ci)=>{
     const cor = cores[ci%cores.length];
-    const assidCor = assiduidadeColor(c.assiduidade);
+    const ac  = assidCor(c.assiduidade);
+
+    const semanasRows = c.semanas.slice(0,12).map((s,i)=>`
+      <tr style="background:${i%2===0?'var(--card2)':'var(--card)'}">
+        <td style="padding:6px 10px;font-size:11px;white-space:nowrap">${s.semana}</td>
+        <td style="padding:6px 10px;font-size:11px;text-align:center">${s.turnosEscalados}</td>
+        <td style="padding:6px 10px;font-size:11px;text-align:center;color:${s.turnosFaltados>0?'#dc2626':'var(--mu)'}">${s.turnosFaltados}</td>
+        <td style="padding:6px 10px;font-size:11px;text-align:center;color:${s.turnosNegados>0?'#f59e0b':'var(--mu)'}">${s.turnosNegados||'—'}</td>
+        <td style="padding:6px 10px;font-size:11px;text-align:center">${s.horasTotal.toFixed(1)}h</td>
+        <td style="padding:6px 10px;font-size:11px;text-align:right;font-weight:700;color:#16a34a">R$ ${s.custoSemana.toFixed(2).replace('.',',')}</td>
+      </tr>`).join('');
+
     return `
-    <div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:20px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <div style="width:42px;height:42px;border-radius:50%;background:${cor};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#fff;flex-shrink:0">${c.nome.substring(0,2).toUpperCase()}</div>
-        <div>
-          <div style="font-size:16px;font-weight:800">${c.nome}</div>
-          <div style="font-size:11px;color:var(--mu)">${c.hub||'Sion'} · ${c.semanasAtivas} semana${c.semanasAtivas!==1?'s':''} escalado</div>
+    <div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:20px 22px;margin-bottom:16px">
+
+      <!-- Cabeçalho do colaborador -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+        <div style="width:44px;height:44px;border-radius:50%;background:${cor};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;flex-shrink:0">${c.nome.substring(0,2).toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:16px;font-weight:800;color:var(--tx)">${c.nome}</div>
+          <div style="font-size:11px;color:var(--mu);margin-top:2px">${c.hub||'Sion'} · ${c.semanasAtivas} semana${c.semanasAtivas!==1?'s':''} escalado${c.custo>0?' · R$ '+c.custo.toFixed(2).replace('.',',')+'/h':''}</div>
         </div>
-        <div style="margin-left:auto;text-align:right">
-          <div style="font-size:20px;font-weight:900;color:${assidCor}">${c.assiduidade.toFixed(1)}%</div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:22px;font-weight:900;color:${ac}">${c.assiduidade.toFixed(1)}%</div>
           <div style="font-size:10px;color:var(--mu)">assiduidade</div>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:16px">
+      <!-- KPI badges -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px;margin-bottom:16px">
         ${badge('Turnos escalados',c.totalEscalados,'','#2563eb')}
-        ${badge('Turnos cumpridos',c.totalCumpridos,'','#16a34a')}
-        ${badge('Faltas',c.totalFaltas,c.totalFaltas>0?'⚠ atenção':'',c.totalFaltas>0?'#dc2626':'#16a34a')}
+        ${badge('Cumpridos',c.totalCumpridos,'','#16a34a')}
+        ${c.totalFaltas>0?badge('Faltas',c.totalFaltas,'⚠ verificar','#dc2626'):badge('Faltas','0','sem faltas','#16a34a')}
+        ${c.totalNegados>0?badge('Recusados',c.totalNegados,'turnos negados','#f59e0b'):''}
+        ${c.totalPegos>0?badge('Do leilão',c.totalPegos,'pegou extra','#7c3aed'):''}
         ${badge('Horas totais',c.totalHoras.toFixed(1)+'h','','#d97706')}
-        ${badge('Pedidos no turno',c.totalPedidos.toLocaleString('pt-BR'),'','#7c3aed')}
-        ${badge('Ped/hora médio',c.pedPorHora.toFixed(1),'pedidos por hora trabalhada','#0891b2')}
-        ${badge('Pico/hora',c.maxPedHora,'máx pedidos numa hora','#be185d')}
         ${badge('Custo total','R$ '+c.totalCusto.toFixed(2).replace('.',','),'','#374151')}
-        ${c.custo>0?badge('Custo/hora','R$ '+c.custo.toFixed(2).replace('.',','),'','#374151'):''}
-        ${c.passagem>0?badge('Passagem/dia','R$ '+c.passagem.toFixed(2).replace('.',','),'','#374151'):''}
+        ${c.custo>0?badge('Custo/hora','R$ '+c.custo.toFixed(2).replace('.',','),'','#6b7280'):''}
+        ${c.passagem>0?badge('Passagem/dia','R$ '+c.passagem.toFixed(2).replace('.',','),'','#6b7280'):''}
       </div>
 
-      <details style="margin-top:4px">
-        <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--mu);padding:4px 0">Ver histórico semanal (${c.semanas.length} semanas)</summary>
-        <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:11px">
-          <thead><tr style="background:var(--tx);color:var(--bg)">
-            <th style="padding:5px 8px;text-align:left">Semana</th>
-            <th style="padding:5px 8px;text-align:center">Turnos</th>
-            <th style="padding:5px 8px;text-align:center">Faltas</th>
-            <th style="padding:5px 8px;text-align:center">Horas</th>
-            <th style="padding:5px 8px;text-align:center">Pedidos</th>
-            <th style="padding:5px 8px;text-align:right">Custo</th>
-          </tr></thead>
-          <tbody>${semanaRows(c)}</tbody>
-        </table>
+      <!-- Histórico semanal -->
+      <details>
+        <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--mu);padding:4px 0;user-select:none">
+          📅 Ver histórico semanal (${c.semanas.length} semana${c.semanas.length!==1?'s':''})
+        </summary>
+        <div style="overflow-x:auto;margin-top:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:480px">
+            <thead>
+              <tr style="background:var(--tx)">
+                <th style="padding:6px 10px;text-align:left;color:var(--bg);font-size:10px;white-space:nowrap">Semana</th>
+                <th style="padding:6px 10px;text-align:center;color:var(--bg);font-size:10px">Turnos</th>
+                <th style="padding:6px 10px;text-align:center;color:var(--bg);font-size:10px">Faltas</th>
+                <th style="padding:6px 10px;text-align:center;color:var(--bg);font-size:10px">Negados</th>
+                <th style="padding:6px 10px;text-align:center;color:var(--bg);font-size:10px">Horas</th>
+                <th style="padding:6px 10px;text-align:right;color:var(--bg);font-size:10px">Custo</th>
+              </tr>
+            </thead>
+            <tbody>${semanasRows}</tbody>
+            <tfoot>
+              <tr style="background:var(--card2);font-weight:700;border-top:2px solid var(--brd)">
+                <td style="padding:6px 10px;font-size:11px">TOTAL</td>
+                <td style="padding:6px 10px;font-size:11px;text-align:center">${c.totalEscalados}</td>
+                <td style="padding:6px 10px;font-size:11px;text-align:center;color:${c.totalFaltas>0?'#dc2626':'var(--mu)'}">${c.totalFaltas}</td>
+                <td style="padding:6px 10px;font-size:11px;text-align:center;color:${c.totalNegados>0?'#f59e0b':'var(--mu)'}">${c.totalNegados||'—'}</td>
+                <td style="padding:6px 10px;font-size:11px;text-align:center">${c.totalHoras.toFixed(1)}h</td>
+                <td style="padding:6px 10px;font-size:11px;text-align:right;color:#16a34a;font-weight:700">R$ ${c.totalCusto.toFixed(2).replace('.',',')}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </details>
     </div>`;
   }).join('');
@@ -6465,6 +6519,8 @@ function renderLeilaoMode(){
             const histLocal=JSON.parse(localStorage.getItem(KH)||'[]');
             if(histLocal.length>0){histLocal[0].escala=JSON.parse(JSON.stringify(S.escala));localStorage.setItem(KH,JSON.stringify(histLocal));}
           }catch(e){}
+          // Atualizar histórico de colaboradores se estiver visível
+          if(typeof renderColHist==='function') try{renderColHist();}catch(e){}
         }
 
         // Renderizar leilão imediatamente — sem esperar API
