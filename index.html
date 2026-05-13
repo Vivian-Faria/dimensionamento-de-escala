@@ -4875,12 +4875,15 @@ function renderIndicadores(){
   const todosCancels=semanasPerido.flatMap(s=>s.cancelamentos||[]);
   const mBase=calcularMetricasSemana(todasVendas,todosCancels,hub);
   // Volume real: soma volume de todas (sintéticas usam _volEscala)
+  // Volume REAL: APENAS semanas com dados do Órion (bookmarklet coletado)
+  // Semanas sintéticas (_soDaEscala) têm só projeção de demanda — nunca somar aqui
   const volumeReal=semanasPerido.reduce((t,s)=>{
-    if(s._soDaEscala) return t+(s._volEscala||0);
+    if(s._soDaEscala) return t; // sem dados reais, não somar
     const mt=calcularMetricasSemana(s.vendas||[],s.cancelamentos||[],hub);
     return t+mt.volume;
   },0);
-  const m={...mBase, volume:volumeReal};
+  const nSemsComDados=semanasPerido.filter(s=>!s._soDaEscala).length;
+  const m={...mBase, volume:volumeReal, _nSemsComDados:nSemsComDados, _nSemsTotais:semanasPerido.length};
 
   // Período anterior (mesmo tamanho) para comparação
   const nSems=semanasPerido.length;
@@ -4924,9 +4927,14 @@ function renderIndicadores(){
   // KPI Cards
   const fmtCpp = v => v !== null ? `R$ ${v.toFixed(2).replace('.',',')}` : '—';
   const kpis=[
-    {icon:'📦',label:'Volume de pedidos',val:m.volume.toLocaleString('pt-BR'),prev:mAnt?mAnt.volume:null,unit:'',big:true,hiMelhor:true},
+    {icon:'📦',label:'Volume de pedidos',
+      val:m.volume>0?m.volume.toLocaleString('pt-BR'):'—',
+      prev:mAnt&&mAnt.volume>0?mAnt.volume:null,unit:'',big:true,hiMelhor:true,
+      rawVal:m.volume>0?m.volume:null,prevRaw:mAnt&&mAnt.volume>0?mAnt.volume:null,
+      extraHtml:m._nSemsComDados<m._nSemsTotais?`<div style="font-size:9px;color:#9ca3af;margin-top:1px">${m._nSemsComDados}/${m._nSemsTotais} sem. c/ dados reais</div>`:
+                m.volume>0?`<div style="font-size:9px;color:#16a34a;margin-top:1px">${periodoLabel}</div>`:''},
     {icon:'❌',label:'Cancelamentos',val:m.cancelamentos,prev:mAnt?mAnt.cancelamentos:null,unit:'',big:false,hiMelhor:false},
-    {icon:'📉',label:'% Cancelamentos',val:m.pctCancel.toFixed(2)+'%',prev:mAnt?mAnt.pctCancel:null,unit:'%',big:false,hiMelhor:false,rawVal:m.pctCancel,prevRaw:mAnt?mAnt.pctCancel:null},
+    {icon:'📉',label:'% Cancelamentos',val:m.pctCancel!=null?m.pctCancel.toFixed(2)+'%':'—',prev:mAnt?mAnt.pctCancel:null,unit:'%',big:false,hiMelhor:false,rawVal:m.pctCancel,prevRaw:mAnt?mAnt.pctCancel:null},
     {icon:'🧑‍🍳',label:'Tempo médio preparo',val:fmtTempo(m.tPreparoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tPreparoMed,prevRaw:mAnt?mAnt.tPreparoMed:null},
     {icon:'🛵',label:'Tempo médio coleta',val:fmtTempo(m.tColetaMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tColetaMed,prevRaw:mAnt?mAnt.tColetaMed:null},
     {icon:'🏁',label:'Tempo médio despacho',val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null},
@@ -4949,21 +4957,22 @@ function renderIndicadores(){
     // Calcula volume e custo por hub — usa escala (KH) como fonte primária
     // para semanas sintéticas que não têm dados do Órion
     const volPorHub={}, custoPorHub={};
+    const volRealPorHub={};
     semanasPerido.forEach(sem=>{
       if(sem._soDaEscala){
-        // Dados vêm do KH: uma entrada por hub por semana
+        // Semana sintética: volume é PROJEÇÃO, não real. Usa só para custo.
         histEsc2.filter(e=>e.segISO===sem.de).forEach(e=>{
           const h2=e.hub||'Sem hub';
           if(!hubVisivel(h2)) return;
-          volPorHub[h2]=(volPorHub[h2]||0)+(e.resumo?.totalPed||0);
+          volPorHub[h2]=(volPorHub[h2]||0)+(e.resumo?.totalPed||0); // projetado
           custoPorHub[h2]=(custoPorHub[h2]||0)+(e.resumo?.totalCusto||0);
         });
       } else {
-        // Dados do Órion: filtra por hub nas vendas
+        // Semana com dados reais do Órion
         hubsAtivos.forEach(h2=>{
           const mH=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],new Set([h2]));
           volPorHub[h2]=(volPorHub[h2]||0)+mH.volume;
-          // CPP do Órion não tem por hub — usa escala como fallback
+          volRealPorHub[h2]=(volRealPorHub[h2]||0)+mH.volume; // rastreia só reais
           histEsc2.filter(e=>e.segISO===sem.de&&e.hub===h2).forEach(e=>{
             custoPorHub[h2]=(custoPorHub[h2]||0)+(e.resumo?.totalCusto||0);
           });
@@ -4971,12 +4980,16 @@ function renderIndicadores(){
       }
     });
 
+    // Só usa volume real (Órion) para percentuais — não mistura com projeção
+    const volRealTotal=Object.values(volRealPorHub||{}).reduce((t,v)=>t+v,0) || totalGeral;
     const rows = hubsAtivos.map(h2=>{
-      const vol=volPorHub[h2]||0;
+      const vol=volPorHub[h2]||0; // pode ser projeção para semanas sintéticas
+      const volReal=volRealPorHub?.[h2]||0; // só dados do Órion
       const custo=custoPorHub[h2]||0;
-      const cpp=vol>0&&custo>0?custo/vol:null;
-      const pct=totalGeral>0?(vol/totalGeral*100):0;
-      return{nome:nomeHub(h2),vol,custo,cpp,pct};
+      const cpp=custo>0&&(vol>0)?custo/vol:null;
+      const pct=volRealTotal>0&&volReal>0?(volReal/volRealTotal*100):(totalGeral>0?(vol/totalGeral*100):0);
+      const temReal=volReal>0;
+      return{nome:nomeHub(h2),vol:temReal?volReal:vol,custo,cpp,pct,projetado:!temReal&&vol>0};
     }).filter(r=>r.vol>0||r.custo>0).sort((a,b)=>b.vol-a.vol);
 
     if(!rows.length) return '';
@@ -5071,8 +5084,10 @@ function renderIndicadores(){
     const nSint=sems.filter(s=>s._soDaEscala).length;
     const mtsReais=mts.filter(x=>!x._sintetica);
 
-    // Volumes e cancelamentos — SOMA de todas / SOMA das que têm dados
-    const volTotal=mts.reduce((t,x)=>t+x.volume,0);
+    // Volume REAL: só semanas com dados do Órion. Projeção de escala NÃO entra.
+    const volTotal=mts.reduce((t,x)=>t+(x.volume!=null?x.volume:0),0);
+    const volProjetadoTotal=sems.reduce((t,s)=>t+(s._volEscala||0),0); // apenas para referência
+    const nSemsReais=mts.filter(x=>x.volume!=null).length;
     const cancelTotal=mtsReais.reduce((t,x)=>t+(x.cancelamentos||0),0);
     const cancelDisp=mtsReais.length>0;
     const pctTotal=cancelDisp&&volTotal>0?(cancelTotal/(volTotal+cancelTotal))*100:null;
@@ -5139,7 +5154,7 @@ function renderIndicadores(){
       ?'<div style="font-size:9px;color:#9ca3af;font-weight:400;font-style:italic;margin-top:2px">⚠ '+med.nSinteticas+' sem. sem coleta de tempos</div>':'';
     return`<tr style="font-weight:700;border-top:2px solid var(--brd2);${estiloTr}">
       ${labelCell.replace(/<\/td>$/, parcialNote+'</td>')}
-      ${celVar(med.volume,prevMed?.volume,true,v=>v.toLocaleString('pt-BR'))}
+      ${med.volume>0?celVar(med.volume,prevMed?.volume,true,v=>v.toLocaleString('pt-BR')):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>'}
       ${med.cancelamentos!=null?celVar(med.cancelamentos,prevMed?.cancelamentos,false,x=>x.toLocaleString('pt-BR')):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">s/ dados</td>'}
       ${med.pctCancel!=null?celVar(med.pctCancel,prevMed?.pctCancel,false,x=>x.toFixed(2)+'%'):'<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic">—</td>'}
       ${celTempoResumo(med.tPreparoMed)}
@@ -5155,9 +5170,12 @@ function renderIndicadores(){
   // Entradas sintéticas têm volume/CPP da escala — cancelamentos e tempos são null (s/ bookmarklet)
   function metricasSem(sem){
     if(sem._soDaEscala){
-      const vol=sem._volEscala||0;
-      return {volume:vol,cancelamentos:null,pctCancel:null,
-              tPreparoMed:null,tColetaMed:null,tDespachoMed:null,_sintetica:true};
+      // Semana sem dados do Órion: volume REAL desconhecido.
+      // _volEscala é PROJEÇÃO de demanda (cell.ped), NÃO pedidos reais.
+      // Retorna null para volume — nunca misturar projeção com dados reais.
+      return {volume:null,cancelamentos:null,pctCancel:null,
+              tPreparoMed:null,tColetaMed:null,tDespachoMed:null,_sintetica:true,
+              _custoEscala:sem._custoEscala||0, _volProjetado:sem._volEscala||0};
     }
     return calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
   }
@@ -5201,9 +5219,13 @@ function renderIndicadores(){
       +(sintetica?' <span style="font-size:9px;color:#9ca3af;font-weight:400;font-style:italic">(só escala)</span>':'');
 
     // Linha principal da semana
+    // Volume: só mostra real (Órion). Sintéticas mostram projeção com aviso claro.
+    const volCell = sintetica
+      ? `<td style="padding:8px 12px;font-size:11px;color:#9ca3af;font-style:italic" title="Volume real não coletado no Órion. Projeção da escala: ${(mt._volProjetado||0).toLocaleString('pt-BR')} ped.">s/ dados${mt._volProjetado?` <span style="font-size:9px">(≈${mt._volProjetado.toLocaleString('pt-BR')} proj.)</span>`:''}</td>`
+      : celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR'));
     let html='<tr style="border-bottom:1px solid var(--brd);'+extraStyle+'">'
       +cel(labelPeriodo,'font-weight:600;white-space:nowrap')
-      +(sintetica?cel(mt.volume.toLocaleString('pt-BR')):celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR')))
+      +volCell
       +celCancelamento(mt.cancelamentos,prevMt)
       +celPctCancel(mt.pctCancel,prevMt)
       +celTempo(mt.tPreparoMed)
