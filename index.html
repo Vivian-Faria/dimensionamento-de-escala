@@ -4072,6 +4072,30 @@ try {
     }
 
     // ── LINK CURTO: #s=CODE ou #s=CODE@APIHOST
+    // ── LINK DIRETO COM DADOS: #leilao_dados=BASE64 (fallback sem servidor)
+    var b64LeilaoDados=extrairParam(raw,'leilao_dados');
+    if(b64LeilaoDados){
+      try{
+        const pd=JSON.parse(decodeURIComponent(escape(atob(b64LeilaoDados))));
+        if(pd&&pd.histId){
+          window._LEILAO_HIST_ID=pd.histId;
+          window._LEILAO_API_URL=pd.apiUrl||localStorage.getItem('orion_api_url')||'';
+          window._DISP_MODE=pd;
+          // Popula localStorage com os turnos do link
+          if(Array.isArray(pd.turnos)&&pd.turnos.length>0){
+            const _lk='orion_v7_leilao_'+pd.histId;
+            const _local=JSON.parse(localStorage.getItem(_lk)||'[]');
+            pd.turnos.forEach(t=>{
+              const dup=_local.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
+              if(!dup) _local.push(t);
+            });
+            localStorage.setItem(_lk,JSON.stringify(_local));
+          }
+          temDados=true;
+        }
+      }catch(e){ console.warn('[leilao_dados] erro ao parsear:',e.message); }
+    }
+
     var shortCode=extrairParam(raw,'s');
     if(shortCode&&shortCode.length>=6){
       window._SHORT_CODE=shortCode;
@@ -6619,38 +6643,14 @@ function renderLeilaoMode(){
     };
   }
 
-  // ── INICIALIZAÇÃO: sempre busca do servidor primeiro ──────────────
-  // Garante que celular e outros dispositivos vejam os mesmos turnos
+  // ── INICIALIZAÇÃO ─────────────────────────────────────────────────
+  // Os turnos já foram embutidos no link pelo gestor e estão no localStorage.
+  // Renderiza imediatamente — sincroniza API em background para pegar atualizações.
   (async function iniciarLeilao(){
-    // Loading
-    document.body.style.cssText='margin:0;padding:0;background:#0d0d10;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center';
-    document.body.innerHTML=`<div style="text-align:center;padding:32px 20px">
-      <div style="font-size:40px;margin-bottom:16px">⚡</div>
-      <div style="color:#c8f135;font-size:17px;font-weight:800;margin-bottom:8px">Carregando leilão...</div>
-      <div style="color:#6b7280;font-size:13px">Buscando turnos disponíveis</div>
-    </div>`;
-
-    // Busca do servidor — sempre, independente do localStorage
-    const ok=await sincronizarDoServidor();
-
-    // Renderiza com dados do servidor + locais
+    // Renderiza com dados locais (já populados pelo link)
     renderPagina();
-
-    // Se não conseguiu sincronizar e não tem nada local, mostra aviso
-    if(!ok){
-      const local=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-      if(!local.length){
-        // Pode ser falha de rede — mostra botão de tentar novamente proeminente
-        const btnRetry=document.createElement('div');
-        btnRetry.style.cssText='position:fixed;bottom:80px;left:0;right:0;text-align:center;z-index:999';
-        btnRetry.innerHTML=`<div style="background:#1a1d23;border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:14px 20px;display:inline-block;max-width:320px">
-          <div style="color:#f87171;font-size:13px;font-weight:700;margin-bottom:8px">⚠️ Não foi possível carregar os turnos</div>
-          <div style="color:#6b7280;font-size:11px;margin-bottom:10px">Verifique sua conexão</div>
-          <button onclick="window.atualizarDoServidor()" style="background:#c8f135;color:#0d0d10;border:none;border-radius:8px;padding:10px 24px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit;width:100%">🔄 Tentar novamente</button>
-        </div>`;
-        document.body.appendChild(btnRetry);
-      }
-    }
+    // Sincroniza servidor em background (pegas feitas por outros, novos turnos)
+    sincronizarDoServidor().then(mudou=>{ if(mudou) renderPagina(); }).catch(()=>{});
   })();
 }
 
@@ -6675,7 +6675,11 @@ async function abrirLinkLeilao(histId){
     }catch(e){ console.warn('[Leilão] Falha ao sincronizar com servidor:',e.message); }
   }
 
-  const payload={tipo:'leilao',histId,semana:entrada.semana,nomes,apiUrl};
+  // Embute os turnos no payload — celular recebe tudo sem depender de GET extra na API
+  const turnosParaLink=turnosLeilao.filter(t=>!t.pegoPor).map(t=>({
+    dia:t.dia,ini:t.ini,fim:t.fim,ofertadoPor:t.ofertadoPor||'Sistema',pegoPor:null,semCobertura:t.semCobertura||false
+  }));
+  const payload={tipo:'leilao',histId,semana:entrada.semana,nomes,apiUrl,turnos:turnosParaLink};
 
   let link;
   try{
@@ -6683,7 +6687,11 @@ async function abrirLinkLeilao(histId){
     const d=await r.json();
     if(d.ok) link=location.origin+location.pathname+'#s='+d.code+'@'+encodeURIComponent(apiUrl);
   }catch(e){}
-  if(!link) link=location.origin+location.pathname+'#leilao='+histId;
+  // Fallback: embute tudo no hash direto (sem servidor)
+  if(!link){
+    const b64=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    link=location.origin+location.pathname+'#leilao_dados='+b64;
+  }
 
   const modal=document.createElement('div');
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
@@ -7646,6 +7654,18 @@ if(window._SHORT_CODE){
           // Leilão de horários
           window._LEILAO_HIST_ID=pd.histId;
           window._LEILAO_API_URL=pd.apiUrl||d.payload.apiUrl||localStorage.getItem('orion_api_url')||'';
+          // Se o payload já traz os turnos, popula o localStorage antes de renderizar
+          // Isso garante que o celular veja os turnos mesmo se a API falhar
+          if(Array.isArray(pd.turnos)&&pd.turnos.length>0){
+            const _lk='orion_v7_leilao_'+pd.histId;
+            const _local=JSON.parse(localStorage.getItem(_lk)||'[]');
+            let _mudou=false;
+            pd.turnos.forEach(t=>{
+              const dup=_local.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
+              if(!dup){_local.push(t);_mudou=true;}
+            });
+            if(_mudou) localStorage.setItem(_lk,JSON.stringify(_local));
+          }
           renderLeilaoMode();
         } else if(pd.tipo==='confirmacao'){
           renderConfirmacaoMode(pd);
