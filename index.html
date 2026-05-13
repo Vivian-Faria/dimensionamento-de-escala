@@ -4945,29 +4945,60 @@ function renderIndicadores(){
     if(hubsAtivos.length < 2) return '';
     const totalGeral = m.volume;
     if(!totalGeral) return '';
-    const rows = hubsAtivos.map(h=>{
-      const mH = calcularMetricasSemana(todasVendas, todosCancels, new Set([h]));
-      const pct = totalGeral > 0 ? (mH.volume / totalGeral * 100) : 0;
-      return { nome: nomeHub(h), vol: mH.volume, pct };
-    }).sort((a,b) => b.vol - a.vol);
 
+    // Calcula volume e custo por hub — usa escala (KH) como fonte primária
+    // para semanas sintéticas que não têm dados do Órion
+    const volPorHub={}, custoPorHub={};
+    semanasPerido.forEach(sem=>{
+      if(sem._soDaEscala){
+        // Dados vêm do KH: uma entrada por hub por semana
+        histEsc2.filter(e=>e.segISO===sem.de).forEach(e=>{
+          const h2=e.hub||'Sem hub';
+          if(!hubVisivel(h2)) return;
+          volPorHub[h2]=(volPorHub[h2]||0)+(e.resumo?.totalPed||0);
+          custoPorHub[h2]=(custoPorHub[h2]||0)+(e.resumo?.totalCusto||0);
+        });
+      } else {
+        // Dados do Órion: filtra por hub nas vendas
+        hubsAtivos.forEach(h2=>{
+          const mH=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],new Set([h2]));
+          volPorHub[h2]=(volPorHub[h2]||0)+mH.volume;
+          // CPP do Órion não tem por hub — usa escala como fallback
+          histEsc2.filter(e=>e.segISO===sem.de&&e.hub===h2).forEach(e=>{
+            custoPorHub[h2]=(custoPorHub[h2]||0)+(e.resumo?.totalCusto||0);
+          });
+        });
+      }
+    });
+
+    const rows = hubsAtivos.map(h2=>{
+      const vol=volPorHub[h2]||0;
+      const custo=custoPorHub[h2]||0;
+      const cpp=vol>0&&custo>0?custo/vol:null;
+      const pct=totalGeral>0?(vol/totalGeral*100):0;
+      return{nome:nomeHub(h2),vol,custo,cpp,pct};
+    }).filter(r=>r.vol>0||r.custo>0).sort((a,b)=>b.vol-a.vol);
+
+    if(!rows.length) return '';
+    const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
     return `<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:16px;margin-bottom:16px">
       <div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:4px;letter-spacing:.03em">DISTRIBUIÇÃO POR HUB</div>
       <div style="font-size:10px;color:var(--mu);margin-bottom:10px">${periodoLabel}</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;flex-direction:column;gap:12px">
         ${rows.map((r,i)=>{
-          const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
-          const cor = cores[i % cores.length];
+          const cor=cores[i%cores.length];
           return `<div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-              <span style="font-size:12px;font-weight:600">${r.nome}</span>
-              <span style="font-size:12px;color:var(--mu)">
-                <strong style="color:var(--tx)">${r.vol.toLocaleString('pt-BR')}</strong> ped &nbsp;·&nbsp;
-                <strong style="color:${cor}">${r.pct.toFixed(1)}%</strong>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:4px">
+              <span style="font-size:13px;font-weight:700;color:var(--tx)">${r.nome}</span>
+              <span style="font-size:11px;color:var(--mu);display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                <span><strong style="color:var(--tx)">${r.vol.toLocaleString('pt-BR')}</strong> ped</span>
+                ${r.custo>0?`<span>R$ ${r.custo.toFixed(2).replace('.',',')}</span>`:''}
+                ${r.cpp!=null?`<span style="font-weight:700;color:${cor}">CPP R$ ${r.cpp.toFixed(2).replace('.',',')}</span>`:''}
+                <span style="font-weight:700;color:${cor}">${r.pct.toFixed(1)}%</span>
               </span>
             </div>
-            <div style="background:var(--card2);border-radius:4px;height:6px;overflow:hidden">
-              <div style="background:${cor};height:100%;width:${r.pct.toFixed(1)}%;border-radius:4px;transition:.4s"></div>
+            <div style="background:var(--card2);border-radius:4px;height:7px;overflow:hidden">
+              <div style="background:${cor};height:100%;width:${Math.min(r.pct,100).toFixed(1)}%;border-radius:4px;transition:.4s"></div>
             </div>
           </div>`;
         }).join('')}
@@ -4998,12 +5029,31 @@ function renderIndicadores(){
   }).join('');
 
   // ── helpers de cálculo de métricas de escala ──────────────────────────────
-  let histEscMap={};
+  // histEscMap: segISO → CPP médio (custo total / pedidos totais de todos hubs)
+  // histEscMapHub: segISO+'_'+hub → {totalPed, totalCusto, cpp}
+  let histEscMap={}, histEscMapHub={};
   try{
     const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    // Agrupa por segISO para calcular CPP consolidado
+    const _porSeg={};
     he.forEach(e=>{
-      const seg=e.segISO;
-      if(e.resumo?.totalPed>0) histEscMap[seg]=(e.resumo.totalCusto/e.resumo.totalPed);
+      const seg=e.segISO; if(!seg||!e.resumo?.totalPed) return;
+      if(!_porSeg[seg]) _porSeg[seg]={custo:0,ped:0};
+      _porSeg[seg].custo+=(e.resumo.totalCusto||0);
+      _porSeg[seg].ped+=(e.resumo.totalPed||0);
+      // Por hub
+      const h2=e.hub||'Sem hub';
+      const hk=seg+'_'+h2;
+      if(!histEscMapHub[hk]) histEscMapHub[hk]={totalPed:0,totalCusto:0,hub:h2};
+      histEscMapHub[hk].totalPed+=(e.resumo.totalPed||0);
+      histEscMapHub[hk].totalCusto+=(e.resumo.totalCusto||0);
+    });
+    Object.entries(_porSeg).forEach(([seg,v])=>{
+      if(v.ped>0) histEscMap[seg]=v.custo/v.ped;
+    });
+    // Calcular CPP por hub
+    Object.values(histEscMapHub).forEach(v=>{
+      if(v.totalPed>0) v.cpp=v.totalCusto/v.totalPed;
     });
   }catch(e){}
 
@@ -5149,7 +5199,9 @@ function renderIndicadores(){
     const sintetica=mt._sintetica;
     const labelPeriodo=`${sem.deBR}–${sem.ateBR}`+(extraLabel?` ${extraLabel}`:'')
       +(sintetica?' <span style="font-size:9px;color:#9ca3af;font-weight:400;font-style:italic">(só escala)</span>':'');
-    return '<tr style="border-bottom:1px solid var(--brd);'+extraStyle+'">'
+
+    // Linha principal da semana
+    let html='<tr style="border-bottom:1px solid var(--brd);'+extraStyle+'">'
       +cel(labelPeriodo,'font-weight:600;white-space:nowrap')
       +(sintetica?cel(mt.volume.toLocaleString('pt-BR')):celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR')))
       +celCancelamento(mt.cancelamentos,prevMt)
@@ -5161,6 +5213,33 @@ function renderIndicadores(){
       +cel(adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—',adicionalSem>0?'background:#fff7ed':'')
       +cel(cppComAdicional!=null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—',cppComAdicional&&adicionalSem>0?'color:#dc2626;font-weight:700':'')
       +'</tr>';
+
+    // Sub-linhas por hub (quando há dados de escala com múltiplos hubs)
+    const hubsNaSemana=Object.entries(histEscMapHub)
+      .filter(([k])=>k.startsWith(sem.de+'_'))
+      .map(([,v])=>v)
+      .filter(v=>v.totalPed>0)
+      .sort((a,b)=>b.totalPed-a.totalPed);
+
+    if(hubsNaSemana.length>=2){
+      const cores=['#2563eb','#16a34a','#d97706','#7c3aed','#dc2626'];
+      hubsNaSemana.forEach((hd,i)=>{
+        const cor=cores[i%cores.length];
+        const cppH=hd.cpp!=null?'R$ '+hd.cpp.toFixed(2).replace('.',','):'—';
+        const volH=hd.totalPed.toLocaleString('pt-BR');
+        html+='<tr style="background:var(--card2);font-size:10px;border-bottom:1px solid var(--brd)">'
+          +`<td style="padding:4px 12px 4px 22px;color:${cor};font-weight:600;white-space:nowrap">`
+          +`<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${cor};margin-right:5px;vertical-align:middle"></span>`
+          +`${nomeHub(hd.hub)}</td>`
+          +`<td style="padding:4px 10px;color:var(--mu)">${volH} ped</td>`
+          +`<td colspan="5" style="padding:4px 10px;color:var(--mu)">R$ ${hd.totalCusto.toFixed(2).replace('.',',')}</td>`
+          +`<td style="padding:4px 10px;font-weight:700;color:${cor}">${cppH}</td>`
+          +`<td colspan="2" style="padding:4px 10px;color:var(--mu)">${(hd.totalPed/mt.volume*100).toFixed(1)}% do total</td>`
+          +'</tr>';
+      });
+    }
+
+    return html;
   }
 
   let tbody='<tbody>';
