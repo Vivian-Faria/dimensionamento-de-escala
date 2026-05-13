@@ -5064,18 +5064,17 @@ function renderIndicadores(){
   const fmtR=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
 
   function linhaSemana(sem,mt,prev=null,subStyle=''){
+    // Custo BRUTO da escala — declarado primeiro (usado abaixo)
+    const custoEscalaSem=custoDaSem(sem);
+    const cppSemCorr=custoEscalaSem!=null&&mt.volume>0?custoEscalaSem/mt.volume:null;
     const ads=getCppManualTotal(sem.semanaISO||'');
-    const cppComAd=cppSemCorr!=null&&mt.volume>0?((custoEscalaSem+ads)/mt.volume):null;
+    const cppComAd=custoEscalaSem!=null&&mt.volume>0?((custoEscalaSem+ads)/mt.volume):null;
     // Sub-linhas por hub
     const hubsNaSem=Object.entries(histEscMapHub)
       .filter(([k])=>k.startsWith(sem.de+'|'))
       .map(([,v])=>v).filter(v=>v.totalPed>0)
       .sort((a,b)=>b.totalPed-a.totalPed);
     const cores=['#2563eb','#16a34a','#d97706','#7c3aed'];
-    // Custo BRUTO da escala para esta semana
-    const custoEscalaSem=custoDaSem(sem);
-    // CPP correto = custo_bruto / volume_real_Órion
-    const cppSemCorr=custoEscalaSem!=null&&mt.volume>0?custoEscalaSem/mt.volume:null;
     let html='<tr style="border-bottom:1px solid var(--brd);'+subStyle+'">'
       +cel(`${sem.deBR}–${sem.ateBR}`,'font-weight:600;white-space:nowrap')
       +celVar(mt.volume,prev?.volume,true,v=>v.toLocaleString('pt-BR'))
