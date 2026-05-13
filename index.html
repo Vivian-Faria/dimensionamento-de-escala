@@ -3106,6 +3106,7 @@ function ptDrop(e, el){
     calcularCustos();
     save();
     sincronizarTrocaNaHistoria(oriNome,destNome,dia,ini,fim);
+    if(typeof renderHistorico==='function') try{renderHistorico();}catch(e){}
     toast(`✅ Turno de ${oriNome} transferido para ${destNome} (${dia} ${fH(ini)}–${fH(fim)}).`,'tok');
     // Re-abre o painel já atualizado
     setTimeout(()=>abrirPainelTurnos(),300);
@@ -3259,6 +3260,7 @@ function ptTrocarPor(oriNome, dia, ini, fim, destNome){
   if(trocados>0){
     calcularCustos();save();
     sincronizarTrocaNaHistoria(oriNome,destNome,dia,ini,fim);
+    if(typeof renderHistorico==='function') try{renderHistorico();}catch(e){}
     toast(`✅ ${oriNome} → ${destNome} (${dia} ${fH(ini)}–${fH(fim)})`, 'tok');
     setTimeout(()=>abrirPainelTurnos(),300);
   } else {
@@ -3551,48 +3553,93 @@ function renderHistorico(filtro){
     const cpp=h.resumo.totalCusto>0&&h.resumo.totalPed>0?(h.resumo.totalCusto/h.resumo.totalPed).toFixed(2).replace('.',','):null;
     const hubLabel=h.hub&&h.hub!=='Todos os hubs'?h.hub:null;
     const confs=h.confirmacoes||{};
-    const totalColab=Object.keys(confs).length;
-    const confirmados=Object.values(confs).filter(c=>c.status==='confirmado').length;
-    const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
+    const leilaoKeyConf='orion_v7_leilao_'+h.id;
+    const leilaoConf=JSON.parse(localStorage.getItem(leilaoKeyConf)||'[]');
+    const resKeyConf='orion_v7_confres_'+h.id;
+    const confsLocalConf=JSON.parse(localStorage.getItem(resKeyConf)||'{}');
+
+    // ── FONTE DE VERDADE: h.escala (reflete todas as trocas feitas no painel)
+    // Deriva os turnos de cada colaborador diretamente da escala salva no histórico
+    const turnosPorNomeEscala={};
+    if(h.escala){
+      diasO.forEach(d=>{
+        let ini=null;
+        for(let hr=9;hr<=25;hr++){
+          const cell=h.escala[d]?.[hr];
+          const al=cell?.alocados||[];
+          al.forEach(nome=>{
+            if(!turnosPorNomeEscala[nome]) turnosPorNomeEscala[nome]=[];
+          });
+          // Detecta fim de turno para cada colaborador
+          const nomesAnt=ini?Object.keys(ini):[];
+          nomesAnt.forEach(nome=>{
+            if(!al.includes(nome)){
+              turnosPorNomeEscala[nome].push({dia:d,ini:ini[nome],fim:hr,horas:hr-ini[nome],faltou:false,horasAbatidas:0});
+              delete ini[nome];
+            }
+          });
+          al.forEach(nome=>{
+            if(!ini) ini={};
+            if(!ini[nome]) ini[nome]=hr;
+          });
+        }
+        // Fecha turnos que chegam à meia-noite
+        if(ini) Object.entries(ini).forEach(([nome,iniH])=>{
+          if(!turnosPorNomeEscala[nome]) turnosPorNomeEscala[nome]=[];
+          turnosPorNomeEscala[nome].push({dia:d,ini:iniH,fim:26,horas:26-iniH,faltou:false,horasAbatidas:0});
+        });
+      });
+    }
+
+    // Constrói confsMerged: base = escala real, enriquece com status/faltas de confirmacoes
+    const confsMerged={};
+    Object.entries(turnosPorNomeEscala).forEach(([nome,turnosEsc])=>{
+      // Status e dados de falta vêm das confirmacoes (se existirem)
+      const confExist=confsLocalConf[nome]||confs[nome]||{};
+      const turnosConf=confExist.turnos||[];
+      // Mescla: usa turnos da escala, mas copia faltou/horasAbatidas das confirmacoes
+      const turnosMesclados=turnosEsc.map(te=>{
+        const tc=turnosConf.find(x=>x.dia===te.dia&&Math.abs(x.ini-te.ini)<=1);
+        return {...te, faltou:tc?.faltou||false, horasAbatidas:tc?.horasAbatidas||0, deLeilao:tc?.deLeilao||false};
+      });
+      confsMerged[nome]={
+        status:confExist.status||'pendente',
+        turnos:turnosMesclados,
+        horasAbatidas:turnosMesclados.reduce((s,t)=>s+(t.horasAbatidas||0),0),
+      };
+    });
+    // Adiciona quem pegou do leilão mas não está na escala (edge case)
+    leilaoConf.filter(t=>t.pegoPor).forEach(t=>{
+      if(!confsMerged[t.pegoPor]) confsMerged[t.pegoPor]={status:'confirmado',turnos:[],horasAbatidas:0,_deLeilao:true};
+    });
+
+    const totalColab=Object.keys(confsMerged).length;
+    const confirmados=Object.values(confsMerged).filter(c=>c.status==='confirmado').length;
+    const faltaram=Object.values(confsMerged).filter(c=>c.status==='faltou').length;
     const pendentes=totalColab-confirmados-faltaram;
-    const horasAbatidas=Object.values(confs).reduce((s,c)=>s+(c.horasAbatidas||0),0);
-    const custoAbatido=horasAbatidas>0?(()=>{
+
+    // Custo abatido por faltas
+    const custoAbatido=(()=>{
       let tot=0;
-      Object.entries(confs).forEach(([nome,c])=>{
-        const colab=h.colabs?.find(x=>x.nome===nome);
+      Object.entries(confsMerged).forEach(([nome,c])=>{
+        const colab=h.colabs?.find(x=>x.nome===nome)||S.colabs.find(x=>x.nome===nome);
         if(!colab)return;
-        const custoH=colab.custo||0;
-        const passagem=colab.passagem||0;
-        // Soma abatimento por horas faltadas
-        const totalAbatNome=(c.horasAbatidas||0)+(c.turnos||[]).reduce((s,t)=>s+(t.horasAbatidas||0),0);
-        if(totalAbatNome>0&&custoH>0)tot+=custoH*totalAbatNome;
-        // Se faltou (status=faltou ou tem turnos com faltou), abate passagem dos dias faltados
+        const custoH=colab.custo||0, passagem=colab.passagem||0;
+        const totalAbatNome=(c.turnos||[]).reduce((s,t)=>s+(t.horasAbatidas||0),0);
+        if(totalAbatNome>0&&custoH>0) tot+=custoH*totalAbatNome;
         if(passagem>0){
-          const diasFaltados=new Set();
-          (c.turnos||[]).forEach(t=>{if(t.faltou)diasFaltados.add(t.dia);});
-          tot+=passagem*diasFaltados.size;
+          const diasF=new Set((c.turnos||[]).filter(t=>t.faltou).map(t=>t.dia));
+          tot+=passagem*diasF.size;
         }
       });
       return tot;
-    })():0;
+    })();
 
     const diaChips=diasO.map(d=>{
       const nomes=h.forcaPorDia?.[d]||[];
       if(!nomes.length)return'';
       return`<span class="hist-dia-chip" onclick="verDiaHistorico('${h.id}','${d}')" title="Ver ${d} em detalhe">${d} · <strong>${nomes.length}</strong></span>`;
     }).join('');
-
-    // Painel de confirmações com faltas por turno individual
-    // Inclui turnos do leilão (negados/pegos) por colaborador
-    const leilaoKeyConf='orion_v7_leilao_'+h.id;
-    const leilaoConf=JSON.parse(localStorage.getItem(leilaoKeyConf)||'[]');
-    const resKeyConf='orion_v7_confres_'+h.id;
-    const confsLocalConf=JSON.parse(localStorage.getItem(resKeyConf)||'{}');
-    const confsMerged={...confs};
-    Object.entries(confsLocalConf).forEach(([n,c])=>{ confsMerged[n]=c; });
-    leilaoConf.filter(t=>t.pegoPor).forEach(t=>{
-      if(!confsMerged[t.pegoPor]) confsMerged[t.pegoPor]={status:'confirmado',turnos:[],_deLeilao:true};
-    });
     const confRows=Object.entries(confsMerged).map(([nome,c])=>{
       const st=c.status||'pendente';
       const colab=h.colabs?.find(x=>x.nome===nome)||S.colabs.find(x=>x.nome===nome);
