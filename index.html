@@ -3560,19 +3560,6 @@ function renderHistorico(filtro){
       </div>`;
     }).join('');
 
-      return`<div class="conf-row" style="flex-direction:column;align-items:stretch;gap:4px;padding:10px 0">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span class="conf-nome">${nome}</span>
-          <span class="conf-btn${st==='confirmado'?' ok':st==='faltou'?' faltou':' pendente'}" style="font-size:10px">
-            ${st==='confirmado'?'✅ Confirmado':st==='faltou'?'⚠ Tem falta':'⏳ Pendente'}
-          </span>
-          ${totalAbat>0?'<span style="font-size:10px;color:#dc2626;margin-left:auto">-'+totalAbat+'h'+(custoAbat>0?' · -R$ '+custoAbat.toFixed(2).replace('.',','):'')+'</span>':''}
-          <button class="conf-btn ok" style="font-size:10px;margin-left:${totalAbat>0?'0':'auto'}" onclick="setConfirmacao('${h.id}','${nome.replace(/'/g,"\'")}','confirmado')">✅ Confirmou tudo</button>
-        </div>
-        ${turnoRows}
-      </div>`;
-    }).join('');
-
     // Calcular feriados/datas comemorativas que caem na semana desta escala
     const _feriadosSemana = (()=>{
       try{
