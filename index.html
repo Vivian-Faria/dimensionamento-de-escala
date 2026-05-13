@@ -4484,6 +4484,9 @@ function inicializarCppManual(){
 function selecionarSemanaManual(semanaISO){
   _cppManualSemanaAtiva=semanaISO;
   inicializarCppManual();
+  // Re-renderiza os KPIs para que o CPP c/ adicionais reflita a semana alterada
+  // (os adicionais do período são a soma de todas as semanas do período)
+  if(typeof renderIndicadores==='function') setTimeout(renderIndicadores,100);
 }
 
 function recalcularCppManual(){
@@ -4494,37 +4497,32 @@ function recalcularCppManual(){
   const ot=parseFloat(document.getElementById('cppOutros').value)||0;
   const total=lf+fr+at+ot;
 
-  // Salvar
+  // Salvar adicionais desta semana
   setCppManualSemana(_cppManualSemanaAtiva,{limpezaFixo:lf,freela:fr,atendimento:at,outros:ot});
 
-  // Buscar custo escala + volume
-  const custoEscala=getCustoEscalaSemana(_cppManualSemanaAtiva)||0;
-  const hist2c=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
-  const sem2c=hist2c.find(s=>s.semanaISO===_cppManualSemanaAtiva);
+  // ── Buscar dados desta semana específica (para o painel de visualização)
+  const [deAtiva]=(_cppManualSemanaAtiva||'').split('/');
+  const histKH=JSON.parse(localStorage.getItem(KH)||'[]');
+  // Custo escala = soma de todos os hubs desta semana
+  const custoEscala=histKH.filter(e=>e.segISO===deAtiva).reduce((t,e)=>t+(e.resumo?.totalCusto||0),0);
+  // Volume real do Órion para esta semana
+  const histInd2=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
+  const sem2c=histInd2.find(s=>s.semanaISO===_cppManualSemanaAtiva);
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
-  let volume=sem2c?calcularMetricasSemana(sem2c.vendas,sem2c.cancelamentos,hub).volume:0;
-  // Fallback: se sem. sintética, busca volume da escala
-  if(!volume){
-    const he2c=JSON.parse(localStorage.getItem(KH)||'[]');
-    const [de2c]=(_cppManualSemanaAtiva||'').split('/');
-    const heSem=he2c.filter(e=>e.segISO===de2c);
-    volume=heSem.reduce((t,e)=>t+(e.resumo?.totalPed||0),0);
-  }
+  const volume=sem2c?calcularMetricasSemana(sem2c.vendas||[],sem2c.cancelamentos||[],hub).volume:0;
 
-  const fmtR=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
-  const fmtCpp=v=>volume>0?'R$ '+(v/volume).toFixed(2).replace('.',','):'—';
+  const fmtR=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'R$ 0,00';
+  const fmtCpp=v=>volume>0?'R$ '+(v/volume).toFixed(2).replace('.',','): '—';
 
   document.getElementById('cppResEscala').textContent=fmtR(custoEscala);
   document.getElementById('cppResAdicionais').textContent=fmtR(total);
   document.getElementById('cppResCppSem').textContent=fmtCpp(custoEscala);
-  document.getElementById('cppResCppCom').textContent=fmtCpp(custoEscala+total);
-
-  // Destacar resultado com adicionais em cor especial
+  document.getElementById('cppResCppCom').textContent=volume>0?fmtCpp(custoEscala+total):'—';
   const elCom=document.getElementById('cppResCppCom');
   elCom.style.color=total>0?'#dc2626':'#065f46';
 
-  // CPP manual é independente — NÃO re-renderiza o painel de indicadores
-  // Os indicadores usam getCppManualTotal() que lê diretamente do localStorage
+  // Re-renderiza KPIs para atualizar CPP c/ adicionais do período
+  if(typeof renderIndicadores==='function') clearTimeout(window._cppRT),window._cppRT=setTimeout(renderIndicadores,300);
 }
 
 
@@ -5210,6 +5208,28 @@ function renderIndicadores(){
 
   const tabelaEl=document.getElementById('indTabela');
   if(tabelaEl) tabelaEl.innerHTML=thead+tbody;
+
+  // ── Sincronizar select do CPP manual com o período ──────────────────
+  // Garante que o painel de adicionais exiba a semana mais recente do período
+  // (o usuário ainda pode trocar manualmente para ver/editar outras semanas)
+  {
+    const sel=document.getElementById('cppManualSemanas');
+    if(sel&&semanasPerido.length){
+      const maisRecente=semanasPerido[0]; // primeira = mais recente
+      if(maisRecente?.semanaISO){
+        // Só atualiza se a semana ativa não estiver no período atual
+        const ativaNoPerido=semanasPerido.some(s=>s.semanaISO===_cppManualSemanaAtiva);
+        if(!ativaNoPerido){
+          _cppManualSemanaAtiva=maisRecente.semanaISO;
+          // Atualiza o select se já estiver renderizado
+          if(sel.querySelector(`option[value="${maisRecente.semanaISO}"]`)){
+            sel.value=maisRecente.semanaISO;
+            recalcularCppManual();
+          }
+        }
+      }
+    }
+  }
 
   // Nota de aviso se dados são parciais
   const tabelaCard=document.getElementById('indTabelaCard');
