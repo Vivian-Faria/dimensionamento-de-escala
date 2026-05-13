@@ -3494,42 +3494,71 @@ function renderHistorico(filtro){
     }).join('');
 
     // Painel de confirmações com faltas por turno individual
-    const confRows=Object.entries(confs).map(([nome,c])=>{
+    // Inclui turnos do leilão (negados/pegos) por colaborador
+    const leilaoKeyConf='orion_v7_leilao_'+h.id;
+    const leilaoConf=JSON.parse(localStorage.getItem(leilaoKeyConf)||'[]');
+    const resKeyConf='orion_v7_confres_'+h.id;
+    const confsLocalConf=JSON.parse(localStorage.getItem(resKeyConf)||'{}');
+    const confsMerged={...confs};
+    Object.entries(confsLocalConf).forEach(([n,c])=>{ confsMerged[n]=c; });
+    leilaoConf.filter(t=>t.pegoPor).forEach(t=>{
+      if(!confsMerged[t.pegoPor]) confsMerged[t.pegoPor]={status:'confirmado',turnos:[],_deLeilao:true};
+    });
+    const confRows=Object.entries(confsMerged).map(([nome,c])=>{
       const st=c.status||'pendente';
-      const colab=h.colabs?.find(x=>x.nome===nome);
+      const colab=h.colabs?.find(x=>x.nome===nome)||S.colabs.find(x=>x.nome===nome);
       const custoH=colab?.custo||0;
       const passagem=colab?.passagem||0;
       const turnos=c.turnos||[];
       const totalAbat=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
-      // Dias em que faltou (para abater passagem)
       const diasFaltadosColab=new Set(turnos.filter(t=>t.faltou).map(t=>t.dia));
       const custoAbat=custoH*totalAbat + passagem*diasFaltadosColab.size;
-
-      // Linhas por turno individual
+      const negadosPorEle=leilaoConf.filter(t=>t.ofertadoPor===nome);
+      const pegadosPorEle=leilaoConf.filter(t=>t.pegoPor===nome);
       const turnoRows=turnos.map(t=>{
-        const tid=`${h.id}_${nome.replace(/\s/g,'_')}_${t.dia}_${t.ini}`;
-        return`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap">
+        const corTag=t.deLeilao?'background:#d1fae5;color:#065f46':'background:#dbeafe;color:#1d4ed8';
+        const tagLabel=t.deLeilao?'🔖 leilão':'escala';
+        return`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap" onclick="event.stopPropagation()">
           <span style="font-size:11px;min-width:26px;color:var(--mu);font-weight:600">${t.dia}</span>
           <span style="font-family:var(--mo);font-size:11px">${fH(t.ini)}–${fH(t.fim)}</span>
-          <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600">${t.horas}h</span>
-          <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px">
+          <span style="font-size:10px;${corTag};border-radius:4px;padding:1px 5px;font-weight:600">${t.horas}h · ${tagLabel}</span>
+          <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px" onclick="event.stopPropagation()">
             <input type="checkbox" ${t.faltou?'checked':''}
-              onchange="toggleFaltaTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.checked)"
+              onchange="event.stopPropagation();toggleFaltaTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.checked)"
               style="cursor:pointer;accent-color:#dc2626">
             Faltou
           </label>
           ${t.faltou?`<input type="number" min="0" max="${t.horas}" value="${t.horasAbatidas||t.horas}" placeholder="h"
             style="width:44px;padding:2px 5px;border:1px solid #fca5a5;border-radius:5px;font-size:11px;font-family:var(--fn);color:#dc2626"
-            onchange="setHorasAbatadasTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.value)"
+            onchange="event.stopPropagation();setHorasAbatadasTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.value)"
             title="Horas abatidas por falta">
-          <span style="font-size:10px;color:#dc2626">${(()=>{
-            let val=0;
-            if(custoH>0)val+=custoH*(t.horasAbatidas||t.horas);
-            if(passagem>0)val+=passagem; // passagem do dia faltado
-            return val>0?'-R$ '+val.toFixed(2).replace('.',','):'';
-          })()}</span>`:''}
+          <span style="font-size:10px;color:#dc2626">${(()=>{let val=0;if(custoH>0)val+=custoH*(t.horasAbatidas||t.horas);if(passagem>0)val+=passagem;return val>0?'-R$ '+val.toFixed(2).replace('.',','):''})()}</span>`:''}
         </div>`;
       }).join('');
+      const negadosRows=negadosPorEle.map(t=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap;font-size:11px;opacity:.75">
+        <span style="background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">↩ negou</span>
+        <span style="font-family:var(--mo)">${t.dia} ${fH(t.ini)}–${fH(t.fim)}</span>
+        ${t.pegoPor?`<span style="color:#16a34a;font-size:10px">→ pego por <strong>${t.pegoPor}</strong></span>`:'<span style="color:#dc2626;font-size:10px">sem cobertura</span>'}
+      </div>`).join('');
+      const pegadosRows=pegadosPorEle.filter(t=>!turnos.find(tt=>tt.dia===t.dia&&tt.ini===t.ini)).map(t=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap;font-size:11px">
+        <span style="background:#d1fae5;color:#065f46;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">🔖 pegou</span>
+        <span style="font-family:var(--mo)">${t.dia} ${fH(t.ini)}–${fH(t.fim)}</span>
+        <span style="font-size:10px;color:var(--mu)">de ${t.ofertadoPor==='Sistema'?'slot sem cobertura':t.ofertadoPor}</span>
+      </div>`).join('');
+      return`<div class="conf-row" style="flex-direction:column;align-items:stretch;gap:4px;padding:10px 0" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+          <span class="conf-nome">${nome}</span>
+          <span class="conf-btn${st==='confirmado'?' ok':st==='faltou'?' faltou':' pendente'}" style="font-size:10px">
+            ${st==='confirmado'?'✅ Confirmado':st==='faltou'?'⚠ Tem falta':'⏳ Pendente'}
+          </span>
+          ${negadosPorEle.length?`<span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px">${negadosPorEle.length} negado${negadosPorEle.length>1?'s':''}</span>`:''}
+          ${pegadosPorEle.length?`<span style="font-size:10px;background:#d1fae5;color:#065f46;border-radius:4px;padding:1px 5px">+${pegadosPorEle.length} do leilão</span>`:''}
+          ${totalAbat>0?'<span style="font-size:10px;color:#dc2626">-'+totalAbat+'h'+(custoAbat>0?' · -R$ '+custoAbat.toFixed(2).replace('.',','):'')+' </span>':''}
+          <button class="conf-btn ok" style="font-size:10px;margin-left:auto" onclick="event.stopPropagation();setConfirmacao('${h.id}','${nome.replace(/'/g,"\'")}','confirmado')">✅ Confirmou tudo</button>
+        </div>
+        ${turnoRows}${negadosRows}${pegadosRows}
+      </div>`;
+    }).join('');
 
       return`<div class="conf-row" style="flex-direction:column;align-items:stretch;gap:4px;padding:10px 0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -3560,8 +3589,34 @@ function renderHistorico(filtro){
       return `<span style="${cor};border-radius:8px;padding:2px 8px;font-size:10px;font-weight:600">${f.reforco?'🎉':'📅'} ${f.nome} (${dStr})</span>`;
     }).join('');
 
+    // ── Leilão: turnos negados e quem pegou ──────────────────────────────
+    const leilaoKey='orion_v7_leilao_'+h.id;
+    const leilaoCard=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+    // Turnos negados (ofertados mas ainda sem cobertura ou aguardando)
+    const turnosNegados=leilaoCard.filter(t=>t.ofertadoPor&&t.ofertadoPor!=='Sistema');
+    // Turnos que alguém pegou do leilão
+    const turnosPegos=leilaoCard.filter(t=>t.pegoPor);
+
+    // Linhas de leilão: negados + pegas
+    let leilaoRows='';
+    if(turnosNegados.length||turnosPegos.length){
+      leilaoRows=`<div style="padding:10px 18px;border-top:1px solid var(--brd)">
+        <div style="font-size:11px;font-weight:700;color:var(--mu);margin-bottom:8px">🔖 Leilão de horários</div>`;
+      turnosNegados.forEach(t=>{
+        const coberto=t.pegoPor?`<span style="color:#16a34a;font-weight:700;margin-left:6px">→ pego por <strong>${t.pegoPor}</strong></span>`:
+          `<span style="color:#dc2626;font-size:10px;margin-left:6px">sem cobertura</span>`;
+        leilaoRows+=`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap;font-size:11px">
+          <span style="color:#f59e0b;font-weight:700">↩ Negado</span>
+          <span style="color:var(--mu)">${t.ofertadoPor}</span>
+          <span style="font-family:var(--mo)">${t.dia} ${fH(t.ini)}–${fH(t.fim)}</span>
+          ${coberto}
+        </div>`;
+      });
+      leilaoRows+='</div>';
+    }
+
     return`<div class="hist-card" data-hist-id="${h.id}" style="padding:0;overflow:hidden">
-      <!-- CABEÇALHO CLICÁVEL (sempre visível) -->
+      <!-- CABEÇALHO CLICÁVEL — só o topo, não envolve o detalhe -->
       <div class="hist-head" onclick="toggleHistCard('${h.id}')" style="cursor:pointer;padding:14px 18px;user-select:none">
         <span style="font-size:18px">📅</span>
         <div style="flex:1;min-width:0">
@@ -3575,16 +3630,18 @@ function renderHistorico(filtro){
             ${h.resumo.totalCusto>0?`<span>R$ ${(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',',')}</span>`:''}
             ${cpp?`<span>CPP R$ ${cpp}</span>`:''}
             ${totalColab>0?`<span class="hist-conf-count" style="color:${confirmados===totalColab?'#16a34a':pendentes>0?'#92400e':'#6b7280'};font-weight:600">✓ ${confirmados}/${totalColab}</span>`:''}
-            <span class="hist-falta-badge" style="color:#dc2626">${faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:''}${''}${''}</span>
+            <span class="hist-falta-badge" style="color:#dc2626">${faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:''}</span>
             <span style="color:var(--mu)">Publicado em ${h.publicadoEm}</span>
           </div>
+        </div><!-- fecha flex:1 -->
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
           ${faltaram>0?`<span class="hist-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">${faltaram} faltou</span>`:''}
+          ${turnosNegados.length?`<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:6px;padding:2px 7px;font-size:9px;font-weight:700">🔖 ${turnosNegados.length} negado${turnosNegados.length>1?'s':''}</span>`:''}
           <span id="hist-chevron-${h.id}" style="font-size:12px;color:var(--mu);transition:.2s;transform:rotate(0deg)">▼</span>
         </div>
-      </div>
-      <!-- DETALHE (colapsado por padrão) -->
-      <div id="hist-detail-${h.id}" style="display:none;border-top:1px solid var(--brd)">
+      </div><!-- fecha hist-head -->
+      <!-- DETALHE — fora do hist-head, não propaga click para fechar -->
+      <div id="hist-detail-${h.id}" style="display:none;border-top:1px solid var(--brd)" onclick="event.stopPropagation()">
         <div class="hist-resumo" style="padding:10px 18px;border-bottom:1px solid var(--brd)">
           <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
@@ -3600,12 +3657,13 @@ function renderHistorico(filtro){
           </div>
           ${confRows}
         </div>
+        ${leilaoRows}
         <div class="hist-actions" style="padding:10px 18px;border-top:1px solid var(--brd)">
           <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">Ver escala completa</button>
           <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
           <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
         </div>
-      </div>
+      </div><!-- fecha hist-detail -->
     </div>`;
   }).join('');
   con.innerHTML=filterBar+cards;
