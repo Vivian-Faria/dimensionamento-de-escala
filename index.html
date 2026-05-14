@@ -4793,6 +4793,7 @@ function renderIndicadores(){
   const grupos=agruparTabelaPor(semanas, periodo);
 
   let tbody='<tbody>';
+  try{
   grupos.forEach((grupo,gi)=>{
     // Cabeçalho do grupo (mensal / trimestral)
     if(grupo.label){
@@ -4900,6 +4901,11 @@ function renderIndicadores(){
     }
   });
   tbody+='</tbody>';
+  }catch(err){
+    console.error('[renderIndicadores tabela] ERRO:', err.message, err.stack);
+    document.getElementById('indTabela').innerHTML='<tr><td style="padding:20px;color:#dc2626;font-weight:600">Erro ao renderizar tabela: '+err.message+'</td></tr>';
+    return;
+  }
 
   // Insert informative note when 1 week only
   const tabelaCard=document.getElementById('indTabelaCard');
