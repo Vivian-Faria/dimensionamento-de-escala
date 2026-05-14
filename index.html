@@ -4847,7 +4847,8 @@ function renderIndicadores(){
         prevMt=i>0?metricas[i-1].mt:null;
       }
       function celVar(atual,ant,hiMelhor=false,fmt=v=>v){
-        if(ant===null||ant===undefined||atual===null)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)??'—'}</td>`;
+        if(atual===null||atual===undefined)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af;font-style:italic">s/ dados</td>`;
+        if(ant===null||ant===undefined)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)}</td>`;
         const pct=ant!==0?((atual-ant)/ant*100):0;
         const melhorou=hiMelhor?pct>0:pct<0;
         const cor=melhorou?'#166534':'#dc2626';
