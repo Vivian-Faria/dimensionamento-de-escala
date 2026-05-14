@@ -602,12 +602,19 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <div class="sh">
         <div>
           <h2>Indicadores Operacionais</h2>
-          <p id="indSub">Selecione o período acima para filtrar os dados</p>
+          <p id="indSub" style="font-size:11px;color:var(--mu)">Selecione os filtros para visualizar</p>
         </div>
-        <div class="sh-r">
+        <div class="sh-r" style="flex-wrap:wrap;gap:8px">
+          <!-- Filtro de período -->
+          <select id="indPeriodo" class="btn bs sm" style="padding:5px 10px;font-size:11px;font-weight:700" onchange="renderIndicadores()">
+            <option value="semanal">📅 Semanal</option>
+            <option value="mensal" selected>📆 Mensal</option>
+            <option value="trimestral">🗓 Trimestral</option>
+          </select>
+          <!-- Filtro de hub -->
           <div style="position:relative;display:inline-block;z-index:100">
             <button id="indHubBtn" class="btn bs sm" onclick="toggleHubDropdown(event)" style="min-width:140px;justify-content:space-between;gap:8px">
-              <span id="indHubLabel">Todos os hubs</span>
+              <span id="indHubLabel">🏪 Todos os hubs</span>
               <span style="font-size:10px;opacity:.6">▾</span>
             </button>
             <div id="indHubDropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:300;min-width:220px;padding:6px 0">
@@ -621,6 +628,14 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           </div>
           <button class="btn bs sm" onclick="limparIndicadores()">↺ Limpar</button>
         </div>
+      </div>
+      <!-- BANNER DE CONTEXTO DOS KPIs — sempre visível, atualizado pelo renderIndicadores -->
+      <div id="indContextoBanner" style="display:none;background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div id="indContextoTitulo" style="font-size:13px;font-weight:800;color:var(--tx)"></div>
+          <div id="indContextoSub" style="font-size:11px;color:var(--mu);margin-top:2px"></div>
+        </div>
+        <div id="indContextoIntervalo" style="font-size:11px;font-weight:600;color:var(--ac);white-space:nowrap"></div>
       </div>
 
       <!-- STATUS COLETA -->
@@ -675,15 +690,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <h3>📅 Histórico semanal</h3>
           <div style="display:flex;gap:8px;align-items:center">
             <span style="font-size:11px;color:var(--mu)" id="indTabelaMeta"></span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <select id="indPeriodo" class="btn bs sm" style="padding:5px 8px;font-size:11px" onchange="renderIndicadores()">
-                <option value="semanal">Semanal</option>
-                <option value="mensal">Mensal</option>
-                <option value="trimestral">Trimestral</option>
-              </select>
-              <button class="btn bs sm" onclick="exportarIndicadores()">⬇ CSV</button>
-              <button class="btn bs sm" onclick="gerarRelatorioIndicadores()" style="background:var(--ac);color:#0d0d10;font-weight:700">📄 Relatório</button>
-            </div>
+            <button class="btn bs sm" onclick="exportarIndicadores()">⬇ CSV</button>
+            <button class="btn bs sm" onclick="gerarRelatorioIndicadores()" style="background:var(--ac);color:#0d0d10;font-weight:700">📄 Relatório</button>
           </div>
         </div>
         <div class="card-body" style="padding:0;overflow-x:auto">
@@ -3600,7 +3608,7 @@ function renderHistorico(filtro){
     }).join('');
 
     return`<div class="hist-card" data-hist-id="${h.id}" style="padding:0;overflow:hidden">
-      <!-- CABEÇALHO CLICÁVEL (sempre visível) -->
+      <!-- CABEÇALHO: só este div tem onclick — NÃO envolve o detalhe -->
       <div class="hist-head" onclick="toggleHistCard('${h.id}')" style="cursor:pointer;padding:14px 18px;user-select:none">
         <span style="font-size:18px">📅</span>
         <div style="flex:1;min-width:0">
@@ -3617,14 +3625,14 @@ function renderHistorico(filtro){
             <span class="hist-falta-badge" style="color:#dc2626">${faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:''}</span>
             <span style="color:var(--mu)">Publicado em ${h.publicadoEm}</span>
           </div>
-        </div><!-- fecha flex:1 -->
+        </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
           ${faltaram>0?`<span class="hist-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">${faltaram} faltou</span>`:''}
           <span id="hist-chevron-${h.id}" style="font-size:12px;color:var(--mu);transition:.2s;transform:rotate(0deg)">▼</span>
         </div>
-      </div>
-      <!-- DETALHE (colapsado por padrão) -->
-      <div id="hist-detail-${h.id}" style="display:none;border-top:1px solid var(--brd)">
+      </div><!-- fim hist-head -->
+      <!-- DETALHE: irmão do hist-head, NÃO filho — cliques aqui não fecham o card -->
+      <div id="hist-detail-${h.id}" onclick="event.stopPropagation()" style="display:none;border-top:1px solid var(--brd)">
         <div class="hist-resumo" style="padding:10px 18px;border-bottom:1px solid var(--brd)">
           <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
@@ -3645,7 +3653,7 @@ function renderHistorico(filtro){
           <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
           <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
         </div>
-      </div>
+      </div><!-- fim hist-detail -->
     </div>`;
   }).join('');
   con.innerHTML=filterBar+cards;
@@ -4631,15 +4639,39 @@ function renderIndicadores(){
 
   // KPI Cards
   const fmtCpp = v => v !== null ? `R$ ${v.toFixed(2).replace('.',',')}` : '—';
+  // Contexto para cada KPI — período e hub ativos
+  const _eTodos2=!hub||hub.has('todos')||hub.size===0;
+  const _hubCtx=_eTodos2?'Todos hubs':(hub instanceof Set?[...hub]:['todos']).filter(hubVisivel).map(nomeHub).join('+');
+  const _perCtx=semanasPerido.length===1?`${semanasPerido[0].deBR}–${semanasPerido[0].ateBR}`:
+    semanasPerido.length>1?`${semanasPerido[semanasPerido.length-1].deBR}–${semanasPerido[0].ateBR}`:'';
+  const ctxHtml='<div style="font-size:9px;color:var(--ac);margin-top:2px;font-weight:600">📅 '+_perCtx+' · '+_hubCtx+'</div>';
+
   const kpis=[
-    {icon:'📦',label:'Volume de pedidos',val:m.volume.toLocaleString('pt-BR'),prev:mAnt?mAnt.volume:null,unit:'',big:true,hiMelhor:true},
-    {icon:'❌',label:'Cancelamentos',val:m.cancelamentos,prev:mAnt?mAnt.cancelamentos:null,unit:'',big:false,hiMelhor:false},
-    {icon:'📉',label:'% Cancelamentos',val:m.pctCancel.toFixed(2)+'%',prev:mAnt?mAnt.pctCancel:null,unit:'%',big:false,hiMelhor:false,rawVal:m.pctCancel,prevRaw:mAnt?mAnt.pctCancel:null},
-    {icon:'🧑‍🍳',label:'Tempo médio preparo',val:fmtTempo(m.tPreparoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tPreparoMed,prevRaw:mAnt?mAnt.tPreparoMed:null},
-    {icon:'🛵',label:'Tempo médio coleta',val:fmtTempo(m.tColetaMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tColetaMed,prevRaw:mAnt?mAnt.tColetaMed:null},
-    {icon:'🏁',label:'Tempo médio despacho',val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null},
-    {icon:'💰',label:'CPP s/ adicionais',val:fmtCpp(cpp),prev:null,unit:'',big:false,raw:cpp,extraHtml: temAdicionais&&cpp!==null?`<div style="font-size:9px;color:#6b7280;margin-top:1px">Só escala</div>`:''},
-    ...(temAdicionais?[{icon:'💸',label:'CPP c/ adicionais',val:fmtCpp(cppComAdicionais),prev:null,unit:'',big:false,raw:cppComAdicionais,destaque:true,extraHtml:`<div style="font-size:9px;color:#dc2626;margin-top:1px">+R$ ${custoManualPer.toFixed(2).replace('.',',')} adicionais</div>`}]:[]),
+    {icon:'📦',label:'Volume de pedidos',
+      val:m.volume.toLocaleString('pt-BR'),prev:mAnt?mAnt.volume:null,rawVal:m.volume,prevRaw:mAnt?mAnt.volume:null,
+      unit:'',big:true,hiMelhor:true,
+      extraHtml:ctxHtml+'<div style="font-size:9px;color:var(--mu)">'+semanasPerido.length+' semana'+(semanasPerido.length!==1?'s':'')+' coletadas</div>'},
+    {icon:'❌',label:'Cancelamentos',
+      val:m.cancelamentos!=null?m.cancelamentos.toLocaleString('pt-BR'):'—',
+      prev:mAnt?mAnt.cancelamentos:null,rawVal:m.cancelamentos,prevRaw:mAnt?mAnt.cancelamentos:null,
+      unit:'',big:false,hiMelhor:false,extraHtml:ctxHtml},
+    {icon:'📉',label:'% Cancelamentos',
+      val:m.pctCancel!=null?m.pctCancel.toFixed(2)+'%':'—',
+      prev:mAnt?mAnt.pctCancel:null,unit:'%',big:false,hiMelhor:false,rawVal:m.pctCancel,prevRaw:mAnt?mAnt.pctCancel:null,
+      extraHtml:ctxHtml},
+    {icon:'🧑‍🍳',label:'T. Médio preparo',
+      val:fmtTempo(m.tPreparoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tPreparoMed,prevRaw:mAnt?mAnt.tPreparoMed:null,
+      extraHtml:(m.amostras?.preparo?'<div style="font-size:9px;color:var(--mu)">'+m.amostras.preparo+' amostras</div>':'')+ctxHtml},
+    {icon:'🛵',label:'T. Médio coleta',
+      val:fmtTempo(m.tColetaMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tColetaMed,prevRaw:mAnt?mAnt.tColetaMed:null,
+      extraHtml:(m.amostras?.coleta?'<div style="font-size:9px;color:var(--mu)">'+m.amostras.coleta+' amostras</div>':'')+ctxHtml},
+    {icon:'🏁',label:'T. Médio despacho',
+      val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null,
+      extraHtml:(m.amostras?.despacho?'<div style="font-size:9px;color:var(--mu)">'+m.amostras.despacho+' amostras</div>':'')+ctxHtml},
+    {icon:'💰',label:'CPP s/ adicionais',val:fmtCpp(cpp),prev:null,unit:'',big:false,raw:cpp,
+      extraHtml:'<div style="font-size:9px;color:var(--mu)">custo escala / pedido</div>'+ctxHtml},
+    ...(temAdicionais?[{icon:'💸',label:'CPP c/ adicionais',val:fmtCpp(cppComAdicionais),prev:null,unit:'',big:false,raw:cppComAdicionais,destaque:true,
+      extraHtml:'<div style="font-size:9px;color:#dc2626">+R$ '+custoManualPer.toFixed(2).replace('.',',')+'</div>'+ctxHtml}]:[]),
   ];
 
   // Painel de distribuição por hub (só aparece quando 2+ hubs selecionados)
@@ -4873,9 +4905,37 @@ function renderIndicadores(){
 
   document.getElementById('indTabela').innerHTML=thead+tbody;
 
-  const subTxt=`${periodoLabel} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''} · ${todasVendas.length.toLocaleString('pt-BR')} pedidos analisados`;
+  // ── Atualizar contexto dos KPIs — deixa claro qual período/hub está exibido
+  const _eTodosH=!hub||hub.has('todos')||hub.size===0;
+  const hubLabel2=_eTodosH?'Todos os hubs':([...hub]).filter(hubVisivel).map(nomeHub).join(' + ')||'Todos os hubs';
+  const periodoNome2={semanal:'Semanal',mensal:'Mensal',trimestral:'Trimestral'}[periodo]||'Período';
+  const semAtual=semanasPerido.length===1?`${semanasPerido[0].deBR}–${semanasPerido[0].ateBR}`:
+    semanasPerido.length>1?`${semanasPerido[semanasPerido.length-1].deBR}–${semanasPerido[0].ateBR}`:'';
+
+  // Sub-título do painel
+  const subTxt=`${periodoNome2} · ${hubLabel2} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''}`;
   document.getElementById('indSub').textContent=subTxt;
-  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · tabela exibe todas`;
+
+  // Banner de contexto
+  const banner=document.getElementById('indContextoBanner');
+  if(banner){
+    banner.style.display='flex';
+    const tit=document.getElementById('indContextoTitulo');
+    const sub=document.getElementById('indContextoSub');
+    const int=document.getElementById('indContextoIntervalo');
+    if(tit) tit.textContent=`${periodoNome2} · ${hubLabel2}`;
+    if(sub) sub.textContent=`${semanasPerido.length} semana${semanasPerido.length!==1?'s':''} com dados reais do Órion`
+      +(m.cancelamentos!=null&&m.pctCancel!=null?` · ${m.cancelamentos} cancel. (${m.pctCancel.toFixed(1)}%)`:'');
+    if(int) int.textContent=semAtual?`📅 ${semAtual}`:'';
+    // Sincronizar label do hub dropdown
+    const lbl=document.getElementById('indHubLabel');
+    if(lbl) lbl.textContent='🏪 '+hubLabel2;
+    // Sincronizar select de período
+    const sel=document.getElementById('indPeriodo');
+    if(sel&&sel.value!==periodo) sel.value=periodo;
+  }
+
+  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletadas · exibindo ${periodoNome2.toLowerCase()} atual`;
 
   // Atualiza select hubs
   atualizarSelectHubs([]);
