@@ -4841,7 +4841,7 @@ function renderIndicadores(){
       return{sem,mt,custoEscala,cppSem,adicionalSem,cppComAdicional};
     });
 
-    metricas.forEach(({sem,mt,cppSem,adicionalSem,cppComAdicional},i)=>{
+    metricas.forEach(({sem,mt,custoEscala,cppSem,adicionalSem,cppComAdicional},i)=>{
       // Comparar com semana anterior do mesmo grupo (mensal) ou semana anterior global (semanal)
       let prevMt=null;
       if(periodo==='semanal'||periodo==='mensal'){
