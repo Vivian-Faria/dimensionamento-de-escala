@@ -1520,10 +1520,11 @@ async function buscarConfirmacoesAPI(){
 
       Object.entries(rc.confirmacoes).forEach(([nome,c])=>{
         local[nome]=c; nConf++;
-        if(ultima.confirmacoes&&ultima.confirmacoes[nome]){
-          ultima.confirmacoes[nome].status=c.status;
-          ultima.confirmacoes[nome].turnos=c.turnos;
-        }
+        // Sempre salva em ultima.confirmacoes (não apenas se já existir)
+        if(!ultima.confirmacoes) ultima.confirmacoes={};
+        if(!ultima.confirmacoes[nome]) ultima.confirmacoes[nome]={};
+        ultima.confirmacoes[nome].status=c.status;
+        ultima.confirmacoes[nome].turnos=c.turnos||[];
 
         console.log('[BuscarConf]',nome,'status:',c.status,'turnos:',c.turnos?.length,'indisponíveis:',c.turnos?.filter(t=>t.indisponivel).length);
 
@@ -1617,21 +1618,41 @@ async function buscarConfirmacoesAPI(){
 async function buscarConfirmacoesUI(){
   const btn=document.getElementById('p3BtnBuscar');
   if(btn){btn.disabled=true;btn.textContent='☁️ Buscando...';}
+
+  // Busca da API e salva tudo no localStorage
   await buscarConfirmacoesAPI();
 
+  // Re-lê DEPOIS da API salvar — dados frescos do localStorage
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const ultima=hist[0];
   if(!ultima){if(btn){btn.disabled=false;btn.textContent='☁️ Buscar confirmações';}return;}
 
+  // Mescla todas as fontes de confirmação:
+  // 1. ultima.confirmacoes (salvo no KH pela busca)
+  // 2. orion_v7_confres_<id> (respostas locais e da API)
   const resKey='orion_v7_confres_'+ultima.id;
-  const confs={...(ultima.confirmacoes||{}),...JSON.parse(localStorage.getItem(resKey)||'{}')};
+  const confLocal=JSON.parse(localStorage.getItem(resKey)||'{}');
+  const confHist=ultima.confirmacoes||{};
+
+  // União completa: qualquer confirmado em qualquer fonte prevalece
+  const confs={};
+  const todasChaves=new Set([...Object.keys(confHist),...Object.keys(confLocal)]);
+  todasChaves.forEach(nome=>{
+    const ch=confHist[nome], cl=confLocal[nome];
+    // Prioriza 'confirmado' > 'faltou' > 'pendente'
+    const prio={confirmado:3,faltou:2,pendente:1};
+    if(!ch) confs[nome]=cl;
+    else if(!cl) confs[nome]=ch;
+    else confs[nome]=(prio[cl.status]||0)>=(prio[ch.status]||0)?cl:ch;
+  });
+
   const leilaoKey='orion_v7_leilao_'+ultima.id;
   const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
   const colabs=(ultima.colabs||S.colabs||[]).map(c=>c.nome);
-  const fH2=h=>{const hr=h%24;return String(hr).padStart(2,'0')+':00';};
 
   const confirmados=colabs.filter(n=>confs[n]?.status==='confirmado').length;
-  const pendentes=colabs.filter(n=>!confs[n]||confs[n].status==='pendente').length;
+  const pendentes=colabs.filter(n=>!confs[n]||confs[n]?.status==='pendente').length;
+  const faltaram=colabs.filter(n=>confs[n]?.status==='faltou').length;
 
   const rows=colabs.map(nome=>{
     const c=confs[nome];
@@ -1642,20 +1663,25 @@ async function buscarConfirmacoesUI(){
     const label=st==='confirmado'?'Confirmou':st==='faltou'?'Faltou':'Pendente';
     const negados=leilao.filter(t=>t.ofertadoPor===nome).length;
     const pegados=leilao.filter(t=>t.pegoPor===nome).length;
-    const negTag=negados?'<span style="font-size:9px;background:#fef3c7;color:#92400e;border-radius:3px;padding:0 4px">↩'+negados+'</span>':'';
-    const pegTag=pegados?'<span style="font-size:9px;background:#d1fae5;color:#065f46;border-radius:3px;padding:0 4px">🔖'+pegados+'</span>':'';
-    return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap">'
+    const negTag=negados?'<span style="font-size:9px;background:#fef3c7;color:#92400e;border-radius:3px;padding:0 4px;margin-left:2px">↩ '+negados+' negou</span>':'';
+    const pegTag=pegados?'<span style="font-size:9px;background:#d1fae5;color:#065f46;border-radius:3px;padding:0 4px;margin-left:2px">🔖 +'+pegados+'</span>':'';
+    return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--brd)">'
       +'<span style="font-size:11px;font-weight:600;flex:1">'+nome+'</span>'
-      +'<span style="font-size:10px;font-weight:700;color:'+cor+';background:'+bg+';border-radius:3px;padding:1px 6px">'+icon+' '+label+'</span>'
+      +'<span style="font-size:10px;font-weight:700;color:'+cor+';background:'+bg+';border-radius:4px;padding:2px 7px">'+icon+' '+label+'</span>'
       +negTag+pegTag+'</div>';
   }).join('');
 
-  const pendTag=pendentes>0?'<span style="color:#92400e">⏳ '+pendentes+' pendentes</span>':'';
+  // Renderiza painel no p3Status
   const p3s=document.getElementById('p3Status');
-  if(p3s) p3s.innerHTML='<div style="margin-top:8px">'
-    +'<div style="display:flex;gap:10px;margin-bottom:6px;font-size:11px;font-weight:700">'
-    +'<span style="color:#166534">✅ '+confirmados+' confirmaram</span>'+pendTag+'</div>'
-    +'<div style="max-height:180px;overflow-y:auto;font-size:11px">'+rows+'</div></div>';
+  if(p3s){
+    const resumo='<div style="display:flex;gap:8px;margin-bottom:8px;font-size:11px;font-weight:700;flex-wrap:wrap">'
+      +(confirmados?'<span style="color:#166534">✅ '+confirmados+' confirmaram</span>':'')
+      +(pendentes?'<span style="color:#92400e">⏳ '+pendentes+' pendentes</span>':'')
+      +(faltaram?'<span style="color:#991b1b">❌ '+faltaram+' com falta</span>':'')
+      +'</div>';
+    p3s.innerHTML='<div style="margin-top:8px">'+resumo
+      +'<div style="max-height:200px;overflow-y:auto;font-size:11px">'+rows+'</div></div>';
+  }
 
   if(btn){btn.disabled=false;btn.textContent='☁️ Buscar confirmações';}
 }
