@@ -3522,7 +3522,10 @@ function renderHistorico(filtro){
           <span style="font-size:10px;color:var(--mu);cursor:grab;padding:0 2px">⠿</span>
           <span style="font-size:11px;min-width:26px;color:var(--mu);font-weight:600">${t.dia}</span>
           <span style="font-family:var(--mo);font-size:11px">${fH(t.ini)}–${fH(t.fim)}</span>
-          <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600">${t.horas}h</span>
+          <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600">${t.horas!=null?t.horas:(t.fim-t.ini)}h</span>
+          <button class="turno-del-btn" data-histid="${h.id}" data-nome="${nome.replace(/"/g,'&quot;')}" data-dia="${t.dia}" data-ini="${t.ini}"
+            onclick="removerTurnoHist(this.dataset.histid,this.dataset.nome,this.dataset.dia,parseInt(this.dataset.ini))"
+            style="display:none;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;font-family:inherit">🗑</button>
           <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px">
             <input type="checkbox" ${t.faltou?'checked':''}
               onchange="toggleFaltaTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.checked)"
@@ -3554,6 +3557,7 @@ function renderHistorico(filtro){
             ${st==='confirmado'?'✅ Confirmado':st==='faltou'?'⚠ Tem falta':'⏳ Pendente'}
           </span>
           <span id="conf-custo-${h.id}_${safeN}" style="font-size:10px;color:#dc2626;margin-left:auto">${totalAbat>0?'-'+totalAbat+'h'+(custoAbat>0?' · -R$ '+custoAbat.toFixed(2).replace('.',','):''):''}</span>
+          <button class="conf-btn" style="font-size:10px;background:var(--card2)" onclick="toggleEditarTurnos('${h.id}','${nome.replace(/'/g,"\'")}')">✏ Editar</button>
           <button class="conf-btn ok" style="font-size:10px;${totalAbat===0?'margin-left:auto':''}" onclick="setConfirmacao('${h.id}','${nome.replace(/'/g,"\'")}','confirmado')">✅ Confirmou tudo</button>
         </div>
         ${turnoRows}
@@ -3620,6 +3624,7 @@ function renderHistorico(filtro){
         <div class="hist-actions" style="padding:10px 18px;border-top:1px solid var(--brd)">
           <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">Ver escala completa</button>
           <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
+          <button id="btnDesfazer" class="btn bs sm" onclick="desfazerUltimaAlteracao()" disabled style="opacity:0.4">↩ Desfazer</button>
           <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
         </div>
       </div>
@@ -3842,7 +3847,7 @@ function excluirHistorico(id){
   if(!confirm('Excluir esta entrada do histórico?'))return;
   let hist=JSON.parse(localStorage.getItem(KH)||'[]');
   hist=hist.filter(h=>h.id!==id);
-  localStorage.setItem(KH,JSON.stringify(hist));
+  saveKH(hist,'excluir escala');
   renderHistorico();
   toast('Removido do histórico.','tok');
 }
@@ -3857,7 +3862,7 @@ function setPtConf(nome, segISO, status){
   if(!h.confirmacoes[nome])h.confirmacoes[nome]={status:'pendente',horasAbatidas:0};
   h.confirmacoes[nome].status=status;
   if(status==='confirmado')h.confirmacoes[nome].horasAbatidas=0;
-  localStorage.setItem(KH,JSON.stringify(hist));
+  saveKH(hist,'confirmação');
   toast(status==='confirmado'?`✅ ${nome} confirmado!`:`❌ ${nome} marcado como faltou.`,'tok');
   // Re-abre o painel já atualizado
   setTimeout(()=>abrirPainelTurnos(),200);
@@ -3869,7 +3874,7 @@ function setPtHorasAbat(nome, segISO, horas){
   const h=hist.find(x=>x.segISO===segISO&&(x.hub||'Todos os hubs')===_ha)||hist.find(x=>x.segISO===segISO);
   if(!h||!h.confirmacoes?.[nome])return;
   h.confirmacoes[nome].horasAbatidas=parseFloat(horas)||0;
-  localStorage.setItem(KH,JSON.stringify(hist));
+  saveKH(hist,'horas abatidas');
   toast(`⚠ ${horas}h abatidas para ${nome}.`,'tok');
 }
 
@@ -3910,7 +3915,7 @@ function _transferirTurnoHist(histId,de,para,dia,ini){
     const dO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
     h.confirmacoes[para].turnos.sort((a,b)=>dO.indexOf(a.dia)-dO.indexOf(b.dia)||a.ini-b.ini);
   }
-  localStorage.setItem(KH,JSON.stringify(hist));
+  saveKH(hist,'transferir turno');
   const fH2=v=>{if(v>=24)v-=24;return String(v).padStart(2,'0')+':00';};
   toast(`↕ ${dia} ${fH2(ini)} → ${de} transferido para ${para}`,'tok');
   const abertos=Array.from(document.querySelectorAll('[id^="hist-detail-"]')).filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
@@ -3918,6 +3923,113 @@ function _transferirTurnoHist(histId,de,para,dia,ini){
   setTimeout(()=>{abertos.forEach(id=>{const det=document.getElementById('hist-detail-'+id);const chev=document.getElementById('hist-chevron-'+id);if(det)det.style.display='block';if(chev)chev.style.transform='rotate(180deg)';});},50);
 }
 // ─────────────────────────────────────────────────────
+
+// ── UNDO STACK (histórico de alterações)
+const _undoStack=[];
+const _UNDO_MAX=20;
+
+function _khSnapshot(label){
+  try{
+    const snap=localStorage.getItem(KH)||'[]';
+    _undoStack.push({snap,label,ts:Date.now()});
+    if(_undoStack.length>_UNDO_MAX)_undoStack.shift();
+    _atualizarBtnDesfazer();
+  }catch(e){}
+}
+
+function desfazerUltimaAlteracao(){
+  if(!_undoStack.length){toast('Nada para desfazer.','tok');return;}
+  const prev=_undoStack.pop();
+  localStorage.setItem(KH,prev.snap);
+  _atualizarBtnDesfazer();
+  toast(`↩ Desfeito: ${prev.label}`,'tok');
+  const abertos=Array.from(document.querySelectorAll('[id^="hist-detail-"]'))
+    .filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
+  renderHistorico();
+  setTimeout(()=>{
+    abertos.forEach(id=>{
+      const det=document.getElementById('hist-detail-'+id);
+      const chev=document.getElementById('hist-chevron-'+id);
+      if(det)det.style.display='block';
+      if(chev)chev.style.transform='rotate(180deg)';
+    });
+  },50);
+}
+
+function _atualizarBtnDesfazer(){
+  const btn=document.getElementById('btnDesfazer');
+  if(!btn)return;
+  const n=_undoStack.length;
+  btn.disabled=n===0;
+  btn.style.opacity=n===0?'0.4':'1';
+  btn.title=n>0?`Desfazer: ${_undoStack[n-1].label}`:'Nada para desfazer';
+  btn.textContent=`↩ Desfazer${n>0?' ('+n+')':''}`;
+}
+
+// Wrapper que tira snapshot antes de salvar KH
+function saveKH(hist, label){
+  _khSnapshot(label||'alteração');
+  localStorage.setItem(KH,JSON.stringify(hist));
+}
+
+function toggleEditarTurnos(histId, nome){
+  // Ativa/desativa modo de edição para um colaborador
+  // Mostra/oculta os botões 🗑 nos turnos desse colaborador
+  const safeN=nome.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+  const confRow=document.querySelector(`[data-histid="${histId}"][data-colab="${nome}"]`);
+  if(!confRow) return;
+  const delBtns=confRow.querySelectorAll('.turno-del-btn');
+  const editBtn=confRow.querySelector('button[onclick*="toggleEditarTurnos"]');
+  const editando=delBtns.length>0&&delBtns[0].style.display!=='none';
+  delBtns.forEach(b=>{b.style.display=editando?'none':'inline-block';});
+  if(editBtn){
+    editBtn.textContent=editando?'✏ Editar':'✅ Concluir';
+    editBtn.style.background=editando?'var(--card2)':'#dcfce7';
+    editBtn.style.color=editando?'':'#166534';
+  }
+}
+
+function removerTurnoHist(histId, nome, dia, ini){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome]) return;
+  const turnos=h.confirmacoes[nome].turnos||[];
+  const idx=turnos.findIndex(t=>t.dia===dia&&t.ini===ini);
+  if(idx<0) return;
+  const turno=turnos[idx];
+  saveKH(hist,'remover turno');
+  // Recarregar após saveKH (que não altera hist em memória)
+  const hist2=JSON.parse(localStorage.getItem(KH)||'[]');
+  // Aplicar remoção
+  const h2=JSON.parse(localStorage.getItem(KH)||'[]').find(x=>x.id===histId);
+  if(!h2) return;
+  h2.confirmacoes[nome].turnos.splice(idx,1);
+  if(!h2.confirmacoes[nome].turnos.length) delete h2.confirmacoes[nome];
+  else {
+    const temFalta=h2.confirmacoes[nome].turnos.some(t=>t.faltou);
+    h2.confirmacoes[nome].status=temFalta?'faltou':h2.confirmacoes[nome].status==='confirmado'?'confirmado':'pendente';
+    h2.confirmacoes[nome].horasAbatidas=h2.confirmacoes[nome].turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
+  }
+  const hist3=JSON.parse(localStorage.getItem(KH)||'[]');
+  const idx3=hist3.findIndex(x=>x.id===histId);
+  if(idx3>=0) hist3[idx3]=h2;
+  localStorage.setItem(KH,JSON.stringify(hist3));
+  toast(`🗑 Turno ${dia} ${fH(ini)} removido de ${nome}`,'tok');
+  const abertos=Array.from(document.querySelectorAll('[id^="hist-detail-"]'))
+    .filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
+  renderHistorico();
+  setTimeout(()=>{
+    abertos.forEach(id=>{
+      const det=document.getElementById('hist-detail-'+id);
+      const chev=document.getElementById('hist-chevron-'+id);
+      if(det)det.style.display='block';
+      if(chev)chev.style.transform='rotate(180deg)';
+    });
+    // Re-ativar modo edição
+    toggleEditarTurnos(histId, nome);
+    _atualizarBtnDesfazer();
+  },50);
+}
 
 function toggleFaltaTurno(histId, nome, ini, dia, faltou){
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
@@ -3931,7 +4043,7 @@ function toggleFaltaTurno(histId, nome, ini, dia, faltou){
   const temFalta=h.confirmacoes[nome].turnos.some(x=>x.faltou);
   h.confirmacoes[nome].status=temFalta?'faltou':'pendente';
   h.confirmacoes[nome].horasAbatidas=h.confirmacoes[nome].turnos.reduce((s,x)=>s+(x.horasAbatidas||0),0);
-  localStorage.setItem(KH,JSON.stringify(hist));
+  saveKH(hist,'marcar falta');
   _atualizarBadgesCard(histId, h);
 }
 
@@ -3943,7 +4055,7 @@ function setHorasAbatadasTurno(histId, nome, ini, dia, horas){
   if(!t)return;
   t.horasAbatidas=Math.min(parseFloat(horas)||0, t.horas);
   h.confirmacoes[nome].horasAbatidas=h.confirmacoes[nome].turnos.reduce((s,x)=>s+(x.horasAbatidas||0),0);
-  localStorage.setItem(KH,JSON.stringify(hist));
+  saveKH(hist,'horas abatidas');
   _atualizarBadgesCard(histId, h);
 }
 
@@ -3955,7 +4067,7 @@ function setConfirmacao(histId, nome, status){
   if(!h.confirmacoes[nome])h.confirmacoes[nome]={status:'pendente',horasAbatidas:0};
   h.confirmacoes[nome].status=status;
   if(status==='confirmado')h.confirmacoes[nome].horasAbatidas=0;
-  localStorage.setItem(KH,JSON.stringify(hist));
+  saveKH(hist,'confirmação');
   _atualizarBadgesCard(histId, h);
 }
 
@@ -4011,7 +4123,7 @@ function setHorasAbatidas(histId, nome, horas){
   const h=hist.find(x=>x.id===histId);
   if(!h||!h.confirmacoes?.[nome])return;
   h.confirmacoes[nome].horasAbatidas=parseFloat(horas)||0;
-  localStorage.setItem(KH,JSON.stringify(hist));
+  saveKH(hist,'horas abatidas');
   // Re-renderiza silenciosamente (sem recriar tudo) — apenas atualiza badges
   renderHistorico();
 }
@@ -7321,7 +7433,7 @@ function exportarIndicadores(){
 // ── Indicadores: inicialização
 load();renderCo();atualizarSideRegras();
 _initApiConfig();
-setTimeout(()=>{ verificarDisponibilidadesExistentes(); atualizarPainelPassos(); }, 150);
+setTimeout(()=>{ verificarDisponibilidadesExistentes(); atualizarPainelPassos(); _atualizarBtnDesfazer(); }, 150);
 
 // Resolver link curto (#s=CODE)
 if(window._SHORT_CODE){
