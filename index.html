@@ -290,8 +290,10 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 .disp-timer-badge{display:inline-flex;align-items:center;gap:6px;background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700}
 .disp-status-ok{background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:600}
 
-/* Filtro histórico */
-.hist-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:14px 0 10px}
+/* ── DRAG DROP HISTÓRICO */
+.turno-row{transition:opacity .15s}
+.turno-row.dragging{opacity:.4}
+.conf-row.drag-over{background:rgba(37,99,235,.08);border:1px dashed #3b82f6;border-radius:8px}
 .hist-filter-btn{font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid var(--brd);background:var(--card);cursor:pointer;font-family:var(--fn);font-weight:600;transition:.15s}
 .hist-filter-btn.on{background:var(--tx);color:#fff;border-color:var(--tx)}
 .hist-filter-btn:hover:not(.on){border-color:var(--ac)}
@@ -511,9 +513,9 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <div style="font-size:11px;color:var(--mu);line-height:1.5;flex:1">Publique e envie a escala para confirmação. Quem não confirmar em 1h vai para o leilão de horários.</div>
             <div id="p3Status" style="font-size:11px;color:var(--mu)">Aguardando montagem</div>
             <button class="btn ba sm" style="background:#16a34a" onclick="publicarEscala()">📋 Publicar escala</button>
-            <button class="btn ba sm" style="background:#2563eb" id="p3BtnEnviarConf" onclick="enviarLinkConfirmacao()">📲 Enviar para confirmação</button>
-            <button class="btn bs sm" id="p3BtnBuscar" onclick="buscarConfirmacoesUI()">☁️ Buscar confirmações</button>
-            <button class="btn bs sm" id="p3BtnLeilao" onclick="abrirLeilaoEscalaAtual()">🔖 Ver leilão de horários</button>
+            <button class="btn ba sm" style="background:#2563eb" id="p3BtnEnviarConf" onclick="enviarLinkConfirmacao()" style="display:none">📲 Enviar para confirmação</button>
+            <button class="btn bs sm" id="p3BtnBuscar" onclick="buscarConfirmacoesAPI()" style="display:none">☁️ Buscar confirmações</button>
+            <button class="btn bs sm" id="p3BtnLeilao" onclick="abrirLeilaoEscalaAtual()" style="display:none">🔖 Ver leilão de horários</button>
           </div>
         </div>
 
@@ -602,19 +604,12 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <div class="sh">
         <div>
           <h2>Indicadores Operacionais</h2>
-          <p id="indSub" style="font-size:11px;color:var(--mu)">Selecione os filtros para visualizar</p>
+          <p id="indSub">Selecione o período acima para filtrar os dados</p>
         </div>
-        <div class="sh-r" style="flex-wrap:wrap;gap:8px">
-          <!-- Filtro de período -->
-          <select id="indPeriodo" class="btn bs sm" style="padding:5px 10px;font-size:11px;font-weight:700" onchange="renderIndicadores()">
-            <option value="semanal">📅 Semanal</option>
-            <option value="mensal" selected>📆 Mensal</option>
-            <option value="trimestral">🗓 Trimestral</option>
-          </select>
-          <!-- Filtro de hub -->
+        <div class="sh-r">
           <div style="position:relative;display:inline-block;z-index:100">
             <button id="indHubBtn" class="btn bs sm" onclick="toggleHubDropdown(event)" style="min-width:140px;justify-content:space-between;gap:8px">
-              <span id="indHubLabel">🏪 Todos os hubs</span>
+              <span id="indHubLabel">Todos os hubs</span>
               <span style="font-size:10px;opacity:.6">▾</span>
             </button>
             <div id="indHubDropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:#1a1d23;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:300;min-width:220px;padding:6px 0">
@@ -628,14 +623,6 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           </div>
           <button class="btn bs sm" onclick="limparIndicadores()">↺ Limpar</button>
         </div>
-      </div>
-      <!-- BANNER DE CONTEXTO DOS KPIs — sempre visível, atualizado pelo renderIndicadores -->
-      <div id="indContextoBanner" style="display:none;background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <div id="indContextoTitulo" style="font-size:13px;font-weight:800;color:var(--tx)"></div>
-          <div id="indContextoSub" style="font-size:11px;color:var(--mu);margin-top:2px"></div>
-        </div>
-        <div id="indContextoIntervalo" style="font-size:11px;font-weight:600;color:var(--ac);white-space:nowrap"></div>
       </div>
 
       <!-- STATUS COLETA -->
@@ -690,8 +677,15 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <h3>📅 Histórico semanal</h3>
           <div style="display:flex;gap:8px;align-items:center">
             <span style="font-size:11px;color:var(--mu)" id="indTabelaMeta"></span>
-            <button class="btn bs sm" onclick="exportarIndicadores()">⬇ CSV</button>
-            <button class="btn bs sm" onclick="gerarRelatorioIndicadores()" style="background:var(--ac);color:#0d0d10;font-weight:700">📄 Relatório</button>
+            <div style="display:flex;align-items:center;gap:8px">
+              <select id="indPeriodo" class="btn bs sm" style="padding:5px 8px;font-size:11px" onchange="renderIndicadores()">
+                <option value="semanal">Semanal</option>
+                <option value="mensal">Mensal</option>
+                <option value="trimestral">Trimestral</option>
+              </select>
+              <button class="btn bs sm" onclick="exportarIndicadores()">⬇ CSV</button>
+              <button class="btn bs sm" onclick="gerarRelatorioIndicadores()" style="background:var(--ac);color:#0d0d10;font-weight:700">📄 Relatório</button>
+            </div>
           </div>
         </div>
         <div class="card-body" style="padding:0;overflow-x:auto">
@@ -1520,11 +1514,10 @@ async function buscarConfirmacoesAPI(){
 
       Object.entries(rc.confirmacoes).forEach(([nome,c])=>{
         local[nome]=c; nConf++;
-        // Sempre salva em ultima.confirmacoes (não apenas se já existir)
-        if(!ultima.confirmacoes) ultima.confirmacoes={};
-        if(!ultima.confirmacoes[nome]) ultima.confirmacoes[nome]={};
-        ultima.confirmacoes[nome].status=c.status;
-        ultima.confirmacoes[nome].turnos=c.turnos||[];
+        if(ultima.confirmacoes&&ultima.confirmacoes[nome]){
+          ultima.confirmacoes[nome].status=c.status;
+          ultima.confirmacoes[nome].turnos=c.turnos;
+        }
 
         console.log('[BuscarConf]',nome,'status:',c.status,'turnos:',c.turnos?.length,'indisponíveis:',c.turnos?.filter(t=>t.indisponivel).length);
 
@@ -1613,97 +1606,6 @@ async function buscarConfirmacoesAPI(){
   }
   if(btn){btn.disabled=false;btn.textContent='☁️ Buscar confirmações';}
 }
-
-// ── Buscar confirmações e mostrar painel visual inline no Passo 3
-async function buscarConfirmacoesUI(){
-  const btn=document.getElementById('p3BtnBuscar');
-  if(btn){btn.disabled=true;btn.textContent='☁️ Buscando...';}
-
-  // Busca da API e salva tudo no localStorage
-  await buscarConfirmacoesAPI();
-
-  // Re-lê DEPOIS da API salvar — dados frescos do localStorage
-  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
-  const ultima=hist[0];
-  if(!ultima){if(btn){btn.disabled=false;btn.textContent='☁️ Buscar confirmações';}return;}
-
-  // Mescla todas as fontes de confirmação:
-  // 1. ultima.confirmacoes (salvo no KH pela busca)
-  // 2. orion_v7_confres_<id> (respostas locais e da API)
-  const resKey='orion_v7_confres_'+ultima.id;
-  const confLocal=JSON.parse(localStorage.getItem(resKey)||'{}');
-  const confHist=ultima.confirmacoes||{};
-
-  // União completa: qualquer confirmado em qualquer fonte prevalece
-  const confs={};
-  const todasChaves=new Set([...Object.keys(confHist),...Object.keys(confLocal)]);
-  todasChaves.forEach(nome=>{
-    const ch=confHist[nome], cl=confLocal[nome];
-    // Prioriza 'confirmado' > 'faltou' > 'pendente'
-    const prio={confirmado:3,faltou:2,pendente:1};
-    if(!ch) confs[nome]=cl;
-    else if(!cl) confs[nome]=ch;
-    else confs[nome]=(prio[cl.status]||0)>=(prio[ch.status]||0)?cl:ch;
-  });
-
-  const leilaoKey='orion_v7_leilao_'+ultima.id;
-  const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-  const colabs=(ultima.colabs||S.colabs||[]).map(c=>c.nome);
-
-  const confirmados=colabs.filter(n=>confs[n]?.status==='confirmado').length;
-  const pendentes=colabs.filter(n=>!confs[n]||confs[n]?.status==='pendente').length;
-  const faltaram=colabs.filter(n=>confs[n]?.status==='faltou').length;
-
-  const rows=colabs.map(nome=>{
-    const c=confs[nome];
-    const st=c?.status||'pendente';
-    const cor=st==='confirmado'?'#166534':st==='faltou'?'#991b1b':'#92400e';
-    const bg=st==='confirmado'?'#dcfce7':st==='faltou'?'#fee2e2':'#fef3c7';
-    const icon=st==='confirmado'?'✅':st==='faltou'?'❌':'⏳';
-    const label=st==='confirmado'?'Confirmou':st==='faltou'?'Faltou':'Pendente';
-    const negados=leilao.filter(t=>t.ofertadoPor===nome).length;
-    const pegados=leilao.filter(t=>t.pegoPor===nome).length;
-    const negTag=negados?'<span style="font-size:9px;background:#fef3c7;color:#92400e;border-radius:3px;padding:0 4px;margin-left:2px">↩ '+negados+' negou</span>':'';
-    const pegTag=pegados?'<span style="font-size:9px;background:#d1fae5;color:#065f46;border-radius:3px;padding:0 4px;margin-left:2px">🔖 +'+pegados+'</span>':'';
-    return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--brd)">'
-      +'<span style="font-size:11px;font-weight:600;flex:1">'+nome+'</span>'
-      +'<span style="font-size:10px;font-weight:700;color:'+cor+';background:'+bg+';border-radius:4px;padding:2px 7px">'+icon+' '+label+'</span>'
-      +negTag+pegTag+'</div>';
-  }).join('');
-
-  // Renderiza painel no p3Status
-  const p3s=document.getElementById('p3Status');
-  if(p3s){
-    const resumo='<div style="display:flex;gap:8px;margin-bottom:8px;font-size:11px;font-weight:700;flex-wrap:wrap">'
-      +(confirmados?'<span style="color:#166534">✅ '+confirmados+' confirmaram</span>':'')
-      +(pendentes?'<span style="color:#92400e">⏳ '+pendentes+' pendentes</span>':'')
-      +(faltaram?'<span style="color:#991b1b">❌ '+faltaram+' com falta</span>':'')
-      +'</div>';
-    p3s.innerHTML='<div style="margin-top:8px">'+resumo
-      +'<div style="max-height:200px;overflow-y:auto;font-size:11px">'+rows+'</div></div>';
-  }
-
-  if(btn){btn.disabled=false;btn.textContent='☁️ Buscar confirmações';}
-}
-
-// ── Registrar atraso em minutos para um turno específico no histórico
-function setMinutosAtraso(histId, nome, ini, dia, minutos){
-  const min=Math.max(0,parseInt(minutos)||0);
-  try{
-    const hist=JSON.parse(localStorage.getItem(KH)||'[]');
-    const h=hist.find(x=>x.id===histId); if(!h) return;
-    if(!h.confirmacoes) h.confirmacoes={};
-    if(!h.confirmacoes[nome]) h.confirmacoes[nome]={status:'pendente',turnos:[],horasAbatidas:0};
-    const turnos=h.confirmacoes[nome].turnos||[];
-    const t=turnos.find(x=>x.dia===dia&&x.ini===ini);
-    if(t){ t.minutosAtraso=min; }
-    else{ turnos.push({dia,ini,fim:ini+1,horas:1,faltou:false,horasAbatidas:0,minutosAtraso:min}); h.confirmacoes[nome].turnos=turnos; }
-    localStorage.setItem(KH,JSON.stringify(hist));
-    if(min>0) toast('⏱ '+nome+': '+min+'min de atraso registrado','tok');
-    if(typeof renderHistorico==='function') renderHistorico();
-  }catch(e){}
-}
-
 
 function atualizarPainelPassos(){
   const {seg:segProx}=proximaSemana();
@@ -3363,7 +3265,7 @@ function publicarEscala(){
   const hOp=+document.getElementById('cHO').value||25;
   // ── Fix 2: Preservar confirmações existentes se republicando a mesma semana
   const histExist=JSON.parse(localStorage.getItem(KH)||'[]');
-  const entradaExist=histExist.find(h=>h.segISO===seg.toISOString().slice(0,10)&&(h.hub||'Todos os hubs')===(S.hubAtual||'Todos os hubs'));
+  const entradaExist=histExist.find(h=>h.segISO===(seg.getFullYear()+'-'+p2(seg.getMonth()+1)+'-'+p2(seg.getDate()))&&(h.hub||'Todos os hubs')===(S.hubAtual||'Todos os hubs'));
   const confirmacoesExist=entradaExist?.confirmacoes||{};
 
   const confirmacoes={};
@@ -3389,26 +3291,26 @@ function publicarEscala(){
       }
       turnosDoColab.push({dia,ini:g[0],fim:g[g.length-1]+1,horas:g.length,faltou:false,horasAbatidas:0});
     });
-    // Preservar status e dados de falta já confirmados
+    // Preservar dados de falta por turno (mas SEMPRE usar a lista de turnos atual da escala)
     const confExist=confirmacoesExist[nome];
-    if(confExist&&confExist.status!=='pendente'){
-      // Mesclar: manter status existente, atualizar lista de turnos mas preservar faltou/horasAbatidas
-      const turnosComFalta=turnosDoColab.map(t=>{
-        const tExist=confExist.turnos?.find(e=>e.dia===t.dia&&e.ini===t.ini);
-        if(tExist) return {...t,faltou:tExist.faltou||false,horasAbatidas:tExist.horasAbatidas||0};
-        return t;
-      });
-      confirmacoes[nome]={status:confExist.status,turnos:turnosComFalta,ts:confExist.ts};
-    } else {
-      confirmacoes[nome]={status:'pendente',turnos:turnosDoColab};
-    }
+    const turnosFinais=turnosDoColab.map(t=>{
+      if(!confExist) return t;
+      const tExist=confExist.turnos?.find(e=>e.dia===t.dia&&e.ini===t.ini);
+      if(tExist&&(tExist.faltou||tExist.horasAbatidas>0)){
+        return {...t,faltou:tExist.faltou||false,horasAbatidas:tExist.horasAbatidas||0};
+      }
+      return t;
+    });
+    // Preservar status apenas se ainda é relevante (colaborador ainda tem turnos na nova escala)
+    const statusExist=(confExist&&confExist.status!=='pendente')?confExist.status:'pendente';
+    confirmacoes[nome]={status:statusExist,turnos:turnosFinais,ts:confExist?.ts};
   });
 
   const entrada={
     id: Date.now().toString(),
     semana: fmt(seg)+' – '+fmt(dom),
-    segISO: seg.toISOString().slice(0,10),
-    domISO: dom.toISOString().slice(0,10),
+    segISO: seg.getFullYear()+'-'+p2(seg.getMonth()+1)+'-'+p2(seg.getDate()),
+    domISO: dom.getFullYear()+'-'+p2(dom.getMonth()+1)+'-'+p2(dom.getDate()),
     publicadoEm: new Date().toLocaleString('pt-BR'),
     status: 'publicado',
     hub: S.hubAtual||'Todos os hubs',
@@ -3570,48 +3472,50 @@ function renderHistorico(filtro){
       const diasFaltadosColab=new Set(turnos.filter(t=>t.faltou).map(t=>t.dia));
       const custoAbat=custoH*totalAbat + passagem*diasFaltadosColab.size;
 
-      // Linhas por turno individual
+      // Linhas por turno individual — com drag handle para trocar entre colaboradores
       const turnoRows=turnos.map(t=>{
-        const tid=`${h.id}_${nome.replace(/\s/g,'_')}_${t.dia}_${t.ini}`;
-        return`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap">
+        const tData=JSON.stringify({histId:h.id,de:nome,dia:t.dia,ini:t.ini,fim:t.fim,horas:t.horas}).replace(/"/g,'&quot;');
+        return`<div class="turno-row" draggable="true"
+          data-turno='${JSON.stringify({histId:h.id,de:nome,dia:t.dia,ini:t.ini}).replace(/'/g,"&#39;")}'
+          ondragstart="histDragStart(event,this)"
+          ondragend="histDragEnd(event,this)"
+          style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap;cursor:grab">
+          <span style="font-size:10px;color:var(--mu);cursor:grab;padding:0 2px">⠿</span>
           <span style="font-size:11px;min-width:26px;color:var(--mu);font-weight:600">${t.dia}</span>
-          <span style="font-family:var(--mo);font-size:11px">${t.ini!=null?fH(t.ini):'?'}–${t.fim!=null?fH(t.fim):'?'}</span>
-          <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600">${(t.horas||(t.fim>t.ini?t.fim-t.ini:0))||'?'}h</span>
+          <span style="font-family:var(--mo);font-size:11px">${fH(t.ini)}–${fH(t.fim)}</span>
+          <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600">${t.horas}h</span>
           <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px">
             <input type="checkbox" ${t.faltou?'checked':''}
               onchange="toggleFaltaTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.checked)"
               style="cursor:pointer;accent-color:#dc2626">
             Faltou
           </label>
-          <label style="display:flex;align-items:center;gap:3px;margin-left:6px;font-size:11px;color:var(--mu)" title="Minutos de atraso a deduzir">
-            ⏱ <input type="number" min="0" max="480" value="${t.minutosAtraso||0}"
-              style="width:38px;padding:2px 4px;border:1px solid var(--brd);border-radius:4px;font-size:11px;text-align:center"
-              data-hid="${h.id}" data-nome="${nome}" data-ini="${t.ini}" data-dia="${t.dia}"
-              onchange="setMinutosAtraso(this.dataset.hid,this.dataset.nome,parseInt(this.dataset.ini),this.dataset.dia,this.value)"> min
-          </label>
-          <span style="font-size:10px;color:#f59e0b;font-weight:600">${t.minutosAtraso>0?'⏱ -'+t.minutosAtraso+'min':''}</span>
-          ${t.faltou?`<input type="number" min="0" max="${t.horas||(t.fim-t.ini)||8}" value="${t.horasAbatidas||(t.horas||(t.fim-t.ini)||0)}" placeholder="h"
+          ${t.faltou?`<input type="number" min="0" max="${t.horas}" value="${t.horasAbatidas||t.horas}" placeholder="h"
             style="width:44px;padding:2px 5px;border:1px solid #fca5a5;border-radius:5px;font-size:11px;font-family:var(--fn);color:#dc2626"
             onchange="setHorasAbatadasTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.value)"
             title="Horas abatidas por falta">
           <span style="font-size:10px;color:#dc2626">${(()=>{
             let val=0;
-            const horas_t=t.horas||(t.fim>t.ini?t.fim-t.ini:0)||0;
-            if(custoH>0)val+=custoH*(t.horasAbatidas||horas_t);
-            if(passagem>0)val+=passagem; // passagem do dia faltado
+            if(custoH>0)val+=custoH*(t.horasAbatidas||t.horas);
+            if(passagem>0)val+=passagem;
             return val>0?'-R$ '+val.toFixed(2).replace('.',','):'';
           })()}</span>`:''}
         </div>`;
       }).join('');
 
-      return`<div class="conf-row" style="flex-direction:column;align-items:stretch;gap:4px;padding:10px 0">
+      const safeN=nome.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+      return`<div class="conf-row" data-colab="${nome.replace(/"/g,'&quot;')}" data-histid="${h.id}"
+        style="flex-direction:column;align-items:stretch;gap:4px;padding:10px 0"
+        ondragover="histDragOver(event,this)"
+        ondragleave="histDragLeave(event,this)"
+        ondrop="histDrop(event,this,this.dataset.colab,'${h.id}')">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
           <span class="conf-nome">${nome}</span>
-          <span class="conf-btn${st==='confirmado'?' ok':st==='faltou'?' faltou':' pendente'}" style="font-size:10px">
+          <span id="conf-status-${h.id}_${safeN}" class="conf-btn${st==='confirmado'?' ok':st==='faltou'?' faltou':' pendente'}" style="font-size:10px">
             ${st==='confirmado'?'✅ Confirmado':st==='faltou'?'⚠ Tem falta':'⏳ Pendente'}
           </span>
-          ${totalAbat>0?'<span style="font-size:10px;color:#dc2626;margin-left:auto">-'+totalAbat+'h'+(custoAbat>0?' · -R$ '+custoAbat.toFixed(2).replace('.',','):'')+'</span>':''}
-          <button class="conf-btn ok" style="font-size:10px;margin-left:${totalAbat>0?'0':'auto'}" onclick="setConfirmacao('${h.id}','${nome.replace(/'/g,"\'")}','confirmado')">✅ Confirmou tudo</button>
+          <span id="conf-custo-${h.id}_${safeN}" style="font-size:10px;color:#dc2626;margin-left:auto">${totalAbat>0?'-'+totalAbat+'h'+(custoAbat>0?' · -R$ '+custoAbat.toFixed(2).replace('.',','):''):''}</span>
+          <button class="conf-btn ok" style="font-size:10px;${totalAbat===0?'margin-left:auto':''}" onclick="setConfirmacao('${h.id}','${nome.replace(/'/g,"\'")}','confirmado')">✅ Confirmou tudo</button>
         </div>
         ${turnoRows}
       </div>`;
@@ -3634,7 +3538,7 @@ function renderHistorico(filtro){
     }).join('');
 
     return`<div class="hist-card" data-hist-id="${h.id}" style="padding:0;overflow:hidden">
-      <!-- CABEÇALHO: só este div tem onclick — NÃO envolve o detalhe -->
+      <!-- CABEÇALHO CLICÁVEL (sempre visível) -->
       <div class="hist-head" onclick="toggleHistCard('${h.id}')" style="cursor:pointer;padding:14px 18px;user-select:none">
         <span style="font-size:18px">📅</span>
         <div style="flex:1;min-width:0">
@@ -3648,17 +3552,16 @@ function renderHistorico(filtro){
             ${h.resumo.totalCusto>0?`<span>R$ ${(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',',')}</span>`:''}
             ${cpp?`<span>CPP R$ ${cpp}</span>`:''}
             ${totalColab>0?`<span class="hist-conf-count" style="color:${confirmados===totalColab?'#16a34a':pendentes>0?'#92400e':'#6b7280'};font-weight:600">✓ ${confirmados}/${totalColab}</span>`:''}
-            <span class="hist-falta-badge" style="color:#dc2626">${faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:''}</span>
+            <span class="hist-falta-badge" style="color:#dc2626">${faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:''}${''}${''}</span>
             <span style="color:var(--mu)">Publicado em ${h.publicadoEm}</span>
           </div>
-        </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
           ${faltaram>0?`<span class="hist-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">${faltaram} faltou</span>`:''}
           <span id="hist-chevron-${h.id}" style="font-size:12px;color:var(--mu);transition:.2s;transform:rotate(0deg)">▼</span>
         </div>
-      </div><!-- fim hist-head -->
-      <!-- DETALHE: irmão do hist-head, NÃO filho — cliques aqui não fecham o card -->
-      <div id="hist-detail-${h.id}" onclick="event.stopPropagation()" style="display:none;border-top:1px solid var(--brd)">
+      </div>
+      <!-- DETALHE (colapsado por padrão) -->
+      <div id="hist-detail-${h.id}" style="display:none;border-top:1px solid var(--brd)">
         <div class="hist-resumo" style="padding:10px 18px;border-bottom:1px solid var(--brd)">
           <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
@@ -3679,7 +3582,7 @@ function renderHistorico(filtro){
           <button class="btn bs sm" onclick="restaurarEscalaHistorico('${h.id}')">↩ Restaurar</button>
           <button class="btn bd sm" onclick="excluirHistorico('${h.id}')">🗑 Excluir</button>
         </div>
-      </div><!-- fim hist-detail -->
+      </div>
     </div>`;
   }).join('');
   con.innerHTML=filterBar+cards;
@@ -3930,6 +3833,52 @@ function setPtHorasAbat(nome, segISO, horas){
   toast(`⚠ ${horas}h abatidas para ${nome}.`,'tok');
 }
 
+// ── DRAG & DROP TURNOS NO HISTÓRICO ──────────────────
+let _histDragData=null;
+function histDragStart(ev,el){
+  try{_histDragData=JSON.parse(el.dataset.turno.replace(/&#39;/g,"'"));el.classList.add('dragging');ev.dataTransfer.effectAllowed='move';}catch(e){ev.preventDefault();}
+}
+function histDragEnd(ev,el){el.classList.remove('dragging');}
+function histDragOver(ev,el){
+  if(!_histDragData)return;
+  if(!el.dataset.colab||el.dataset.histid!==_histDragData.histId)return;
+  if(el.dataset.colab===_histDragData.de)return;
+  ev.preventDefault();ev.dataTransfer.dropEffect='move';el.classList.add('drag-over');
+}
+function histDragLeave(ev,el){el.classList.remove('drag-over');}
+function histDrop(ev,el,paraColab,histId){
+  ev.preventDefault();el.classList.remove('drag-over');
+  if(!_histDragData||_histDragData.histId!==histId)return;
+  const {de,dia,ini}=_histDragData;
+  if(de===paraColab)return;
+  _transferirTurnoHist(histId,de,paraColab,dia,ini);_histDragData=null;
+}
+function _transferirTurnoHist(histId,de,para,dia,ini){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes)return;
+  const confDe=h.confirmacoes[de];if(!confDe)return;
+  const tIdx=confDe.turnos.findIndex(t=>t.dia===dia&&t.ini===ini);if(tIdx<0)return;
+  const turno={...confDe.turnos[tIdx]};
+  confDe.turnos.splice(tIdx,1);
+  if(!confDe.turnos.length)delete h.confirmacoes[de];
+  else{confDe.status=confDe.turnos.some(t=>t.faltou)?'faltou':confDe.status==='confirmado'?'confirmado':'pendente';confDe.horasAbatidas=confDe.turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);}
+  if(!h.confirmacoes[para])h.confirmacoes[para]={status:'pendente',turnos:[],horasAbatidas:0};
+  if(!h.confirmacoes[para].turnos.find(t=>t.dia===dia&&t.ini===ini)){
+    turno.faltou=false;turno.horasAbatidas=0;
+    h.confirmacoes[para].turnos.push(turno);
+    const dO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+    h.confirmacoes[para].turnos.sort((a,b)=>dO.indexOf(a.dia)-dO.indexOf(b.dia)||a.ini-b.ini);
+  }
+  localStorage.setItem(KH,JSON.stringify(hist));
+  const fH2=v=>{if(v>=24)v-=24;return String(v).padStart(2,'0')+':00';};
+  toast(`↕ ${dia} ${fH2(ini)} → ${de} transferido para ${para}`,'tok');
+  const abertos=Array.from(document.querySelectorAll('[id^="hist-detail-"]')).filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
+  renderHistorico();
+  setTimeout(()=>{abertos.forEach(id=>{const det=document.getElementById('hist-detail-'+id);const chev=document.getElementById('hist-chevron-'+id);if(det)det.style.display='block';if(chev)chev.style.transform='rotate(180deg)';});},50);
+}
+// ─────────────────────────────────────────────────────
+
 function toggleFaltaTurno(histId, nome, ini, dia, faltou){
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const h=hist.find(x=>x.id===histId);
@@ -3970,7 +3919,7 @@ function setConfirmacao(histId, nome, status){
   _atualizarBadgesCard(histId, h);
 }
 
-// Atualiza apenas os badges/counters do card sem fechar o modal
+// Atualiza badges do card SEM reconstruir o DOM (não fecha o card)
 function _atualizarBadgesCard(histId, h){
   const confs=h.confirmacoes||{};
   const totalColab=Object.keys(confs).length;
@@ -3978,7 +3927,7 @@ function _atualizarBadgesCard(histId, h){
   const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
   const pendentes=totalColab-confirmados-faltaram;
 
-  // Atualizar o contador no cabeçalho colapsado
+  // 1. Atualizar contador no cabeçalho colapsado
   const cardEl=document.querySelector(`[data-hist-id="${histId}"]`);
   if(cardEl){
     const contEl=cardEl.querySelector('.hist-conf-count');
@@ -3987,8 +3936,34 @@ function _atualizarBadgesCard(histId, h){
       contEl.style.color=confirmados===totalColab?'#16a34a':pendentes>0?'#92400e':'#6b7280';
     }
     const faltaEl=cardEl.querySelector('.hist-falta-badge');
-    if(faltaEl) faltaEl.textContent=faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:'';
+    if(faltaEl) faltaEl.textContent=faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}` :'';
   }
+
+  // 2. Atualizar o badge de status de cada colaborador na linha expandida
+  // Cada linha tem id="conf-status-HISTID_NOME"
+  Object.entries(confs).forEach(([nome,c])=>{
+    const st=c.status||'pendente';
+    const safeNome=nome.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+    const statusEl=document.getElementById(`conf-status-${histId}_${safeNome}`);
+    if(statusEl){
+      statusEl.textContent=st==='confirmado'?'✅ Confirmado':st==='faltou'?'⚠ Tem falta':'⏳ Pendente';
+      statusEl.className='conf-btn'+(st==='confirmado'?' ok':st==='faltou'?' faltou':' pendente');
+      statusEl.style.fontSize='10px';
+    }
+    // Também atualizar custo abatido na linha
+    const custoEl=document.getElementById(`conf-custo-${histId}_${safeNome}`);
+    if(custoEl){
+      const colab=h.colabs?.find(x=>x.nome===nome);
+      const custoH=colab?.custo||0;
+      const passagem=colab?.passagem||0;
+      const turnos=c.turnos||[];
+      const totalAbat=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
+      const diasFalt=new Set(turnos.filter(t=>t.faltou).map(t=>t.dia));
+      const custoAbat=custoH*totalAbat+passagem*diasFalt.size;
+      if(custoAbat>0) custoEl.textContent=`-R$ ${custoAbat.toFixed(2).replace('.',',')}`;
+      else custoEl.textContent='';
+    }
+  });
 }
 
 function setHorasAbatidas(histId, nome, horas){
@@ -4655,49 +4630,31 @@ function renderIndicadores(){
   const primSem=semanasPerido[0];
   const primMes=primSem?.de?new Date(primSem.de+'T12:00:00'):agora;
   const periodoLabel={
-    semanal:`Últimas ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''}`,
-    mensal:primMes.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}),
+    semanal:`Semana ${primSem?.deBR||'?'}–${primSem?.ateBR||'?'}`,
+    mensal:`${primMes.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''}`,
     trimestral:`T${Math.ceil((primMes.getMonth()+1)/3)}/${primMes.getFullYear()} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''}`,
   }[periodo];
+
+  // Aviso se mensal e trimestral mostram o mesmo dado (poucas semanas coletadas)
+  const avisoSemanas = hist.length<=1 && periodo!=='semanal'
+    ? '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:11px;color:#92400e;margin-bottom:12px">⚠️ Apenas 1 semana coletada — mensal e trimestral mostram os mesmos dados. Execute o bookmarklet a cada semana para enriquecer o histórico.</div>'
+    : '';
+  document.getElementById('indBanner').innerHTML=avisoSemanas;
 
   // Inicializar painel de custos manuais
   setTimeout(()=>inicializarCppManual(), 50);
 
   // KPI Cards
   const fmtCpp = v => v !== null ? `R$ ${v.toFixed(2).replace('.',',')}` : '—';
-  // Contexto para cada KPI — período e hub ativos
-  const _eTodos2=!hub||hub.has('todos')||hub.size===0;
-  const _hubCtx=_eTodos2?'Todos hubs':(hub instanceof Set?[...hub]:['todos']).filter(hubVisivel).map(nomeHub).join('+');
-  const _perCtx=semanasPerido.length===1?`${semanasPerido[0].deBR}–${semanasPerido[0].ateBR}`:
-    semanasPerido.length>1?`${semanasPerido[semanasPerido.length-1].deBR}–${semanasPerido[0].ateBR}`:'';
-  const ctxHtml='<div style="font-size:9px;color:var(--ac);margin-top:2px;font-weight:600">📅 '+_perCtx+' · '+_hubCtx+'</div>';
-
   const kpis=[
-    {icon:'📦',label:'Volume de pedidos',
-      val:m.volume.toLocaleString('pt-BR'),prev:mAnt?mAnt.volume:null,rawVal:m.volume,prevRaw:mAnt?mAnt.volume:null,
-      unit:'',big:true,hiMelhor:true,
-      extraHtml:ctxHtml+'<div style="font-size:9px;color:var(--mu)">'+semanasPerido.length+' semana'+(semanasPerido.length!==1?'s':'')+' coletadas</div>'},
-    {icon:'❌',label:'Cancelamentos',
-      val:m.cancelamentos!=null?m.cancelamentos.toLocaleString('pt-BR'):'—',
-      prev:mAnt?mAnt.cancelamentos:null,rawVal:m.cancelamentos,prevRaw:mAnt?mAnt.cancelamentos:null,
-      unit:'',big:false,hiMelhor:false,extraHtml:ctxHtml},
-    {icon:'📉',label:'% Cancelamentos',
-      val:m.pctCancel!=null?m.pctCancel.toFixed(2)+'%':'—',
-      prev:mAnt?mAnt.pctCancel:null,unit:'%',big:false,hiMelhor:false,rawVal:m.pctCancel,prevRaw:mAnt?mAnt.pctCancel:null,
-      extraHtml:ctxHtml},
-    {icon:'🧑‍🍳',label:'T. Médio preparo',
-      val:fmtTempo(m.tPreparoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tPreparoMed,prevRaw:mAnt?mAnt.tPreparoMed:null,
-      extraHtml:(m.amostras?.preparo?'<div style="font-size:9px;color:var(--mu)">'+m.amostras.preparo+' amostras</div>':'')+ctxHtml},
-    {icon:'🛵',label:'T. Médio coleta',
-      val:fmtTempo(m.tColetaMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tColetaMed,prevRaw:mAnt?mAnt.tColetaMed:null,
-      extraHtml:(m.amostras?.coleta?'<div style="font-size:9px;color:var(--mu)">'+m.amostras.coleta+' amostras</div>':'')+ctxHtml},
-    {icon:'🏁',label:'T. Médio despacho',
-      val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null,
-      extraHtml:(m.amostras?.despacho?'<div style="font-size:9px;color:var(--mu)">'+m.amostras.despacho+' amostras</div>':'')+ctxHtml},
-    {icon:'💰',label:'CPP s/ adicionais',val:fmtCpp(cpp),prev:null,unit:'',big:false,raw:cpp,
-      extraHtml:'<div style="font-size:9px;color:var(--mu)">custo escala / pedido</div>'+ctxHtml},
-    ...(temAdicionais?[{icon:'💸',label:'CPP c/ adicionais',val:fmtCpp(cppComAdicionais),prev:null,unit:'',big:false,raw:cppComAdicionais,destaque:true,
-      extraHtml:'<div style="font-size:9px;color:#dc2626">+R$ '+custoManualPer.toFixed(2).replace('.',',')+'</div>'+ctxHtml}]:[]),
+    {icon:'📦',label:'Volume de pedidos',val:m.volume.toLocaleString('pt-BR'),prev:mAnt?mAnt.volume:null,unit:'',big:true,hiMelhor:true},
+    {icon:'❌',label:'Cancelamentos',val:m.cancelamentos,prev:mAnt?mAnt.cancelamentos:null,unit:'',big:false,hiMelhor:false},
+    {icon:'📉',label:'% Cancelamentos',val:m.pctCancel.toFixed(2)+'%',prev:mAnt?mAnt.pctCancel:null,unit:'%',big:false,hiMelhor:false,rawVal:m.pctCancel,prevRaw:mAnt?mAnt.pctCancel:null},
+    {icon:'🧑‍🍳',label:'Tempo médio preparo',val:fmtTempo(m.tPreparoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tPreparoMed,prevRaw:mAnt?mAnt.tPreparoMed:null},
+    {icon:'🛵',label:'Tempo médio coleta',val:fmtTempo(m.tColetaMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tColetaMed,prevRaw:mAnt?mAnt.tColetaMed:null},
+    {icon:'🏁',label:'Tempo médio despacho',val:fmtTempo(m.tDespachoMed),prev:null,unit:'min',big:false,hiMelhor:false,rawVal:m.tDespachoMed,prevRaw:mAnt?mAnt.tDespachoMed:null},
+    {icon:'💰',label:'CPP s/ adicionais',val:fmtCpp(cpp),prev:null,unit:'',big:false,raw:cpp,extraHtml: temAdicionais&&cpp!==null?`<div style="font-size:9px;color:#6b7280;margin-top:1px">Só escala</div>`:''},
+    ...(temAdicionais?[{icon:'💸',label:'CPP c/ adicionais',val:fmtCpp(cppComAdicionais),prev:null,unit:'',big:false,raw:cppComAdicionais,destaque:true,extraHtml:`<div style="font-size:9px;color:#dc2626;margin-top:1px">+R$ ${custoManualPer.toFixed(2).replace('.',',')} adicionais</div>`}]:[]),
   ];
 
   // Painel de distribuição por hub (só aparece quando 2+ hubs selecionados)
@@ -4770,16 +4727,14 @@ function renderIndicadores(){
   // Para mensal/trimestral: agrupa todas por mês/trimestre
   const todasSemanas=hist.slice().reverse(); // ordem cronológica (mais antiga primeiro)
   const semanas = periodo==='semanal' ? hist.slice(0,8).reverse() : todasSemanas;
-  const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','Custo escala','CPP s/ adic.','Adicionais','CPP c/ adic.'];
+  const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
 
-  // histEscMap: segISO → custo BRUTO total (soma de todos os hubs)
-  // NÃO divide por volume projetado — CPP = custo / volume_real_Órion
   let histEscMap={};
   try{
-    const he=JSON.parse(localStorage.getItem(KH)||'[]');
+    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
     he.forEach(e=>{
-      const seg=e.segISO; if(!seg) return;
-      histEscMap[seg]=(histEscMap[seg]||0)+(e.resumo?.totalCusto||0);
+      const seg=e.segISO;
+      if(e.resumo.totalPed>0)histEscMap[seg]=(e.resumo.totalCusto/e.resumo.totalPed);
     });
   }catch(e){}
 
@@ -4819,7 +4774,6 @@ function renderIndicadores(){
   const grupos=agruparTabelaPor(semanas, periodo);
 
   let tbody='<tbody>';
-  try{
   grupos.forEach((grupo,gi)=>{
     // Cabeçalho do grupo (mensal / trimestral)
     if(grupo.label){
@@ -4836,46 +4790,40 @@ function renderIndicadores(){
         grupo.semanas.flatMap(s=>s.cancelamentos||[]),
         hub
       );
-      // Custo total = soma dos custos brutos da escala (não média de CPPs)
-      const custoGrupoTotal=grupo.semanas.reduce((t,s)=>t+(histEscMap[s.de]||0),0);
-      const cppGrupo=custoGrupoTotal>0&&mtGrupo.volume>0?custoGrupoTotal/mtGrupo.volume:null;
-      const adGrupo=grupo.semanas.reduce((t,sem)=>t+getCppManualTotal(sem.semanaISO||''),0);
-      const cppComAdGrupo=cppGrupo!=null&&mtGrupo.volume>0?((custoGrupoTotal+adGrupo)/mtGrupo.volume):null;
-      const fR2=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
-      const tdG=v=>`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${v}</td>`;
+      const cppsGrupo=grupo.semanas.map(s=>histEscMap[s.de]).filter(v=>v!=null);
+      const avgCpp=cppsGrupo.length?cppsGrupo.reduce((a,b)=>a+b,0)/cppsGrupo.length:null;
+      const adGrupo=grupo.semanas.reduce((s,sem)=>s+getCppManualTotal(sem.semanaISO||''),0);
+      const cppComAdGrupo=avgCpp!==null&&mtGrupo.volume>0?((avgCpp*mtGrupo.volume+adGrupo)/mtGrupo.volume):null;
       tbody+=`<tr style="background:#f8f9fa;font-weight:700;border-top:1px solid var(--brd2)">
         <td style="padding:6px 12px;font-size:11px;color:#374151">Total ${grupo.label} (${grupo.semanas.length} sem.)</td>
-        ${tdG(mtGrupo.volume.toLocaleString('pt-BR'))}
-        ${tdG(mtGrupo.cancelamentos!=null?mtGrupo.cancelamentos:'—')}
-        ${tdG(mtGrupo.pctCancel!=null?mtGrupo.pctCancel.toFixed(2)+'%':'—')}
-        ${tdG(fmtTempo(mtGrupo.tPreparoMed))}${tdG(fmtTempo(mtGrupo.tColetaMed))}${tdG(fmtTempo(mtGrupo.tDespachoMed))}
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);background:#f0fdf4;font-weight:700;color:#166534">${fR2(custoGrupoTotal>0?custoGrupoTotal:null)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fR2(cppGrupo)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${adGrupo>0?fR2(adGrupo):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:800;${cppComAdGrupo!=null&&adGrupo>0?'color:#dc2626':''}">${adGrupo>0&&cppComAdGrupo!=null?fR2(cppComAdGrupo):'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.volume.toLocaleString('pt-BR')}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.cancelamentos}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.pctCancel.toFixed(2)}%</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tPreparoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tColetaMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tDespachoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${avgCpp!==null?'R$ '+avgCpp.toFixed(2).replace('.',','):'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${adGrupo>0?'R$ '+adGrupo.toFixed(2).replace('.',','):'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:800;${cppComAdGrupo!==null&&adGrupo>0?'color:#dc2626':''}">${cppComAdGrupo!==null?'R$ '+cppComAdGrupo.toFixed(2).replace('.',','):'—'}</td>
       </tr>`;
     }
 
     const metricas=grupo.semanas.map(sem=>{
-      const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
-      // custoEscala = custo BRUTO da semana (soma todos hubs) — NÃO divide por projetado
-      const custoEscala=histEscMap[sem.de]||null;
-      // CPP = custo_bruto / volume_real_Órion
-      const cppSem=custoEscala!=null&&mt.volume>0?custoEscala/mt.volume:null;
+      const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
+      const cppSem=histEscMap[sem.de]||null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
-      const cppComAdicional=custoEscala!=null&&mt.volume>0?((custoEscala+adicionalSem)/mt.volume):null;
-      return{sem,mt,custoEscala,cppSem,adicionalSem,cppComAdicional};
+      const cppComAdicional=cppSem!==null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
+      return{sem,mt,cppSem,adicionalSem,cppComAdicional};
     });
 
-    metricas.forEach(({sem,mt,custoEscala,cppSem,adicionalSem,cppComAdicional},i)=>{
+    metricas.forEach(({sem,mt,cppSem,adicionalSem,cppComAdicional},i)=>{
       // Comparar com semana anterior do mesmo grupo (mensal) ou semana anterior global (semanal)
       let prevMt=null;
       if(periodo==='semanal'||periodo==='mensal'){
         prevMt=i>0?metricas[i-1].mt:null;
       }
       function celVar(atual,ant,hiMelhor=false,fmt=v=>v){
-        if(atual===null||atual===undefined)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af;font-style:italic">s/ dados</td>`;
-        if(ant===null||ant===undefined)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)}</td>`;
+        if(ant===null||ant===undefined||atual===null)return`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmt(atual)??'—'}</td>`;
         const pct=ant!==0?((atual-ant)/ant*100):0;
         const melhorou=hiMelhor?pct>0:pct<0;
         const cor=melhorou?'#166534':'#dc2626';
@@ -4893,7 +4841,6 @@ function renderIndicadores(){
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tPreparoMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tColetaMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);background:#f0fdf4;font-weight:600;color:#166534">${custoEscala!=null?'R$ '+custoEscala.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cppSem!==null?'R$ '+cppSem.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);${cppAdicBg}">${adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700;${cppComAdicional!==null&&adicionalSem>0?'color:#dc2626':''}">${cppComAdicional!==null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—'}</td>
@@ -4902,36 +4849,28 @@ function renderIndicadores(){
 
     // Linha de média do grupo (só mensal com 2+ semanas)
     if(periodo==='mensal' && metricas.length>1){
-      // Consolidado mensal: soma de tudo, CPP = custo_total / volume_total
-      const mtMes=calcularMetricasSemana(
-        grupo.semanas.flatMap(s=>s.vendas||[]),
-        grupo.semanas.flatMap(s=>s.cancelamentos||[]),hub);
-      const custoMesTotal=metricas.reduce((t,x)=>t+(x.custoEscala||0),0);
-      const adMesTotal=metricas.reduce((t,x)=>t+x.adicionalSem,0);
-      const cppMes=custoMesTotal>0&&mtMes.volume>0?custoMesTotal/mtMes.volume:null;
-      const cppComAdMes=custoMesTotal>0&&mtMes.volume>0?(custoMesTotal+adMesTotal)/mtMes.volume:null;
-      const fR3=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
-      tbody+=`<tr style="background:#f8f9fa;font-weight:700;border-top:2px solid var(--brd2)">
-        <td style="padding:6px 12px;font-size:11px;color:var(--mu)">Total do mês (${metricas.length} sem.)</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700">${mtMes.volume.toLocaleString('pt-BR')}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtMes.cancelamentos!=null?mtMes.cancelamentos:'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtMes.pctCancel!=null?mtMes.pctCancel.toFixed(2)+'%':'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtMes.tPreparoMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtMes.tColetaMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtMes.tDespachoMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);background:#f0fdf4;font-weight:700;color:#166534">${custoMesTotal>0?fR3(custoMesTotal):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700">${fR3(cppMes)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${adMesTotal>0?fR3(adMesTotal):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:800;${cppComAdMes!=null&&adMesTotal>0?'color:#dc2626':''}">${adMesTotal>0&&cppComAdMes!=null?fR3(cppComAdMes):'—'}</td>
+      const vols=metricas.map(x=>x.mt.volume);
+      const cancs=metricas.map(x=>x.mt.cancelamentos);
+      const pcts=metricas.map(x=>x.mt.pctCancel);
+      const preps=metricas.map(x=>x.mt.tPreparoMed).filter(v=>v!==null);
+      const colets=metricas.map(x=>x.mt.tColetaMed).filter(v=>v!==null);
+      const desps=metricas.map(x=>x.mt.tDespachoMed).filter(v=>v!==null);
+      const cpps=metricas.map(x=>x.cppSem).filter(v=>v!==null);
+      const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
+      tbody+=`<tr style="background:#f8f9fa;font-weight:600;border-top:2px solid var(--brd2)">
+        <td style="padding:6px 12px;font-size:11px;color:var(--mu)">Média do mês</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${Math.round(avg(vols)).toLocaleString('pt-BR')}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${Math.round(avg(cancs))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${avg(pcts).toFixed(2)}%</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(preps))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(colets))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(desps))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cpps.length?'R$ '+avg(cpps).toFixed(2).replace('.',','):'—'}</td>
+        <td colspan="2"></td>
       </tr>`;
     }
   });
   tbody+='</tbody>';
-  }catch(err){
-    console.error('[renderIndicadores tabela] ERRO:', err.message, err.stack);
-    document.getElementById('indTabela').innerHTML='<tr><td style="padding:20px;color:#dc2626;font-weight:600">Erro ao renderizar tabela: '+err.message+'</td></tr>';
-    return;
-  }
 
   // Insert informative note when 1 week only
   const tabelaCard=document.getElementById('indTabelaCard');
@@ -4949,37 +4888,9 @@ function renderIndicadores(){
 
   document.getElementById('indTabela').innerHTML=thead+tbody;
 
-  // ── Atualizar contexto dos KPIs — deixa claro qual período/hub está exibido
-  const _eTodosH=!hub||hub.has('todos')||hub.size===0;
-  const hubLabel2=_eTodosH?'Todos os hubs':([...hub]).filter(hubVisivel).map(nomeHub).join(' + ')||'Todos os hubs';
-  const periodoNome2={semanal:'Semanal',mensal:'Mensal',trimestral:'Trimestral'}[periodo]||'Período';
-  const semAtual=semanasPerido.length===1?`${semanasPerido[0].deBR}–${semanasPerido[0].ateBR}`:
-    semanasPerido.length>1?`${semanasPerido[semanasPerido.length-1].deBR}–${semanasPerido[0].ateBR}`:'';
-
-  // Sub-título do painel
-  const subTxt=`${periodoNome2} · ${hubLabel2} · ${semanasPerido.length} semana${semanasPerido.length!==1?'s':''}`;
+  const subTxt=`${periodoLabel} · ${todasVendas.length.toLocaleString('pt-BR')} pedidos analisados`;
   document.getElementById('indSub').textContent=subTxt;
-
-  // Banner de contexto
-  const banner=document.getElementById('indContextoBanner');
-  if(banner){
-    banner.style.display='flex';
-    const tit=document.getElementById('indContextoTitulo');
-    const sub=document.getElementById('indContextoSub');
-    const int=document.getElementById('indContextoIntervalo');
-    if(tit) tit.textContent=`${periodoNome2} · ${hubLabel2}`;
-    if(sub) sub.textContent=`${semanasPerido.length} semana${semanasPerido.length!==1?'s':''} com dados reais do Órion`
-      +(m.cancelamentos!=null&&m.pctCancel!=null?` · ${m.cancelamentos} cancel. (${m.pctCancel.toFixed(1)}%)`:'');
-    if(int) int.textContent=semAtual?`📅 ${semAtual}`:'';
-    // Sincronizar label do hub dropdown
-    const lbl=document.getElementById('indHubLabel');
-    if(lbl) lbl.textContent='🏪 '+hubLabel2;
-    // Sincronizar select de período
-    const sel=document.getElementById('indPeriodo');
-    if(sel&&sel.value!==periodo) sel.value=periodo;
-  }
-
-  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletadas · exibindo ${periodoNome2.toLowerCase()} atual`;
+  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · tabela exibe todas`;
 
   // Atualiza select hubs
   atualizarSelectHubs([]);
@@ -4999,245 +4910,315 @@ function gerarRelatorioIndicadores(){
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
   if(!hist.length){toast('Sem dados para gerar relatório.','ter');return;}
 
-  // ── Usa EXATAMENTE os mesmos filtros ativos no painel
-  const periodo=document.getElementById('indPeriodo')?.value||'mensal';
+  const periodo=document.getElementById('indPeriodo')?.value||'semanal';
   const hub=typeof _hubsSel!=='undefined'&&_hubsSel instanceof Set?_hubsSel:new Set(['todos']);
   const eTodos=!hub||hub.has('todos')||hub.size===0;
-  const hubsAtivos2=eTodos?(hist[0]?.hubs||[]).filter(hubVisivel):[...hub].filter(hubVisivel);
-  const hubLabel2=eTodos||hubsAtivos2.length===0?'Todos os hubs':hubsAtivos2.map(nomeHub).join(' + ');
+  const hubsAtivos=eTodos?(hist[0]?.hubs||[]).filter(hubVisivel):[...hub].filter(hubVisivel);
+  const hubLabel=eTodos||hubsAtivos.length===0?'Todos os hubs':hubsAtivos.map(nomeHub).join(' + ');
 
-  const agora=new Date();
-  const mesAtual=agora.getMonth(), anoAtual=agora.getFullYear();
-  const triAtual=Math.ceil((mesAtual+1)/3);
+  // Custo total da escala — base para CPP por hub
+  const custoEscalaRel = getCustoEscalaSemana(hist[0]?.semanaISO);
+  // cppGlobal = custo / volume total selecionado (calculado depois de ter mTotal)
 
-  // ── Mesma seleção de semanasPerido do painel principal
-  let semanasRel;
-  if(periodo==='semanal'){
-    semanasRel=hist.slice(0,1);
-  } else if(periodo==='mensal'){
-    semanasRel=hist.filter(s=>{if(!s.de)return false;const d=new Date(s.de+'T12:00:00');return d.getMonth()===mesAtual&&d.getFullYear()===anoAtual;});
-    if(!semanasRel.length){
-      const mr=hist[0];if(mr?.de){const d=new Date(mr.de+'T12:00:00');const mm=d.getMonth(),aa=d.getFullYear();
-        semanasRel=hist.filter(s=>{if(!s.de)return false;const dd=new Date(s.de+'T12:00:00');return dd.getMonth()===mm&&dd.getFullYear()===aa;});}
-      if(!semanasRel.length) semanasRel=hist.slice(0,1);
+  function agruparPeriodo(semanas,tipo){
+    if(tipo==='semanal') return semanas.map(s=>({label:s.semana||s.semanaISO,semanas:[s]})).reverse();
+    if(tipo==='mensal'){
+      const mp={};
+      semanas.forEach(s=>{
+        const d=s.ate?new Date(s.ate+'T00:00:00'):null;
+        const k=d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`:'outros';
+        const nome=d?d.toLocaleString('pt-BR',{month:'long',year:'numeric'}):'Outros';
+        if(!mp[k])mp[k]={label:nome,semanas:[]};
+        mp[k].semanas.push(s);
+      });
+      return Object.entries(mp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
     }
-  } else {
-    semanasRel=hist.filter(s=>{if(!s.de)return false;const d=new Date(s.de+'T12:00:00');return d.getFullYear()===anoAtual&&Math.ceil((d.getMonth()+1)/3)===triAtual;});
-    if(!semanasRel.length){
-      const mr=hist[0];if(mr?.de){const d=new Date(mr.de+'T12:00:00');const tri=Math.ceil((d.getMonth()+1)/3),ar=d.getFullYear();
-        semanasRel=hist.filter(s=>{if(!s.de)return false;const dd=new Date(s.de+'T12:00:00');return Math.ceil((dd.getMonth()+1)/3)===tri&&dd.getFullYear()===ar;});}
-      if(!semanasRel.length) semanasRel=hist.slice(0,4);
+    if(tipo==='trimestral'){
+      const tp={};
+      semanas.forEach(s=>{
+        const d=s.ate?new Date(s.ate+'T00:00:00'):null;
+        if(!d)return;
+        const q=Math.ceil((d.getMonth()+1)/3);
+        const k=`${d.getFullYear()}-T${q}`;
+        if(!tp[k])tp[k]={label:`T${q}/${d.getFullYear()}`,semanas:[]};
+        tp[k].semanas.push(s);
+      });
+      return Object.entries(tp).sort(([a],[b])=>a.localeCompare(b)).map(([,v])=>v);
     }
+    return semanas.map(s=>({label:s.semana,semanas:[s]})).reverse();
   }
 
-  // ── Label do intervalo (ex: "27/04 – 10/05")
-  const semOrd=semanasRel.slice().sort((a,b)=>(a.de||'').localeCompare(b.de||''));
-  const primeira=semOrd[0], ultima=semOrd[semOrd.length-1];
-  const intervalo=semanasRel.length===1?`${primeira?.deBR}–${primeira?.ateBR}`:
-    `${primeira?.deBR}/${primeira?.de?.slice(5,7)} – ${ultima?.ateBR}/${ultima?.ate?.slice(5,7)|| ultima?.de?.slice(5,7)}`;
+  function calcGrupo(semanas){
+    return calcularMetricasSemana(
+      semanas.flatMap(s=>s.vendas||[]),
+      semanas.flatMap(s=>s.cancelamentos||[]),
+      hub
+    );
+  }
 
-  const periodoLabels={semanal:'Semanal',mensal:'Mensal',trimestral:'Trimestral'};
-  const periodoNomeRel=periodoLabels[periodo]||'Período';
-  const periodoTituloRel=periodo==='semanal'?(primeira?.semana||primeira?.semanaISO||''):
-    periodo==='mensal'?(()=>{const d=new Date((primeira?.de||'')+'T12:00:00');return d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});})():
-    `T${triAtual}/${anoAtual}`;
+  function var$(atual,ant,inverso=false){
+    if(ant===null||ant===undefined||atual===null||isNaN(atual)||isNaN(ant)||ant===0) return '';
+    const p=((atual-ant)/ant*100);
+    const melhorou=inverso?p<0:p>0;
+    const cor=melhorou?'#166534':'#991b1b';
+    const bg=melhorou?'#dcfce7':'#fee2e2';
+    return `<span style="font-size:10px;font-weight:700;color:${cor};background:${bg};border-radius:4px;padding:1px 5px;margin-left:4px">${p>=0?'+':''}${p.toFixed(1)}%</span>`;
+  }
 
-  // ── Métricas totais do período
-  const todasVendasRel=semanasRel.flatMap(s=>s.vendas||[]);
-  const todosCancelsRel=semanasRel.flatMap(s=>s.cancelamentos||[]);
-  const mTotal=calcularMetricasSemana(todasVendasRel,todosCancelsRel,hub);
+  const grupos=agruparPeriodo(hist,periodo);
 
-  // ── Custo escala e CPP (mesma lógica do painel)
-  let custoEscalaTotal=0;
-  const histEscRel=JSON.parse(localStorage.getItem(KH)||'[]');
-  const custoMapRel={};
-  histEscRel.forEach(e=>{if(e.segISO&&e.resumo?.totalPed>0)custoMapRel[e.segISO]=(custoMapRel[e.segISO]||0)+(e.resumo.totalCusto||0);});
-  semanasRel.forEach(s=>{custoEscalaTotal+=(custoMapRel[s.de]||0);});
-  const custoManualTotal=semanasRel.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
-  const cppGlobal=custoEscalaTotal>0&&mTotal.volume>0?custoEscalaTotal/mTotal.volume:null;
-  const cppComAd=custoEscalaTotal>0&&mTotal.volume>0?(custoEscalaTotal+custoManualTotal)/mTotal.volume:null;
-  const temAdRel=custoManualTotal>0;
+  // Build CPP map from escala history
+  let relEscMap={};
+  try{
+    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    he.forEach(e=>{if(e.resumo.totalPed>0)relEscMap[e.segISO]=e.resumo.totalCusto/e.resumo.totalPed;});
+  }catch(e){}
 
-  const fmtR=v=>v!=null?'R$ '+v.toFixed(2).replace('.',','):'—';
-  const fmtT=v=>v!=null?fmtTempo(v):'—';
-  const dataGeracao=new Date().toLocaleString('pt-BR');
-
-  // ── Adicionais por item (somados no período)
-  const totaisAd=semanasRel.reduce((t,s)=>{const d=getCppManualSemana(s.semanaISO||'');t.limpezaFixo+=(d.limpezaFixo||0);t.freela+=(d.freela||0);t.atendimento+=(d.atendimento||0);t.outros+=(d.outros||0);return t;},{limpezaFixo:0,freela:0,atendimento:0,outros:0});
-
-  // ── Tabela histórica: semana a semana dentro do período
-  const semsOrd=semanasRel.slice().sort((a,b)=>(a.de||'').localeCompare(b.de||''));
-  const linhasHist=semsOrd.map((s,i)=>{
-    const ms=calcularMetricasSemana(s.vendas||[],s.cancelamentos||[],hub);
-    const msAnt=i>0?calcularMetricasSemana(semsOrd[i-1].vendas||[],semsOrd[i-1].cancelamentos||[],hub):null;
-    const custoS=custoMapRel[s.de]||0;
-    const adS=getCppManualTotal(s.semanaISO||'');
-    const cppS=custoS>0&&ms.volume>0?custoS/ms.volume:null;
-    const cppCAS=custoS>0&&ms.volume>0?(custoS+adS)/ms.volume:null;
-    function varTag(a,b,inv){
-      if(a==null||b==null||b===0)return'';
-      const p=((a-b)/b*100),ok=inv?p<0:p>0;
-      return `<span style="font-size:9px;font-weight:700;color:${ok?'#166534':'#991b1b'};background:${ok?'#dcfce7':'#fee2e2'};border-radius:3px;padding:1px 4px">${p>=0?'+':''}${p.toFixed(1)}%</span>`;
-    }
+  // Linhas da tabela histórica com variação
+  const linhas=grupos.map((g,i)=>{
+    const m=calcGrupo(g.semanas);
+    const mAnt=grupos[i-1]?calcGrupo(grupos[i-1].semanas):null;
+    // CPP do grupo: média ponderada pelos volumes
+    const cppsGrupo=g.semanas.map(s=>relEscMap[s.de]).filter(v=>v!=null);
+    const avgCpp=cppsGrupo.length?cppsGrupo.reduce((a,b)=>a+b,0)/cppsGrupo.length:null;
+    const adicGrupo=g.semanas.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
+    const cppComAd=avgCpp!==null&&m.volume>0?((avgCpp*m.volume+adicGrupo)/m.volume):null;
+    const fmtC=v=>v!==null?'R$ '+v.toFixed(2).replace('.',','):'—';
     const bg=i%2===0?'#fff':'#f9fafb';
     return `<tr style="background:${bg}">
-      <td style="font-weight:600;white-space:nowrap">${s.deBR}–${s.ateBR}</td>
-      <td>${ms.volume.toLocaleString('pt-BR')} ${varTag(ms.volume,msAnt?.volume,false)}</td>
-      <td>${ms.cancelamentos!=null?ms.cancelamentos+' '+varTag(ms.cancelamentos,msAnt?.cancelamentos,true):'—'}</td>
-      <td>${ms.pctCancel!=null?ms.pctCancel.toFixed(2)+'% '+varTag(ms.pctCancel,msAnt?.pctCancel,true):'—'}</td>
-      <td>${fmtT(ms.tPreparoMed)}<span style="color:#9ca3af;font-size:9px"> (${ms.amostras?.preparo||0})</span>${varTag(ms.tPreparoMed,msAnt?.tPreparoMed,true)}</td>
-      <td>${fmtT(ms.tColetaMed)}<span style="color:#9ca3af;font-size:9px"> (${ms.amostras?.coleta||0})</span></td>
-      <td>${fmtT(ms.tDespachoMed)}<span style="color:#9ca3af;font-size:9px"> (${ms.amostras?.despacho||0})</span></td>
-      <td style="font-weight:700;background:#f0fdf4">${custoS>0?fmtR(custoS):'—'}</td>
-      <td style="font-weight:600">${fmtR(cppS)}</td>
-      <td style="font-weight:700;color:${cppCAS&&adS>0?'#dc2626':'#111'}">${adS>0&&cppCAS!=null?fmtR(cppCAS):'—'}</td>
+      <td style="font-weight:600">${g.label}</td>
+      <td>${m.volume.toLocaleString('pt-BR')}${mAnt?var$(m.volume,mAnt.volume,false):''}</td>
+      <td>${m.cancelamentos}${mAnt?var$(m.cancelamentos,mAnt.cancelamentos,true):''}</td>
+      <td>${m.pctCancel.toFixed(2)}%${mAnt?var$(m.pctCancel,mAnt.pctCancel,true):''}</td>
+      <td>${fmtTempo(m.tPreparoMed)}<span style="font-size:9px;color:#9ca3af;margin-left:3px">(${m.amostras?.preparo||0})</span>${mAnt?var$(m.tPreparoMed,mAnt.tPreparoMed,true):''}</td>
+      <td>${fmtTempo(m.tColetaMed)}<span style="font-size:9px;color:#9ca3af;margin-left:3px">(${m.amostras?.coleta||0})</span>${mAnt?var$(m.tColetaMed,mAnt.tColetaMed,true):''}</td>
+      <td>${fmtTempo(m.tDespachoMed)}<span style="font-size:9px;color:#9ca3af;margin-left:3px">(${m.amostras?.despacho||0})</span>${mAnt?var$(m.tDespachoMed,mAnt.tDespachoMed,true):''}</td>
+      <td style="font-weight:600">${fmtC(avgCpp)}</td>
+      <td style="font-weight:700;color:${cppComAd!==null&&adicGrupo>0?'#dc2626':'#111'}">${cppComAd!==null&&adicGrupo>0?fmtC(cppComAd):'—'}</td>
     </tr>`;
   }).join('');
 
-  // ── Linha consolidada do período
-  const linhaTotalHist=`<tr style="background:#f0fdf4;font-weight:800;border-top:3px solid #16a34a">
-    <td>Total ${periodoNomeRel.toLowerCase()}</td>
-    <td>${mTotal.volume.toLocaleString('pt-BR')}</td>
-    <td>${mTotal.cancelamentos!=null?mTotal.cancelamentos:'—'}</td>
-    <td>${mTotal.pctCancel!=null?mTotal.pctCancel.toFixed(2)+'%':'—'}</td>
-    <td>${fmtT(mTotal.tPreparoMed)}</td><td>${fmtT(mTotal.tColetaMed)}</td><td>${fmtT(mTotal.tDespachoMed)}</td>
-    <td style="background:#dcfce7">${custoEscalaTotal>0?fmtR(custoEscalaTotal):'—'}</td>
-    <td>${fmtR(cppGlobal)}</td>
-    <td style="color:${cppComAd&&temAdRel?'#dc2626':'#111'}">${temAdRel&&cppComAd!=null?fmtR(cppComAd):'—'}</td>
-  </tr>`;
+  // Distribuição por hub (quando múltiplos)
+  // mTotal = apenas semanas do mês em vigência
+  // Filtrar apenas o mês em vigência para o totalizador e CPP
+  const agora = new Date();
+  const mesAtual = agora.getMonth();
+  const anoAtual = agora.getFullYear();
+  const histMesVigente = hist.filter(s=>{
+    if(!s.ate) return true;
+    const d = new Date(s.ate+'T00:00:00');
+    return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
+  });
+  const fonteDados = histMesVigente.length > 0 ? histMesVigente : hist;
+  const todasVendasRel = fonteDados.flatMap(s=>s.vendas||[]);
+  const todosCancelsRel = fonteDados.flatMap(s=>s.cancelamentos||[]);
 
-  // ── Distribuição por hub
-  let distRowsRel='';
-  if(hubsAtivos2.length>1){
-    const HUBS_SION=['DS Sion','Sem hub'];
-    const cores=['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
-    const custoHubMap={};
-    histEscRel.forEach(e=>{if(e.hub&&e.resumo?.totalCusto)custoHubMap[e.hub]=(custoHubMap[e.hub]||0)+(e.resumo.totalCusto||0);});
-    distRowsRel=hubsAtivos2.map((h2,i)=>{
-      const mH=calcularMetricasSemana(todasVendasRel,todosCancelsRel,new Set([h2]));
-      const cppH=custoHubMap[h2]&&mH.volume>0?custoHubMap[h2]/mH.volume:null;
+  const _agora=new Date(), _mes=_agora.getMonth(), _ano=_agora.getFullYear();
+  const _histMes=hist.filter(s=>{ if(!s.ate)return true; const d=new Date(s.ate+'T00:00:00'); return d.getMonth()===_mes&&d.getFullYear()===_ano; });
+  const mTotal=calcGrupo(_histMes.length>0?_histMes:hist);
+  const cppGlobal = custoEscalaRel && mTotal.volume > 0 ? custoEscalaRel / mTotal.volume : null;
+  // CPP com adicionais para o relatório (soma todos os adicionais das semanas filtradas)
+  const adicionaisTotalRel = fonteDados.reduce((s,sem)=>s+getCppManualTotal(sem.semanaISO||''),0);
+  const cppGlobalComAd = (custoEscalaRel||0)+adicionaisTotalRel > 0 && mTotal.volume > 0 ? ((custoEscalaRel||0)+adicionaisTotalRel)/mTotal.volume : null;
+  // Detalhamento adicionais para o relatório
+  const adicionaisDetalhes = (()=>{
+    const totais={limpezaFixo:0,freela:0,atendimento:0,outros:0};
+    fonteDados.forEach(sem=>{
+      const d=getCppManualSemana(sem.semanaISO||'');
+      totais.limpezaFixo+=(d.limpezaFixo||0);
+      totais.freela+=(d.freela||0);
+      totais.atendimento+=(d.atendimento||0);
+      totais.outros+=(d.outros||0);
+    });
+    return totais;
+  })();
+  // Hubs Sion: DS Sion + Cozinhas Sion
+  const HUBS_SION_REL = ['DS Sion', 'Sem hub'];
+  const hubsSionAtivos = hubsAtivos.filter(h => HUBS_SION_REL.includes(h));
+  const temSionUnificado = hubsSionAtivos.length === 2;
+
+  const distRows = hubsAtivos.length > 1 ? (()=>{
+    const cores = ['#16a34a','#2563eb','#d97706','#7c3aed','#dc2626'];
+    const linhasHub = hubsAtivos.map((h,i)=>{
+      const mH=calcularMetricasSemana(todasVendasRel,todosCancelsRel,new Set([h]));
       const pct=mTotal.volume>0?(mH.volume/mTotal.volume*100).toFixed(1):'0';
+      const cppH=custoEscalaRel&&mH.volume>0?custoEscalaRel/mH.volume:null;
       const cor=cores[i%cores.length];
       return `<tr>
-        <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cor};margin-right:6px"></span>${nomeHub(h2)}</td>
+        <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cor};margin-right:6px"></span>${nomeHub(h)}</td>
         <td style="font-weight:700">${mH.volume.toLocaleString('pt-BR')}</td>
-        <td>${mH.cancelamentos!=null?mH.cancelamentos+' ('+mH.pctCancel.toFixed(1)+'%)':'—'}</td>
-        <td>${fmtT(mH.tPreparoMed)}</td><td>${fmtT(mH.tColetaMed)}</td><td>${fmtT(mH.tDespachoMed)}</td>
-        <td style="font-weight:800">${fmtR(cppH)}</td>
-        <td style="font-weight:700;color:${cor}">${pct}%</td>
+        <td>${mH.cancelamentos} (${mH.pctCancel.toFixed(1)}%)</td>
+        <td>${fmtTempo(mH.tPreparoMed)}</td>
+        <td>${fmtTempo(mH.tColetaMed)}</td>
+        <td>${fmtTempo(mH.tDespachoMed)}</td>
+        <td style="font-weight:800;color:#111">${cppH!==null?'R$ '+cppH.toFixed(2).replace('.',','):'—'}</td>
+        <td style="color:${cor};font-weight:700">${pct}%</td>
       </tr>`;
     }).join('');
-    // Sion unificado
-    const mS=calcularMetricasSemana(todasVendasRel,todosCancelsRel,new Set(HUBS_SION));
-    if(mS.volume>0&&hubsAtivos2.some(h=>HUBS_SION.includes(h))){
-      const custoSion=HUBS_SION.reduce((t,h)=>t+(custoHubMap[h]||0),0);
-      const cppS=custoSion>0&&mS.volume>0?custoSion/mS.volume:null;
-      distRowsRel+=`<tr style="background:#f0fdf4;border-top:2px solid #16a34a">
+    const linhaSionUnif = temSionUnificado?(()=>{
+      const mS=calcularMetricasSemana(todasVendasRel,todosCancelsRel,new Set(HUBS_SION_REL));
+      const cppS=custoEscalaRel&&mS.volume>0?custoEscalaRel/mS.volume:null;
+      const pctS=mTotal.volume>0?(mS.volume/mTotal.volume*100).toFixed(1):'0';
+      return `<tr style="background:#f0fdf4;border-top:2px solid #16a34a">
         <td><strong>⊕ Sion unificado (DS + Cozinhas)</strong></td>
         <td style="font-weight:700">${mS.volume.toLocaleString('pt-BR')}</td>
-        <td>${mS.cancelamentos!=null?mS.cancelamentos+' ('+mS.pctCancel.toFixed(1)+'%)':'—'}</td>
-        <td>${fmtT(mS.tPreparoMed)}</td><td>${fmtT(mS.tColetaMed)}</td><td>${fmtT(mS.tDespachoMed)}</td>
-        <td style="font-weight:900;color:#16a34a">${fmtR(cppS)}</td>
-        <td style="font-weight:700;color:#16a34a">${(mTotal.volume>0?mS.volume/mTotal.volume*100:0).toFixed(1)}%</td>
+        <td>${mS.cancelamentos} (${mS.pctCancel.toFixed(1)}%)</td>
+        <td>${fmtTempo(mS.tPreparoMed)}</td>
+        <td>${fmtTempo(mS.tColetaMed)}</td>
+        <td>${fmtTempo(mS.tDespachoMed)}</td>
+        <td style="font-weight:900;color:#16a34a">${cppS!==null?'R$ '+cppS.toFixed(2).replace('.',','):'—'}</td>
+        <td style="font-weight:700;color:#16a34a">${pctS}%</td>
       </tr>`;
-    }
-  }
+    })():'';
+    return linhasHub+linhaSionUnif;
+  })():''
+
+  const periodoLabels={semanal:'Semanal',mensal:'Mensal',trimestral:'Trimestral'};
+  const dataGeracao=new Date().toLocaleString('pt-BR');
 
   const html=`<!DOCTYPE html><html lang="pt-BR"><head>
-  <meta charset="UTF-8"><title>Relatório ${periodoNomeRel} · ${periodoTituloRel}</title>
+  <meta charset="UTF-8">
+  <title>Relatório Indicadores Operacionais</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:28px 36px;max-width:1020px;margin:0 auto;font-size:13px}
-    .hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;padding-bottom:14px;border-bottom:3px solid #111}
-    .hdr h1{font-size:22px;font-weight:900}
-    .hdr-badge{background:#d1fae5;color:#065f46;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px}
-    .hdr-period{background:#eff6ff;color:#1e40af;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:4px}
-    .meta{font-size:11px;color:#6b7280;margin-top:4px}
-    .pdf-btn{background:#16a34a;color:#fff;border:none;padding:8px 18px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px}
-    h2{font-size:11px;font-weight:800;color:#374151;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.06em;padding-bottom:4px;border-bottom:1px solid #e5e7eb}
-    .kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:4px}
-    .kpi{border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;background:#fafafa}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:32px 40px;max-width:1000px;margin:0 auto;font-size:13px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;padding-bottom:16px;border-bottom:3px solid #111}
+    .header-left h1{font-size:24px;font-weight:900;color:#111;margin-bottom:2px}
+    .header-left .sub{font-size:12px;color:#6b7280}
+    .badge{display:inline-block;background:#d1fae5;color:#065f46;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px}
+    .print-btn{background:#16a34a;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px}
+    h2{font-size:12px;font-weight:800;color:#374151;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.06em;padding-bottom:4px;border-bottom:1px solid #e5e7eb}
+    .kpi-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:20px}
+    .kpi{border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fafafa}
     .kpi-l{font-size:9px;color:#9ca3af;text-transform:uppercase;font-weight:700;margin-bottom:3px;line-height:1.3}
-    .kpi-v{font-size:18px;font-weight:900;color:#111;line-height:1.1}
-    .kpi-s{font-size:10px;color:#6b7280;margin-top:3px}
-    .kpi-s.acc{color:#065f46;font-weight:700}
-    .kpi.dest{border:2px solid #dc2626;background:#fff5f5}.kpi.dest .kpi-v{color:#dc2626}
+    .kpi-v{font-size:18px;font-weight:900;color:#111;line-height:1}
+    .kpi-s{font-size:10px;color:#6b7280;margin-top:2px}
     table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px}
-    thead tr{background:#111}th{color:#fff;padding:7px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}
+    thead tr{background:#111}
+    th{color:#fff;padding:7px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}
     td{padding:6px 8px;border-bottom:1px solid #f3f4f6;vertical-align:middle}
-    .legenda{font-size:10px;color:#6b7280;margin-bottom:8px;background:#f9fafb;border-radius:6px;padding:7px 12px;border-left:3px solid #d1fae5}
+    .nota{font-size:9px;color:#9ca3af;display:block;margin-top:1px}
     .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af}
-    @media print{body{padding:14px 18px}.pdf-btn{display:none}@page{margin:1.5cm;size:A4 landscape}}
+    .legenda{font-size:10px;color:#6b7280;margin-bottom:12px;background:#f9fafb;border-radius:6px;padding:8px 12px;border-left:3px solid #d1fae5}
+    @media print{
+      body{padding:16px 20px}
+      .print-btn{display:none!important}
+      .no-print{display:none!important}
+      @page{margin:1.5cm;size:A4 landscape}
+    }
   </style></head><body>
 
-  <div class="hdr">
-    <div>
-      <h1>Indicadores Operacionais
-        <span class="hdr-badge">${hubLabel2}</span>
-        <span class="hdr-period">${periodoNomeRel} · ${periodoTituloRel}</span>
-      </h1>
-      <div class="meta">📅 ${intervalo} · ${semanasRel.length} semana${semanasRel.length!==1?'s':''} com dados reais · Gerado em ${dataGeracao}</div>
+  <div class="header">
+    <div class="header-left">
+      <h1>Indicadores Operacionais <span class="badge">${hubLabel}</span></h1>
+      <div class="sub">Análise ${periodoLabels[periodo].toLowerCase()} · Gerado em ${dataGeracao} · ${hist.length} semana${hist.length>1?'s':''} coletada${hist.length>1?'s':''}</div>
     </div>
-    <button class="pdf-btn" onclick="window.print()">🖨 Salvar PDF</button>
+    <button class="print-btn no-print" onclick="window.print()">🖨 Salvar PDF</button>
   </div>
 
   <h2>Resumo geral do período</h2>
-  <div class="legenda">Período: <strong>${periodoNomeRel} · ${periodoTituloRel}</strong> · Hub: <strong>${hubLabel2}</strong> · Intervalo: <strong>${intervalo}</strong></div>
   <div class="kpi-grid">
-    <div class="kpi"><div class="kpi-l">📦 Volume pedidos</div><div class="kpi-v">${mTotal.volume.toLocaleString('pt-BR')}</div><div class="kpi-s acc">${intervalo}</div></div>
-    <div class="kpi"><div class="kpi-l">❌ Cancelamentos</div><div class="kpi-v">${mTotal.cancelamentos!=null?mTotal.cancelamentos.toLocaleString('pt-BR'):'—'}</div><div class="kpi-s">${mTotal.pctCancel!=null?mTotal.pctCancel.toFixed(2)+'% dos pedidos':''}</div></div>
-    <div class="kpi"><div class="kpi-l">🧑‍🍳 T. Médio preparo</div><div class="kpi-v">${fmtT(mTotal.tPreparoMed)}</div><div class="kpi-s">${mTotal.amostras?.preparo||0} amostras</div></div>
-    <div class="kpi"><div class="kpi-l">🛵 T. Médio coleta</div><div class="kpi-v">${fmtT(mTotal.tColetaMed)}</div><div class="kpi-s">${mTotal.amostras?.coleta||0} amostras</div></div>
-    <div class="kpi"><div class="kpi-l">🏁 T. Médio despacho</div><div class="kpi-v">${fmtT(mTotal.tDespachoMed)}</div><div class="kpi-s">${mTotal.amostras?.despacho||0} amostras</div></div>
-    <div class="kpi"><div class="kpi-l">💰 CPP s/ adicionais</div><div class="kpi-v">${fmtR(cppGlobal)}</div><div class="kpi-s">custo escala / pedido</div></div>
-    ${temAdRel?`<div class="kpi dest"><div class="kpi-l">💸 CPP c/ adicionais</div><div class="kpi-v">${fmtR(cppComAd)}</div><div class="kpi-s">+R$ ${custoManualTotal.toFixed(2).replace('.',',')} adicionais</div></div>`:''}
+    <div class="kpi">
+      <div class="kpi-l">📦 Volume de pedidos</div>
+      <div class="kpi-v">${mTotal.volume.toLocaleString('pt-BR')}</div>
+      <div class="kpi-s">${periodoLabels[periodo]}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">❌ Cancelamentos</div>
+      <div class="kpi-v">${mTotal.cancelamentos}</div>
+      <div class="kpi-s">${mTotal.pctCancel.toFixed(2)}% dos pedidos</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">📉 % Cancelamentos</div>
+      <div class="kpi-v">${mTotal.pctCancel.toFixed(2)}%</div>
+      <div class="kpi-s">&nbsp;</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">🧑‍🍳 T. Médio preparo</div>
+      <div class="kpi-v">${fmtTempo(mTotal.tPreparoMed)}</div>
+      <div class="kpi-s">${mTotal.amostras?.preparo||0} amostras</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">🛵 T. Médio coleta</div>
+      <div class="kpi-v">${fmtTempo(mTotal.tColetaMed)}</div>
+      <div class="kpi-s">${mTotal.amostras?.coleta||0} amostras</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">🏁 T. Médio despacho</div>
+      <div class="kpi-v">${fmtTempo(mTotal.tDespachoMed)}</div>
+      <div class="kpi-s">${mTotal.amostras?.despacho||0} amostras</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-l">💰 CPP s/ adicionais</div>
+      <div class="kpi-v">${cppGlobal!==null?'R$ '+cppGlobal.toFixed(2).replace('.',','):'—'}</div>
+      <div class="kpi-s">custo escala / pedido</div>
+    </div>
+    ${adicionaisTotalRel>0?`<div class="kpi" style="border:2px solid #dc2626;background:#fff5f5">
+      <div class="kpi-l" style="color:#dc2626">💸 CPP c/ adicionais</div>
+      <div class="kpi-v" style="color:#dc2626">${cppGlobalComAd!==null?'R$ '+cppGlobalComAd.toFixed(2).replace('.',','):'—'}</div>
+      <div class="kpi-s" style="color:#dc2626">+R$ ${adicionaisTotalRel.toFixed(2).replace('.',',')} adicionais</div>
+    </div>`:''}
   </div>
 
-  ${temAdRel?`
+  ${adicionaisTotalRel>0?`
   <h2>Composição dos custos adicionais (CPP)</h2>
-  <div class="legenda">Custos inseridos manualmente, distribuídos sobre o volume do período para calcular o CPP completo.</div>
+  <div class="legenda">Estes valores foram inseridos manualmente e não são calculados automaticamente pela escala. São distribuídos sobre o volume de pedidos do período para calcular o CPP completo.</div>
   <table>
     <thead><tr><th>Item</th><th>Valor total</th><th>Impacto no CPP (R$/pedido)</th><th>% do CPP adicional</th></tr></thead>
     <tbody>
-      ${[['🧹 Limpeza Fixo',totaisAd.limpezaFixo],['🧽 Freela Limpeza',totaisAd.freela],['🎧 Atendimento',totaisAd.atendimento],['➕ Outros',totaisAd.outros]].filter(([,v])=>v>0).map(([l,v])=>`<tr>
+      ${[['🧹 Limpeza Fixo',adicionaisDetalhes.limpezaFixo],['🧽 Freela Limpeza',adicionaisDetalhes.freela],['🎧 Atendimento',adicionaisDetalhes.atendimento],['➕ Outros',adicionaisDetalhes.outros]].filter(([,v])=>v>0).map(([l,v])=>`<tr>
         <td style="font-weight:600">${l}</td>
-        <td>${fmtR(v)}</td>
-        <td>${mTotal.volume>0?fmtR(v/mTotal.volume):'—'}</td>
-        <td style="font-weight:700;color:#dc2626">${custoManualTotal>0?(v/custoManualTotal*100).toFixed(1)+'%':'—'}</td>
+        <td>R$ ${v.toFixed(2).replace('.',',')}</td>
+        <td>${mTotal.volume>0?'R$ '+(v/mTotal.volume).toFixed(2).replace('.',','):'—'}</td>
+        <td style="font-weight:700;color:#dc2626">${adicionaisTotalRel>0?(v/adicionaisTotalRel*100).toFixed(1)+'%':'—'}</td>
       </tr>`).join('')}
-      <tr style="background:#fee2e2;font-weight:800"><td>TOTAL ADICIONAIS</td><td>${fmtR(custoManualTotal)}</td><td>${mTotal.volume>0?fmtR(custoManualTotal/mTotal.volume):'—'}</td><td>100%</td></tr>
+      <tr style="background:#fee2e2;font-weight:800">
+        <td>TOTAL ADICIONAIS</td>
+        <td>R$ ${adicionaisTotalRel.toFixed(2).replace('.',',')}</td>
+        <td>${mTotal.volume>0?'R$ '+(adicionaisTotalRel/mTotal.volume).toFixed(2).replace('.',','):'—'}</td>
+        <td>100%</td>
+      </tr>
     </tbody>
   </table>`:''}
 
-  ${distRowsRel?`
+  ${distRows?`
   <h2>Distribuição por hub</h2>
   <table>
     <thead><tr><th>Hub</th><th>Pedidos</th><th>Cancelamentos</th><th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th><th>CPP</th><th>% do total</th></tr></thead>
-    <tbody>${distRowsRel}</tbody>
+    <tbody>${distRows}</tbody>
   </table>`:''}
 
-  <h2>Histórico ${periodoNomeRel.toLowerCase()} · ${periodoTituloRel}</h2>
-  <div class="legenda">Números entre parênteses = amostras usadas no cálculo. Variações verde/vermelho vs semana anterior.</div>
+  <h2>Histórico ${periodoLabels[periodo].toLowerCase()}</h2>
+  <div class="legenda">Os números entre parênteses indicam a quantidade de pedidos usados no cálculo de cada média de tempo. As variações em verde/vermelho comparam com o período anterior.</div>
   <table>
     <thead><tr>
-      <th>Período</th><th>Pedidos</th><th>Cancelamentos</th><th>% Cancel.</th>
-      <th>T. Preparo</th><th>T. Coleta</th><th>T. Despacho</th>
-      <th style="background:#1e3a2f">Custo escala</th><th>CPP s/ adic.</th><th>CPP c/ adic.</th>
+      <th>Período</th>
+      <th>Pedidos</th>
+      <th>Cancelamentos</th>
+      <th>% Cancel.</th>
+      <th>T. Preparo (n)</th>
+      <th>T. Coleta (n)</th>
+      <th>T. Despacho (n)</th>
+      <th>CPP s/ adicionais</th>
+      <th>CPP c/ adicionais</th>
     </tr></thead>
-    <tbody>${linhasHist}${linhaTotalHist}</tbody>
+    <tbody>${linhas}</tbody>
   </table>
 
   <div class="footer">
-    <span>Órion · Escala — Indicadores Operacionais · ${periodoNomeRel} · ${periodoTituloRel} · ${hubLabel2}</span>
+    <span>Órion · Escala — Relatório de Indicadores Operacionais</span>
     <span>${dataGeracao}</span>
   </div>
   </body></html>`;
 
-  const w=window.open('','_blank','width=1100,height=860');
+  const w=window.open('','_blank','width=1100,height=850');
   w.document.write(html);
   w.document.close();
 }
 
+// ══════════════════════════════════════════════════════
+// HISTÓRICO DE COLABORADORES
+// ══════════════════════════════════════════════════════
 function renderColHist(){
   const con = document.getElementById('colHistCon');
   if(!con) return;
