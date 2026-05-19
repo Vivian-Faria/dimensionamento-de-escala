@@ -3584,6 +3584,7 @@ function renderHistorico(filtro){
           </span>
           <span id="conf-custo-${h.id}_${safeN}" style="font-size:10px;color:#dc2626;margin-left:auto">${totalAbat>0?'-'+totalAbat+'h'+(custoAbat>0?' · -R$ '+custoAbat.toFixed(2).replace('.',','):''):''}</span>
           <button class="conf-btn" style="font-size:10px;background:var(--card2)" onclick="toggleEditarTurnos('${h.id}','${nome.replace(/'/g,"\'")}')">✏ Editar</button>
+          <button class="conf-btn" style="font-size:10px;background:rgba(16,185,129,.1);color:#065f46" onclick="adicionarTurnoHist('${h.id}','${nome.replace(/'/g,"\'")}')">＋ Turno</button>
           <button class="conf-btn ok" style="font-size:10px;${totalAbat===0?'margin-left:auto':''}" onclick="setConfirmacao('${h.id}','${nome.replace(/'/g,"\'")}','confirmado')">✅ Confirmou tudo</button>
         </div>
         ${turnoRows}
@@ -3646,6 +3647,10 @@ function renderHistorico(filtro){
             <span style="font-weight:400;margin-left:6px">${pendentes>0?`${pendentes} pendente${pendentes!==1?'s':''}`:confirmados===totalColab&&totalColab>0?'<span style="color:#166534">Todos confirmados ✅</span>':'—'}</span>
           </div>
           ${confRows}
+          <button onclick="adicionarColabHist('${h.id}')" 
+            style="margin-top:8px;background:transparent;border:1px dashed var(--brd);border-radius:8px;padding:7px 14px;font-size:11px;color:var(--mu);cursor:pointer;width:100%;font-family:inherit;text-align:left">
+            ＋ Adicionar colaborador
+          </button>
         </div>
         <div class="hist-actions" style="padding:10px 18px;border-top:1px solid var(--brd)">
           <button class="btn bs sm" onclick="verEscalaHistorico('${h.id}')">Ver escala completa</button>
@@ -4040,6 +4045,7 @@ function editarIniTurno(histId, nome, iniAntigo, dia, novoIni){
   _khSnapshot('editar início');
   t.ini=novoIni;
   t.horas=t.fim-t.ini;
+  recalcularCustoHist(h);
   localStorage.setItem(KH,JSON.stringify(hist));
   _atualizarBtnDesfazer();
   const abertos=_getAbertos();
@@ -4059,6 +4065,7 @@ function editarFimTurno(histId, nome, ini, dia, novoFim){
   _khSnapshot('editar fim');
   t.fim=novoFim;
   t.horas=t.fim-t.ini;
+  recalcularCustoHist(h);
   localStorage.setItem(KH,JSON.stringify(hist));
   _atualizarBtnDesfazer();
   const abertos=_getAbertos();
@@ -4117,7 +4124,7 @@ function removerTurnoHist(histId, nome, dia, ini){
     h.confirmacoes[nome].status=turnos.some(t=>t.faltou)?'faltou':h.confirmacoes[nome].status==='confirmado'?'confirmado':'pendente';
     h.confirmacoes[nome].horasAbatidas=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
   }
-
+  recalcularCustoHist(h);
   localStorage.setItem(KH,JSON.stringify(hist));
   toast(`🗑 Turno ${dia} ${fH(ini)} removido de ${nome}`,'tok');
   _atualizarBtnDesfazer();
@@ -4125,6 +4132,159 @@ function removerTurnoHist(histId, nome, dia, ini){
   renderHistorico();
   _reabrirCards(abertos);
   setTimeout(()=>toggleEditarTurnos(histId,nome),80);
+}
+
+// ── Recalcula resumo.totalCusto a partir das confirmacoes atuais
+function recalcularCustoHist(h){
+  if(!h||!h.colabs) return;
+  let totalCusto=0;
+  Object.entries(h.confirmacoes||{}).forEach(([nome,conf])=>{
+    const colab=h.colabs.find(c=>c.nome===nome);
+    if(!colab) return;
+    const custoH=colab.custo||0;
+    const passagem=colab.passagem||0;
+    const turnos=conf.turnos||[];
+    // Somar horas efetivas (descontando abatidas)
+    const horasEfetivas=turnos.reduce((s,t)=>{
+      const h2=t.horas!=null?t.horas:(t.fim-t.ini)||0;
+      const abat=t.horasAbatidas||0;
+      return s+(h2-abat);
+    },0);
+    const diasTrabalhados=new Set(turnos.filter(t=>!t.faltou||((t.horas||1)-(t.horasAbatidas||0))>0).map(t=>t.dia));
+    const diasFaltou=new Set(turnos.filter(t=>t.faltou&&(t.horasAbatidas||0)>=(t.horas||1)).map(t=>t.dia));
+    totalCusto+=custoH*horasEfetivas;
+    totalCusto+=passagem*(diasTrabalhados.size-diasFaltou.size);
+  });
+  h.resumo=h.resumo||{};
+  h.resumo.totalCusto=Math.max(0,totalCusto);
+}
+
+// ── Adicionar colaborador ao histórico
+function adicionarColabHist(histId){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h) return;
+
+  // Modal para selecionar colaborador
+  const todosColabs=(S.colabs||[]).map(c=>c.nome).sort();
+  const existentes=Object.keys(h.confirmacoes||{});
+  const disponiveis=todosColabs.filter(n=>!existentes.includes(n));
+
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const box=document.createElement('div');
+  box.style.cssText='background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:20px;max-width:360px;width:100%';
+  box.innerHTML=`<h3 style="font-size:14px;font-weight:700;margin-bottom:12px">Adicionar colaborador</h3>
+    ${disponiveis.length?`<div style="display:flex;flex-direction:column;gap:6px;max-height:250px;overflow-y:auto;margin-bottom:12px">
+      ${disponiveis.map(n=>`<button onclick="this.closest('.overlay-add').remove();_confirmarAdicionarColab('${histId}','${n.replace(/'/g,"\\'")}');return false;"
+        style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:10px;text-align:left;cursor:pointer;font-family:inherit;font-size:13px;color:var(--tx)">${n}</button>`).join('')}
+    </div>`:'<p style="color:var(--mu);font-size:12px;margin-bottom:12px">Todos os colaboradores já estão na escala.</p>'}
+    <div style="display:flex;gap:6px;align-items:center">
+      <input id="_novoColabInput" placeholder="Ou digite um nome novo" style="flex:1;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:12px;font-family:inherit;background:var(--card2);color:var(--tx)">
+      <button onclick="_confirmarAdicionarColab('${histId}',document.getElementById('_novoColabInput').value)"
+        style="background:var(--ac);color:var(--bg);border:none;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;font-weight:700">OK</button>
+    </div>
+    <button onclick="this.closest('[style*=fixed]').remove()" style="margin-top:10px;width:100%;background:none;border:none;color:var(--mu);font-size:12px;cursor:pointer">Cancelar</button>`;
+  box.classList.add('overlay-add');
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+  setTimeout(()=>document.getElementById('_novoColabInput')?.focus(),100);
+}
+
+function _confirmarAdicionarColab(histId, nome){
+  nome=(nome||'').trim();
+  if(!nome) return;
+  document.querySelectorAll('[style*="fixed"][style*="z-index:99999"]').forEach(el=>el.remove());
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h) return;
+  _khSnapshot('adicionar colaborador');
+  if(!h.confirmacoes) h.confirmacoes={};
+  if(!h.confirmacoes[nome]) h.confirmacoes[nome]={status:'pendente',turnos:[],horasAbatidas:0};
+  // Se colaborador está em S.colabs mas não em h.colabs, adicioná-lo
+  if(!h.colabs) h.colabs=[];
+  if(!h.colabs.find(c=>c.nome===nome)){
+    const sc=S.colabs?.find(c=>c.nome===nome);
+    h.colabs.push({nome,custo:sc?.custo||0,passagem:sc?.passagem||0});
+  }
+  localStorage.setItem(KH,JSON.stringify(hist));
+  _atualizarBtnDesfazer();
+  toast(`✅ ${nome} adicionado à escala`,'tok');
+  const abertos=_getAbertos();
+  renderHistorico();
+  _reabrirCards(abertos);
+  // Abrir "add turno" automaticamente para o novo colaborador
+  setTimeout(()=>adicionarTurnoHist(histId,nome),80);
+}
+
+// ── Adicionar turno a um colaborador existente
+function adicionarTurnoHist(histId, nome){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome]) return;
+
+  const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML=`<div style="background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:20px;max-width:340px;width:100%">
+    <h3 style="font-size:14px;font-weight:700;margin-bottom:14px">Adicionar turno — ${nome}</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+      <div>
+        <label style="font-size:11px;color:var(--mu)">Dia</label>
+        <select id="_addDia" style="width:100%;margin-top:3px;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
+          ${DIAS.map(d=>`<option value="${d}">${d}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1">
+          <label style="font-size:11px;color:var(--mu)">Início (h)</label>
+          <input id="_addIni" type="number" min="0" max="25" value="9" style="width:100%;margin-top:3px;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:11px;color:var(--mu)">Fim (h)</label>
+          <input id="_addFim" type="number" min="1" max="26" value="18" style="width:100%;margin-top:3px;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="_confirmarAdicionarTurno('${histId}','${nome.replace(/'/g,"\\'")}')"
+        style="flex:1;background:var(--ac);color:var(--bg);border:none;border-radius:8px;padding:10px;font-weight:700;font-size:13px;cursor:pointer">Adicionar</button>
+      <button onclick="this.closest('[style*=fixed]').remove()"
+        style="flex:1;background:none;border:1px solid var(--brd);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;color:var(--mu)">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+}
+
+function _confirmarAdicionarTurno(histId, nome){
+  const dia=document.getElementById('_addDia')?.value;
+  const ini=parseInt(document.getElementById('_addIni')?.value);
+  const fim=parseInt(document.getElementById('_addFim')?.value);
+  if(!dia||isNaN(ini)||isNaN(fim)||fim<=ini){toast('Horário inválido — fim deve ser maior que início','ter');return;}
+  document.querySelectorAll('[style*="fixed"][style*="z-index:99999"]').forEach(el=>el.remove());
+
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome]) return;
+  _khSnapshot('adicionar turno');
+
+  const horas=fim-ini;
+  const novoTurno={dia,ini,fim,horas,faltou:false,horasAbatidas:0};
+  const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  h.confirmacoes[nome].turnos.push(novoTurno);
+  h.confirmacoes[nome].turnos.sort((a,b)=>DIAS.indexOf(a.dia)-DIAS.indexOf(b.dia)||a.ini-b.ini);
+
+  // Recalcular custo total
+  recalcularCustoHist(h);
+
+  localStorage.setItem(KH,JSON.stringify(hist));
+  _atualizarBtnDesfazer();
+  toast(`✅ Turno ${dia} ${String(ini).padStart(2,'0')}:00–${String(fim>=24?fim-24:fim).padStart(2,'0')}:00 adicionado`,'tok');
+  const abertos=_getAbertos();
+  renderHistorico();
+  _reabrirCards(abertos);
 }
 
 function toggleFaltaTurno(histId, nome, ini, dia, faltou){
@@ -4139,6 +4299,7 @@ function toggleFaltaTurno(histId, nome, ini, dia, faltou){
   const temFalta=h.confirmacoes[nome].turnos.some(x=>x.faltou);
   h.confirmacoes[nome].status=temFalta?'faltou':'pendente';
   h.confirmacoes[nome].horasAbatidas=h.confirmacoes[nome].turnos.reduce((s,x)=>s+(x.horasAbatidas||0),0);
+  recalcularCustoHist(h);
   saveKH(hist,'marcar falta');
   _atualizarBadgesCard(histId, h);
 }
@@ -4151,6 +4312,7 @@ function setHorasAbatadasTurno(histId, nome, ini, dia, horas){
   if(!t)return;
   t.horasAbatidas=Math.min(parseFloat(horas)||0, t.horas);
   h.confirmacoes[nome].horasAbatidas=h.confirmacoes[nome].turnos.reduce((s,x)=>s+(x.horasAbatidas||0),0);
+  recalcularCustoHist(h);
   saveKH(hist,'horas abatidas');
   _atualizarBadgesCard(histId, h);
 }
