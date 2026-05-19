@@ -4999,7 +4999,7 @@ function renderIndicadores(){
     }
 
     const metricas=grupo.semanas.map(sem=>{
-      const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
+      const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
       const escData=histEscMap[sem.de]||null;
       const custoSem=escData?.custo??null;
       const cppSem=escData?.cpp??null;
@@ -7449,7 +7449,7 @@ function exportarIndicadores(){
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
   const linhas=[['Semana','Volume','Cancelamentos','% Cancel.','T.Preparo (min)','T.Coleta (min)','T.Despacho (min)','CPP']];
   hist.forEach(sem=>{
-    const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
+    const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
     let cppSem='';
     try{
       const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
