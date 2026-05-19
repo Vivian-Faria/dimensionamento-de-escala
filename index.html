@@ -3905,9 +3905,16 @@ function _transferirTurnoHist(histId,de,para,dia,ini){
   const confDe=h.confirmacoes[de];if(!confDe)return;
   const tIdx=confDe.turnos.findIndex(t=>t.dia===dia&&t.ini===ini);if(tIdx<0)return;
   const turno={...confDe.turnos[tIdx]};
+
+  // Snapshot ANTES de modificar
+  _khSnapshot('transferir turno');
+
+  // Remover da origem
   confDe.turnos.splice(tIdx,1);
   if(!confDe.turnos.length)delete h.confirmacoes[de];
   else{confDe.status=confDe.turnos.some(t=>t.faltou)?'faltou':confDe.status==='confirmado'?'confirmado':'pendente';confDe.horasAbatidas=confDe.turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);}
+
+  // Adicionar ao destino
   if(!h.confirmacoes[para])h.confirmacoes[para]={status:'pendente',turnos:[],horasAbatidas:0};
   if(!h.confirmacoes[para].turnos.find(t=>t.dia===dia&&t.ini===ini)){
     turno.faltou=false;turno.horasAbatidas=0;
@@ -3915,7 +3922,10 @@ function _transferirTurnoHist(histId,de,para,dia,ini){
     const dO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
     h.confirmacoes[para].turnos.sort((a,b)=>dO.indexOf(a.dia)-dO.indexOf(b.dia)||a.ini-b.ini);
   }
-  saveKH(hist,'transferir turno');
+
+  // Salvar estado modificado
+  localStorage.setItem(KH,JSON.stringify(hist));
+  _atualizarBtnDesfazer();
   const fH2=v=>{if(v>=24)v-=24;return String(v).padStart(2,'0')+':00';};
   toast(`↕ ${dia} ${fH2(ini)} → ${de} transferido para ${para}`,'tok');
   const abertos=Array.from(document.querySelectorAll('[id^="hist-detail-"]')).filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
@@ -3996,25 +4006,25 @@ function removerTurnoHist(histId, nome, dia, ini){
   const turnos=h.confirmacoes[nome].turnos||[];
   const idx=turnos.findIndex(t=>t.dia===dia&&t.ini===ini);
   if(idx<0) return;
-  const turno=turnos[idx];
-  saveKH(hist,'remover turno');
-  // Recarregar após saveKH (que não altera hist em memória)
-  const hist2=JSON.parse(localStorage.getItem(KH)||'[]');
-  // Aplicar remoção
-  const h2=JSON.parse(localStorage.getItem(KH)||'[]').find(x=>x.id===histId);
-  if(!h2) return;
-  h2.confirmacoes[nome].turnos.splice(idx,1);
-  if(!h2.confirmacoes[nome].turnos.length) delete h2.confirmacoes[nome];
-  else {
-    const temFalta=h2.confirmacoes[nome].turnos.some(t=>t.faltou);
-    h2.confirmacoes[nome].status=temFalta?'faltou':h2.confirmacoes[nome].status==='confirmado'?'confirmado':'pendente';
-    h2.confirmacoes[nome].horasAbatidas=h2.confirmacoes[nome].turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
+
+  // Snapshot para undo ANTES de modificar
+  _khSnapshot('remover turno');
+
+  // Remover o turno
+  turnos.splice(idx,1);
+  if(!turnos.length){
+    delete h.confirmacoes[nome];
+  } else {
+    h.confirmacoes[nome].status=turnos.some(t=>t.faltou)?'faltou':h.confirmacoes[nome].status==='confirmado'?'confirmado':'pendente';
+    h.confirmacoes[nome].horasAbatidas=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
   }
-  const hist3=JSON.parse(localStorage.getItem(KH)||'[]');
-  const idx3=hist3.findIndex(x=>x.id===histId);
-  if(idx3>=0) hist3[idx3]=h2;
-  localStorage.setItem(KH,JSON.stringify(hist3));
+
+  // Salvar direto sem saveKH (snapshot já foi tirado acima)
+  localStorage.setItem(KH,JSON.stringify(hist));
   toast(`🗑 Turno ${dia} ${fH(ini)} removido de ${nome}`,'tok');
+  _atualizarBtnDesfazer();
+
+  // Re-renderizar preservando cards abertos
   const abertos=Array.from(document.querySelectorAll('[id^="hist-detail-"]'))
     .filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
   renderHistorico();
@@ -4025,9 +4035,7 @@ function removerTurnoHist(histId, nome, dia, ini){
       if(det)det.style.display='block';
       if(chev)chev.style.transform='rotate(180deg)';
     });
-    // Re-ativar modo edição
-    toggleEditarTurnos(histId, nome);
-    _atualizarBtnDesfazer();
+    toggleEditarTurnos(histId,nome);
   },50);
 }
 
@@ -4394,18 +4402,26 @@ function calcularCppPorHub(volumeHub, custoEscala){
 }
 
 function getCustoEscalaSemana(semanaISO){
-  // Busca o custo total da escala publicada mais próxima da semana dos indicadores
+  // Busca o custo total da escala publicada da semana correspondente nos indicadores
   try{
-    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    const he=JSON.parse(localStorage.getItem(KH)||'[]');
     if(!he.length) return null;
-    // Tenta encontrar a escala da mesma semana
-    if(semanaISO){
-      const [de, ate] = semanaISO.split('/');
-      const match = he.find(e => e.segISO===de || e.domISO===ate);
-      if(match) return match.resumo?.totalCusto||null;
-    }
-    // Fallback: escala mais recente
-    return he[0].resumo?.totalCusto||null;
+    if(!semanaISO) return null;
+
+    // semanaISO pode ser "2026-05-04" ou "2026-05-04/2026-05-10"
+    const de=semanaISO.includes('/')?semanaISO.split('/')[0]:semanaISO;
+    const ate=semanaISO.includes('/')?semanaISO.split('/')[1]:null;
+
+    // Busca exata por segISO ou domISO
+    const match=he.find(e=>
+      e.segISO===de ||
+      (ate && e.domISO===ate) ||
+      (ate && e.segISO===de && e.domISO===ate)
+    );
+    if(match) return match.resumo?.totalCusto||null;
+
+    // Sem match = sem custo (não usar fallback que confunde semanas)
+    return null;
   }catch(e){ return null; }
 }
 
@@ -4879,14 +4895,34 @@ function renderIndicadores(){
   // Para mensal/trimestral: agrupa todas por mês/trimestre
   const todasSemanas=hist.slice().reverse(); // ordem cronológica (mais antiga primeiro)
   const semanas = periodo==='semanal' ? hist.slice(0,8).reverse() : todasSemanas;
-  const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','CPP s/ adicional','Adicionais','CPP c/ adicional'];
+  const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','Custo escala','CPP s/ adicional','Adicionais','CPP c/ adicional'];
 
+  // histEscMap: segISO → {custo, cpp}
+  // Usa KH (escala publicada) como fonte - atualiza quando histórico é editado
   let histEscMap={};
   try{
-    const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
+    const he=JSON.parse(localStorage.getItem(KH)||'[]');
     he.forEach(e=>{
       const seg=e.segISO;
-      if(e.resumo.totalPed>0)histEscMap[seg]=(e.resumo.totalCusto/e.resumo.totalPed);
+      if(!seg) return;
+      // Custo líquido (descontando horas abatidas por faltas)
+      let custo=e.resumo?.totalCusto||0;
+      // Recalcular custo real considerando faltas registradas no histórico
+      if(e.confirmacoes&&e.colabs){
+        let custoAbatidoTotal=0;
+        Object.entries(e.confirmacoes).forEach(([nome,conf])=>{
+          const colab=e.colabs.find(c=>c.nome===nome);
+          if(!colab) return;
+          const custoH=colab.custo||0;
+          const passagem=colab.passagem||0;
+          const turnos=conf.turnos||[];
+          const horasAbat=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
+          const diasFalt=new Set(turnos.filter(t=>t.faltou).map(t=>t.dia));
+          custoAbatidoTotal+=custoH*horasAbat+passagem*diasFalt.size;
+        });
+        custo=Math.max(0,custo-custoAbatidoTotal);
+      }
+      if(e.resumo?.totalPed>0) histEscMap[seg]={custo,cpp:custo/e.resumo.totalPed};
     });
   }catch(e){}
 
@@ -4962,10 +4998,12 @@ function renderIndicadores(){
 
     const metricas=grupo.semanas.map(sem=>{
       const mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub);
-      const cppSem=histEscMap[sem.de]||null;
+      const escData=histEscMap[sem.de]||null;
+      const custoSem=escData?.custo??null;
+      const cppSem=escData?.cpp??null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
-      const cppComAdicional=cppSem!==null&&mt.volume>0?((cppSem*mt.volume+adicionalSem)/mt.volume):null;
-      return{sem,mt,cppSem,adicionalSem,cppComAdicional};
+      const cppComAdicional=custoSem!==null&&mt.volume>0?((custoSem+adicionalSem)/mt.volume):null;
+      return{sem,mt,custoSem,cppSem,adicionalSem,cppComAdicional};
     });
 
     metricas.forEach(({sem,mt,cppSem,adicionalSem,cppComAdicional},i)=>{
@@ -4993,6 +5031,7 @@ function renderIndicadores(){
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tPreparoMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tColetaMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:600">${custoSem!==null?'R$ '+custoSem.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cppSem!==null?'R$ '+cppSem.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);${cppAdicBg}">${adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700;${cppComAdicional!==null&&adicionalSem>0?'color:#dc2626':''}">${cppComAdicional!==null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—'}</td>
