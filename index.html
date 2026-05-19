@@ -3426,7 +3426,10 @@ function renderHistorico(filtro){
 
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const cards=hist.map(h=>{
-    const cpp=h.resumo.totalCusto>0&&h.resumo.totalPed>0?(h.resumo.totalCusto/h.resumo.totalPed).toFixed(2).replace('.',','):null;
+    // Recalcular custo sempre na renderização (reflete todas as edições)
+    if(h.colabs&&h.confirmacoes) recalcularCustoHist(h);
+    const custoLiq=h.resumo.totalCusto||0;
+    const cpp=custoLiq>0&&h.resumo.totalPed>0?(custoLiq/h.resumo.totalPed).toFixed(2).replace('.',','):null;
     const hubLabel=h.hub&&h.hub!=='Todos os hubs'?h.hub:null;
     const confs=h.confirmacoes||{};
     const totalColab=Object.keys(confs).length;
@@ -3619,7 +3622,7 @@ function renderHistorico(filtro){
           </div>
           <div style="font-size:10px;color:var(--mu);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">
             <span>${(h.resumo.totalPed||0).toLocaleString('pt-BR')} ped.</span>
-            ${h.resumo.totalCusto>0?`<span>R$ ${(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',',')}</span>`:''}
+            ${h.resumo.totalCusto>0?`<span>R$ ${h.resumo.totalCusto.toFixed(2).replace('.',',')}</span>`:''}
             ${cpp?`<span>CPP R$ ${cpp}</span>`:''}
             ${totalColab>0?`<span class="hist-conf-count" style="color:${confirmados===totalColab?'#16a34a':pendentes>0?'#92400e':'#6b7280'};font-weight:600">✓ ${confirmados}/${totalColab}</span>`:''}
             <span class="hist-falta-badge" style="color:#dc2626">${faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}`:''}${''}${''}</span>
@@ -3637,7 +3640,7 @@ function renderHistorico(filtro){
           <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.mediaForca||'—'}</div><div class="hist-stat-l">média força/h</div></div>
-          <div class="hist-stat"><div class="hist-stat-v">${h.resumo.totalCusto>0?'R$ '+(h.resumo.totalCusto-custoAbatido).toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo${custoAbatido>0?' (líq.)':''}</div></div>
+          <div class="hist-stat"><div class="hist-stat-v">${h.resumo.totalCusto>0?'R$ '+h.resumo.totalCusto.toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo líquido</div></div>
           ${cpp?`<div class="hist-stat"><div class="hist-stat-v">R$ ${cpp}</div><div class="hist-stat-l">custo/pedido</div></div>`:''}
         </div>
         ${diaChips?`<div class="hist-dias" style="padding:8px 18px;border-bottom:1px solid var(--brd)">${diaChips}</div>`:''}
@@ -3752,7 +3755,8 @@ function verEscalaHistorico(id){
     return blocos;
   }
 
-  // KPIs
+  // KPIs — recalcular custo para refletir edições
+  if(entrada.colabs&&entrada.confirmacoes) recalcularCustoHist(entrada);
   const cpp=entrada.resumo.totalCusto>0&&entrada.resumo.totalPed>0
     ?(entrada.resumo.totalCusto/entrada.resumo.totalPed).toFixed(2):'—';
   const hubLabel=entrada.hub&&entrada.hub!=='Todos os hubs'?nomeHub(entrada.hub):'Todos os hubs';
@@ -4015,6 +4019,8 @@ function _atualizarBtnDesfazer(){
 
 // Wrapper que tira snapshot antes de salvar KH
 function saveKH(hist, label){
+  // Recalcular custo de todas as entradas antes de salvar
+  (hist||[]).forEach(h=>{ if(h.colabs&&h.confirmacoes) recalcularCustoHist(h); });
   _khSnapshot(label||'alteração');
   localStorage.setItem(KH,JSON.stringify(hist));
 }
