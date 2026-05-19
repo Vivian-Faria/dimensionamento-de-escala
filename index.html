@@ -3640,7 +3640,7 @@ function renderHistorico(filtro){
           <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.mediaForca||'—'}</div><div class="hist-stat-l">média força/h</div></div>
-          <div class="hist-stat"><div class="hist-stat-v">${h.resumo.totalCusto>0?'R$ '+h.resumo.totalCusto.toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo líquido</div></div>
+          <div class="hist-stat"><div class="hist-stat-v" id="hist-stat-custo-${h.id}">${h.resumo.totalCusto>0?'R$ '+h.resumo.totalCusto.toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo líquido</div></div>
           ${cpp?`<div class="hist-stat"><div class="hist-stat-v">R$ ${cpp}</div><div class="hist-stat-l">custo/pedido</div></div>`:''}
         </div>
         ${diaChips?`<div class="hist-dias" style="padding:8px 18px;border-bottom:1px solid var(--brd)">${diaChips}</div>`:''}
@@ -3665,6 +3665,19 @@ function renderHistorico(filtro){
     </div>`;
   }).join('');
   con.innerHTML=filterBar+cards;
+  // Persistir custos recalculados no localStorage
+  try{
+    const histAll=JSON.parse(localStorage.getItem(KH)||'[]');
+    let mudou=false;
+    hist.forEach(h=>{
+      const idx=histAll.findIndex(x=>x.id===h.id);
+      if(idx>=0&&histAll[idx].resumo?.totalCusto!==h.resumo?.totalCusto){
+        histAll[idx].resumo=h.resumo;
+        mudou=true;
+      }
+    });
+    if(mudou) localStorage.setItem(KH,JSON.stringify(histAll));
+  }catch(e){}
   };
   _renderBody(hist);
 }
@@ -4343,7 +4356,10 @@ function _atualizarBadgesCard(histId, h){
   const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
   const pendentes=totalColab-confirmados-faltaram;
 
-  // 1. Atualizar contador no cabeçalho colapsado
+  // 1. Recalcular e persistir custo
+  if(h.colabs&&h.confirmacoes) recalcularCustoHist(h);
+
+  // 2. Atualizar contador e custo no cabeçalho colapsado
   const cardEl=document.querySelector(`[data-hist-id="${histId}"]`);
   if(cardEl){
     const contEl=cardEl.querySelector('.hist-conf-count');
@@ -4353,6 +4369,26 @@ function _atualizarBadgesCard(histId, h){
     }
     const faltaEl=cardEl.querySelector('.hist-falta-badge');
     if(faltaEl) faltaEl.textContent=faltaram>0?`⚠ ${faltaram} falta${faltaram!==1?'s':''}` :'';
+
+    // Atualizar custo e CPP no cabeçalho
+    const custoLiq=h.resumo?.totalCusto||0;
+    const totalPed=h.resumo?.totalPed||0;
+    const custoSpans=cardEl.querySelector('.hist-head')?.querySelectorAll('span');
+    if(custoSpans){
+      // Encontrar o span do custo pelo conteúdo (começa com R$)
+      custoSpans.forEach(sp=>{
+        if(sp.textContent.startsWith('R$ ')&&sp.className===''){
+          sp.textContent=custoLiq>0?`R$ ${custoLiq.toFixed(2).replace('.',',')}`:sp.textContent;
+        }
+        if(sp.textContent.startsWith('CPP R$')&&sp.className===''){
+          const cpp=custoLiq>0&&totalPed>0?(custoLiq/totalPed).toFixed(2).replace('.',','):null;
+          if(cpp) sp.textContent=`CPP R$ ${cpp}`;
+        }
+      });
+    }
+    // Também atualizar o hist-stat de custo no detalhe (se aberto)
+    const statCusto=document.getElementById(`hist-stat-custo-${histId}`);
+    if(statCusto) statCusto.textContent=custoLiq>0?'R$ '+custoLiq.toFixed(2).replace('.',','):'—';
   }
 
   // 2. Atualizar o badge de status de cada colaborador na linha expandida
