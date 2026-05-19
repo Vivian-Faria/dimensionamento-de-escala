@@ -4978,10 +4978,11 @@ function renderIndicadores(){
         grupo.semanas.flatMap(s=>s.cancelamentos||[]),
         hub
       );
-      const cppsGrupo=grupo.semanas.map(s=>histEscMap[s.de]).filter(v=>v!=null);
-      const avgCpp=cppsGrupo.length?cppsGrupo.reduce((a,b)=>a+b,0)/cppsGrupo.length:null;
+      const escDataGrupo=grupo.semanas.map(s=>histEscMap[s.de]).filter(v=>v!=null);
+      const custoGrupo=escDataGrupo.reduce((t,v)=>t+(v.custo||0),0);
+      const avgCpp=escDataGrupo.length&&mtGrupo.volume>0?custoGrupo/mtGrupo.volume:null;
       const adGrupo=grupo.semanas.reduce((s,sem)=>s+getCppManualTotal(sem.semanaISO||''),0);
-      const cppComAdGrupo=avgCpp!==null&&mtGrupo.volume>0?((avgCpp*mtGrupo.volume+adGrupo)/mtGrupo.volume):null;
+      const cppComAdGrupo=custoGrupo>0&&mtGrupo.volume>0?((custoGrupo+adGrupo)/mtGrupo.volume):null;
       tbody+=`<tr style="background:#f8f9fa;font-weight:700;border-top:1px solid var(--brd2)">
         <td style="padding:6px 12px;font-size:11px;color:#374151">Total ${grupo.label} (${grupo.semanas.length} sem.)</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mtGrupo.volume.toLocaleString('pt-BR')}</td>
@@ -4990,6 +4991,7 @@ function renderIndicadores(){
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tPreparoMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tColetaMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mtGrupo.tDespachoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:600">${custoGrupo>0?'R$ '+custoGrupo.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${avgCpp!==null?'R$ '+avgCpp.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${adGrupo>0?'R$ '+adGrupo.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:800;${cppComAdGrupo!==null&&adGrupo>0?'color:#dc2626':''}">${cppComAdGrupo!==null?'R$ '+cppComAdGrupo.toFixed(2).replace('.',','):'—'}</td>
@@ -5046,6 +5048,7 @@ function renderIndicadores(){
       const preps=metricas.map(x=>x.mt.tPreparoMed).filter(v=>v!==null);
       const colets=metricas.map(x=>x.mt.tColetaMed).filter(v=>v!==null);
       const desps=metricas.map(x=>x.mt.tDespachoMed).filter(v=>v!==null);
+      const custos=metricas.map(x=>x.custoSem).filter(v=>v!==null);
       const cpps=metricas.map(x=>x.cppSem).filter(v=>v!==null);
       const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
       tbody+=`<tr style="background:#f8f9fa;font-weight:600;border-top:2px solid var(--brd2)">
@@ -5056,6 +5059,7 @@ function renderIndicadores(){
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(preps))}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(colets))}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(desps))}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${custos.length?'R$ '+avg(custos).toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cpps.length?'R$ '+avg(cpps).toFixed(2).replace('.',','):'—'}</td>
         <td colspan="2"></td>
       </tr>`;
