@@ -4401,27 +4401,23 @@ function calcularCppPorHub(volumeHub, custoEscala){
   return custoEscala / volumeHub;
 }
 
-function getCustoEscalaSemana(semanaISO){
-  // Busca o custo total da escala publicada da semana correspondente nos indicadores
+function getCustoEscalaSemana(semanaISO, hubFiltro){
   try{
     const he=JSON.parse(localStorage.getItem(KH)||'[]');
-    if(!he.length) return null;
-    if(!semanaISO) return null;
-
-    // semanaISO pode ser "2026-05-04" ou "2026-05-04/2026-05-10"
+    if(!he.length||!semanaISO) return null;
     const de=semanaISO.includes('/')?semanaISO.split('/')[0]:semanaISO;
     const ate=semanaISO.includes('/')?semanaISO.split('/')[1]:null;
-
-    // Busca exata por segISO ou domISO
-    const match=he.find(e=>
-      e.segISO===de ||
-      (ate && e.domISO===ate) ||
-      (ate && e.segISO===de && e.domISO===ate)
-    );
-    if(match) return match.resumo?.totalCusto||null;
-
-    // Sem match = sem custo (não usar fallback que confunde semanas)
-    return null;
+    const matches=he.filter(e=>e.segISO===de||(ate&&e.domISO===ate));
+    if(!matches.length) return null;
+    // Se há filtro de hub, somar só as escalas correspondentes
+    let total=0;
+    matches.forEach(e=>{
+      const hubE=e.hub||'Todos os hubs';
+      const hubTodos=!hubFiltro||hubFiltro==='todos'||(hubFiltro instanceof Set&&hubFiltro.has('todos'));
+      const match=hubTodos||hubE==='Todos os hubs'||(hubFiltro instanceof Set?hubFiltro.has(hubE):hubFiltro===hubE);
+      if(match) total+=(e.resumo?.totalCusto||0);
+    });
+    return total>0?total:null;
   }catch(e){ return null; }
 }
 
@@ -4785,7 +4781,7 @@ function renderIndicadores(){
   // ── CPP do período
   const semanaRef=semanasPerido[0]||hist[0]; // mais recente para CPP de escala
   const custoEscalaPer=semanasPerido.reduce((t,s)=>{
-    const c=getCustoEscalaSemana(s.semanaISO);
+    const c=getCustoEscalaSemana(s.semanaISO, hub);
     return t+(c||0);
   },0);
   const custoManualPer=semanasPerido.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
@@ -4898,8 +4894,8 @@ function renderIndicadores(){
   const semanas = periodo==='semanal' ? hist.slice(0,8).reverse() : todasSemanas;
   const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','Custo escala','CPP s/ adicional','Adicionais','CPP c/ adicional'];
 
-  // histEscMap: segISO → {custo, cpp}
-  // Usa KH (escala publicada) como fonte - atualiza quando histórico é editado
+  // histEscMap: segISO → { total: N, porHub: { 'DS Sion': N, 'Cozinhas Sion': N, ... } }
+  // Armazena custo separado por hub para filtro correto
   let histEscMap={};
   try{
     const he=JSON.parse(localStorage.getItem(KH)||'[]');
@@ -4908,7 +4904,6 @@ function renderIndicadores(){
       if(!seg) return;
       // Custo líquido (descontando horas abatidas por faltas)
       let custo=e.resumo?.totalCusto||0;
-      // Recalcular custo real considerando faltas registradas no histórico
       if(e.confirmacoes&&e.colabs){
         let custoAbatidoTotal=0;
         Object.entries(e.confirmacoes).forEach(([nome,conf])=>{
@@ -4923,9 +4918,35 @@ function renderIndicadores(){
         });
         custo=Math.max(0,custo-custoAbatidoTotal);
       }
-      if(e.resumo?.totalPed>0) histEscMap[seg]={custo,cpp:custo/e.resumo.totalPed};
+      // Hub desta escala (ex: 'DS Sion', 'Cozinhas Sion', 'Todos os hubs')
+      const hubEscala=e.hub||'Todos os hubs';
+      if(!histEscMap[seg]) histEscMap[seg]={total:0,porHub:{}};
+      histEscMap[seg].total+=custo;
+      if(hubEscala==='Todos os hubs'){
+        // Escala unificada — distribui para todos os hubs disponíveis naquela semana
+        histEscMap[seg]._custoUnificado=(histEscMap[seg]._custoUnificado||0)+custo;
+      } else {
+        histEscMap[seg].porHub[hubEscala]=(histEscMap[seg].porHub[hubEscala]||0)+custo;
+      }
     });
   }catch(e){}
+
+  // Função para obter custo filtrado pelo hub selecionado
+  function getCustoFiltrado(seg){
+    const d=histEscMap[seg];
+    if(!d) return null;
+    const hubTodos=hub instanceof Set?hub.has('todos'):hub==='todos';
+    if(hubTodos) return d.total||null;
+    // Hub específico selecionado
+    const hubsAtivos=hub instanceof Set?[...hub]:[hub];
+    let custoHub=0;
+    hubsAtivos.forEach(h=>{
+      custoHub+=(d.porHub[h]||0);
+    });
+    // Se não há custo específico mas há custo unificado, usa proporção pelo volume
+    if(custoHub===0&&d._custoUnificado>0) return d._custoUnificado;
+    return custoHub>0?custoHub:null;
+  }
 
   // Cabeçalho da tabela
   const thead=`<thead><tr>${cols.map((c,i)=>`<th style="background:var(--tx);color:#fff;padding:8px 12px;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap${i>=7?';background:#374151':''}">${c}</th>`).join('')}</tr></thead>`;
@@ -4980,9 +5001,9 @@ function renderIndicadores(){
         grupo.semanas.flatMap(s=>s.cancelamentos||[]),
         hub
       );
-      const escDataGrupo=grupo.semanas.map(s=>histEscMap[s.de]).filter(v=>v!=null);
-      const custoGrupo=escDataGrupo.reduce((t,v)=>t+(v.custo||0),0);
-      const avgCpp=escDataGrupo.length&&mtGrupo.volume>0?custoGrupo/mtGrupo.volume:null;
+      const escDataGrupo=grupo.semanas.map(s=>getCustoFiltrado(s.de)).filter(v=>v!==null);
+      const custoGrupo=escDataGrupo.reduce((t,v)=>t+v,0);
+      const avgCpp=custoGrupo>0&&mtGrupo.volume>0?custoGrupo/mtGrupo.volume:null;
       const adGrupo=grupo.semanas.reduce((s,sem)=>s+getCppManualTotal(sem.semanaISO||''),0);
       const cppComAdGrupo=custoGrupo>0&&mtGrupo.volume>0?((custoGrupo+adGrupo)/mtGrupo.volume):null;
       tbody+=`<tr style="background:#f8f9fa;font-weight:700;border-top:1px solid var(--brd2)">
@@ -5002,9 +5023,8 @@ function renderIndicadores(){
 
     const metricas=grupo.semanas.map(sem=>{
       const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
-      const escData=histEscMap[sem.de]||null;
-      const custoSem=escData?.custo??null;
-      const cppSem=escData?.cpp??null;
+      const custoSem=getCustoFiltrado(sem.de);
+      const cppSem=custoSem!==null&&mt.volume>0?custoSem/mt.volume:null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
       const cppComAdicional=custoSem!==null&&mt.volume>0?((custoSem+adicionalSem)/mt.volume):null;
       return{sem,mt,custoSem,cppSem,adicionalSem,cppComAdicional};
@@ -5052,7 +5072,6 @@ function renderIndicadores(){
       const desps=metricas.map(x=>x.mt.tDespachoMed).filter(v=>v!==null);
       const custos=metricas.map(x=>x.custoSem).filter(v=>v!==null);
       const cpps=metricas.map(x=>x.cppSem).filter(v=>v!==null);
-      const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
       tbody+=`<tr style="background:#f8f9fa;font-weight:600;border-top:2px solid var(--brd2)">
         <td style="padding:6px 12px;font-size:11px;color:var(--mu)">Média do mês</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${Math.round(avg(vols)).toLocaleString('pt-BR')}</td>
