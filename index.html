@@ -4401,23 +4401,20 @@ function calcularCppPorHub(volumeHub, custoEscala){
   return custoEscala / volumeHub;
 }
 
-function getCustoEscalaSemana(semanaISO, hubFiltro){
+function getCustoEscalaSemana(semanaISO){
   try{
     const he=JSON.parse(localStorage.getItem(KH)||'[]');
     if(!he.length||!semanaISO) return null;
     const de=semanaISO.includes('/')?semanaISO.split('/')[0]:semanaISO;
     const ate=semanaISO.includes('/')?semanaISO.split('/')[1]:null;
-    const matches=he.filter(e=>e.segISO===de||(ate&&e.domISO===ate));
-    if(!matches.length) return null;
-    // Se há filtro de hub, somar só as escalas correspondentes
-    let total=0;
-    matches.forEach(e=>{
-      const hubE=e.hub||'Todos os hubs';
-      const hubTodos=!hubFiltro||hubFiltro==='todos'||(hubFiltro instanceof Set&&hubFiltro.has('todos'));
-      const match=hubTodos||hubE==='Todos os hubs'||(hubFiltro instanceof Set?hubFiltro.has(hubE):hubFiltro===hubE);
-      if(match) total+=(e.resumo?.totalCusto||0);
+    let total=0, found=false;
+    he.forEach(e=>{
+      if(e.segISO===de||(ate&&e.domISO===ate)){
+        total+=(e.resumo?.totalCusto||0);
+        found=true;
+      }
     });
-    return total>0?total:null;
+    return found?total:null;
   }catch(e){ return null; }
 }
 
@@ -4781,7 +4778,7 @@ function renderIndicadores(){
   // ── CPP do período
   const semanaRef=semanasPerido[0]||hist[0]; // mais recente para CPP de escala
   const custoEscalaPer=semanasPerido.reduce((t,s)=>{
-    const c=getCustoEscalaSemana(s.semanaISO, hub);
+    const c=getCustoEscalaSemana(s.semanaISO);
     return t+(c||0);
   },0);
   const custoManualPer=semanasPerido.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
@@ -4894,8 +4891,9 @@ function renderIndicadores(){
   const semanas = periodo==='semanal' ? hist.slice(0,8).reverse() : todasSemanas;
   const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','Custo escala','CPP s/ adicional','Adicionais','CPP c/ adicional'];
 
-  // histEscMap: segISO → { total: N, porHub: { 'DS Sion': N, 'Cozinhas Sion': N, ... } }
-  // Armazena custo separado por hub para filtro correto
+  // histEscMap: segISO → custo total acumulado de todas as escalas da semana
+  // O custo da equipe não muda por hub — os colaboradores atendem todos os hubs
+  // CPP por hub = custo_total / volume_hub (calculado no momento da linha)
   let histEscMap={};
   try{
     const he=JSON.parse(localStorage.getItem(KH)||'[]');
@@ -4918,34 +4916,15 @@ function renderIndicadores(){
         });
         custo=Math.max(0,custo-custoAbatidoTotal);
       }
-      // Hub desta escala (ex: 'DS Sion', 'Cozinhas Sion', 'Todos os hubs')
-      const hubEscala=e.hub||'Todos os hubs';
-      if(!histEscMap[seg]) histEscMap[seg]={total:0,porHub:{}};
-      histEscMap[seg].total+=custo;
-      if(hubEscala==='Todos os hubs'){
-        // Escala unificada — distribui para todos os hubs disponíveis naquela semana
-        histEscMap[seg]._custoUnificado=(histEscMap[seg]._custoUnificado||0)+custo;
-      } else {
-        histEscMap[seg].porHub[hubEscala]=(histEscMap[seg].porHub[hubEscala]||0)+custo;
-      }
+      // Acumular — múltiplas escalas da mesma semana (ex: DS Cidade Nova + Cozinhas)
+      histEscMap[seg]=(histEscMap[seg]||0)+custo;
     });
   }catch(e){}
 
-  // Função para obter custo filtrado pelo hub selecionado
+  // Retorna custo acumulado da semana (sempre total, CPP usa volume filtrado)
   function getCustoFiltrado(seg){
-    const d=histEscMap[seg];
-    if(!d) return null;
-    const hubTodos=hub instanceof Set?hub.has('todos'):hub==='todos';
-    if(hubTodos) return d.total||null;
-    // Hub específico selecionado
-    const hubsAtivos=hub instanceof Set?[...hub]:[hub];
-    let custoHub=0;
-    hubsAtivos.forEach(h=>{
-      custoHub+=(d.porHub[h]||0);
-    });
-    // Se não há custo específico mas há custo unificado, usa proporção pelo volume
-    if(custoHub===0&&d._custoUnificado>0) return d._custoUnificado;
-    return custoHub>0?custoHub:null;
+    const c=histEscMap[seg];
+    return c>0?c:null;
   }
 
   // Cabeçalho da tabela
