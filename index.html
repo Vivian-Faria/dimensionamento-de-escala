@@ -3512,36 +3512,62 @@ function renderHistorico(filtro){
       const custoAbat=custoH*totalAbat + passagem*diasFaltadosColab.size;
 
       // Linhas por turno individual — com drag handle para trocar entre colaboradores
+      // Calcular data real de cada turno a partir de segISO
+      const _diasSemana=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+      const _seg=h.segISO?new Date(h.segISO+'T00:00:00'):null;
+      function _dataDoTurno(dia){
+        if(!_seg) return '';
+        const off=_diasSemana.indexOf(dia);
+        if(off<0) return '';
+        const d=new Date(_seg);d.setDate(_seg.getDate()+off);
+        const p2=v=>String(v).padStart(2,'0');
+        return p2(d.getDate())+'/'+p2(d.getMonth()+1);
+      }
+
       const turnoRows=turnos.map(t=>{
-        const tData=JSON.stringify({histId:h.id,de:nome,dia:t.dia,ini:t.ini,fim:t.fim,horas:t.horas}).replace(/"/g,'&quot;');
+        const dataTurno=_dataDoTurno(t.dia);
+        const nomeEsc=nome.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        const nomeOnclick=nome.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        const horasT=t.horas!=null?t.horas:(t.fim-t.ini);
+        // Label: "19/05 Ter" no formato compacto
+        const diaLabel=dataTurno?`${dataTurno} ${t.dia}`:`${t.dia}`;
         return`<div class="turno-row" draggable="true"
-          data-turno='${JSON.stringify({histId:h.id,de:nome,dia:t.dia,ini:t.ini}).replace(/'/g,"&#39;")}'
+          data-turno='${JSON.stringify({histId:h.id,de:nome,dia:t.dia,ini:t.ini,fim:t.fim}).replace(/'/g,"&#39;")}'
           ondragstart="histDragStart(event,this)"
           ondragend="histDragEnd(event,this)"
-          style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap;cursor:grab">
+          style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--brd);flex-wrap:wrap;cursor:grab">
           <span style="font-size:10px;color:var(--mu);cursor:grab;padding:0 2px">⠿</span>
-          <span style="font-size:11px;min-width:26px;color:var(--mu);font-weight:600">${t.dia}</span>
+          <span style="font-size:11px;color:var(--mu);font-weight:500;min-width:52px">${diaLabel}</span>
           <span style="font-family:var(--mo);font-size:11px">${fH(t.ini)}–${fH(t.fim)}</span>
-          <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600">${t.horas!=null?t.horas:(t.fim-t.ini)}h</span>
-          <button class="turno-del-btn" data-histid="${h.id}" data-nome="${nome.replace(/"/g,'&quot;')}" data-dia="${t.dia}" data-ini="${t.ini}"
+          <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-weight:600">${horasT}h</span>
+          <button class="turno-del-btn"
+            data-histid="${h.id}" data-nome="${nomeEsc}" data-dia="${t.dia}" data-ini="${t.ini}"
             onclick="removerTurnoHist(this.dataset.histid,this.dataset.nome,this.dataset.dia,parseInt(this.dataset.ini))"
-            style="display:none;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;font-family:inherit">🗑</button>
+            style="display:none;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:5px;padding:2px 8px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0">🗑</button>
+          <div class="turno-edit-campos" style="display:none;align-items:center;gap:4px;margin-left:4px">
+            <label style="font-size:10px;color:var(--mu)">Ini</label>
+            <input type="number" min="0" max="25" step="1"
+              value="${t.ini}"
+              style="width:42px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
+              onchange="editarIniTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseInt(this.value))"
+              title="Hora de início (0-25)">
+            <label style="font-size:10px;color:var(--mu)">Fim</label>
+            <input type="number" min="0" max="26" step="1"
+              value="${t.fim}"
+              style="width:42px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
+              onchange="editarFimTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseInt(this.value))"
+              title="Hora de fim (ex: 25=01:00)">
+          </div>
           <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px">
             <input type="checkbox" ${t.faltou?'checked':''}
-              onchange="toggleFaltaTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.checked)"
+              onchange="toggleFaltaTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',this.checked)"
               style="cursor:pointer;accent-color:#dc2626">
             Faltou
           </label>
-          ${t.faltou?`<input type="number" min="0" max="${t.horas}" value="${t.horasAbatidas||t.horas}" placeholder="h"
+          ${t.faltou?`<input type="number" min="0" max="${horasT}" value="${t.horasAbatidas||horasT}" placeholder="h"
             style="width:44px;padding:2px 5px;border:1px solid #fca5a5;border-radius:5px;font-size:11px;font-family:var(--fn);color:#dc2626"
-            onchange="setHorasAbatadasTurno('${h.id}','${nome.replace(/'/g,"\'")}',${t.ini},'${t.dia}',this.value)"
-            title="Horas abatidas por falta">
-          <span style="font-size:10px;color:#dc2626">${(()=>{
-            let val=0;
-            if(custoH>0)val+=custoH*(t.horasAbatidas||t.horas);
-            if(passagem>0)val+=passagem;
-            return val>0?'-R$ '+val.toFixed(2).replace('.',','):'';
-          })()}</span>`:''}
+            onchange="setHorasAbatadasTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',this.value)"
+            title="Horas abatidas por falta">`:''}
         </div>`;
       }).join('');
 
@@ -3881,13 +3907,19 @@ function setPtHorasAbat(nome, segISO, horas){
 // ── DRAG & DROP TURNOS NO HISTÓRICO ──────────────────
 let _histDragData=null;
 function histDragStart(ev,el){
-  try{_histDragData=JSON.parse(el.dataset.turno.replace(/&#39;/g,"'"));el.classList.add('dragging');ev.dataTransfer.effectAllowed='move';}catch(e){ev.preventDefault();}
+  try{
+    const raw=el.dataset.turno.replace(/&#39;/g,"'");
+    _histDragData=JSON.parse(raw);
+    el.classList.add('dragging');
+    ev.dataTransfer.effectAllowed='move';
+  }catch(e){console.warn('[Drag]',e);ev.preventDefault();}
 }
 function histDragEnd(ev,el){el.classList.remove('dragging');}
 function histDragOver(ev,el){
   if(!_histDragData)return;
-  if(!el.dataset.colab||el.dataset.histid!==_histDragData.histId)return;
-  if(el.dataset.colab===_histDragData.de)return;
+  const targetColab=el.dataset.colab;
+  if(!targetColab||el.dataset.histid!==_histDragData.histId)return;
+  if(targetColab===_histDragData.de)return;
   ev.preventDefault();ev.dataTransfer.dropEffect='move';el.classList.add('drag-over');
 }
 function histDragLeave(ev,el){el.classList.remove('drag-over');}
@@ -3927,10 +3959,10 @@ function _transferirTurnoHist(histId,de,para,dia,ini){
   localStorage.setItem(KH,JSON.stringify(hist));
   _atualizarBtnDesfazer();
   const fH2=v=>{if(v>=24)v-=24;return String(v).padStart(2,'0')+':00';};
-  toast(`↕ ${dia} ${fH2(ini)} → ${de} transferido para ${para}`,'tok');
-  const abertos=Array.from(document.querySelectorAll('[id^="hist-detail-"]')).filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
+  toast(`↕ ${dia} ${fH2(ini)}: ${de} → ${para}`,'tok');
+  const abertos=_getAbertos();
   renderHistorico();
-  setTimeout(()=>{abertos.forEach(id=>{const det=document.getElementById('hist-detail-'+id);const chev=document.getElementById('hist-chevron-'+id);if(det)det.style.display='block';if(chev)chev.style.transform='rotate(180deg)';});},50);
+  _reabrirCards(abertos);
 }
 // ─────────────────────────────────────────────────────
 
@@ -3983,20 +4015,87 @@ function saveKH(hist, label){
 }
 
 function toggleEditarTurnos(histId, nome){
-  // Ativa/desativa modo de edição para um colaborador
-  // Mostra/oculta os botões 🗑 nos turnos desse colaborador
-  const safeN=nome.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
-  const confRow=document.querySelector(`[data-histid="${histId}"][data-colab="${nome}"]`);
+  const confRow=document.querySelector(`.conf-row[data-histid="${histId}"][data-colab="${nome.replace(/"/g,'&quot;')}"]`);
   if(!confRow) return;
   const delBtns=confRow.querySelectorAll('.turno-del-btn');
+  const editCampos=confRow.querySelectorAll('.turno-edit-campos');
   const editBtn=confRow.querySelector('button[onclick*="toggleEditarTurnos"]');
   const editando=delBtns.length>0&&delBtns[0].style.display!=='none';
   delBtns.forEach(b=>{b.style.display=editando?'none':'inline-block';});
+  editCampos.forEach(c=>{c.style.display=editando?'none':'flex';});
   if(editBtn){
     editBtn.textContent=editando?'✏ Editar':'✅ Concluir';
     editBtn.style.background=editando?'var(--card2)':'#dcfce7';
     editBtn.style.color=editando?'':'#166534';
   }
+}
+
+function editarIniTurno(histId, nome, iniAntigo, dia, novoIni){
+  if(isNaN(novoIni)||novoIni<0||novoIni>25) return;
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome]) return;
+  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===iniAntigo);
+  if(!t||novoIni>=t.fim) return;
+  _khSnapshot('editar início');
+  t.ini=novoIni;
+  t.horas=t.fim-t.ini;
+  localStorage.setItem(KH,JSON.stringify(hist));
+  _atualizarBtnDesfazer();
+  const abertos=_getAbertos();
+  renderHistorico();
+  _reabrirCards(abertos);
+  setTimeout(()=>toggleEditarTurnos(histId,nome),50);
+  toast(`✏ ${nome} ${dia}: início ${String(novoIni>=24?novoIni-24:novoIni).padStart(2,'0')}:00`,'tok');
+}
+
+function editarFimTurno(histId, nome, ini, dia, novoFim){
+  if(isNaN(novoFim)||novoFim<=0||novoFim>26) return;
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome]) return;
+  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===ini);
+  if(!t||novoFim<=t.ini) return;
+  _khSnapshot('editar fim');
+  t.fim=novoFim;
+  t.horas=t.fim-t.ini;
+  localStorage.setItem(KH,JSON.stringify(hist));
+  _atualizarBtnDesfazer();
+  const abertos=_getAbertos();
+  renderHistorico();
+  _reabrirCards(abertos);
+  setTimeout(()=>toggleEditarTurnos(histId,nome),50);
+  toast(`✏ ${nome} ${dia}: fim ${String(novoFim>=24?novoFim-24:novoFim).padStart(2,'0')}:00`,'tok');
+}
+
+function _getAbertos(){
+  return Array.from(document.querySelectorAll('[id^="hist-detail-"]'))
+    .filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
+}
+function _reabrirCards(abertos){
+  setTimeout(()=>{
+    abertos.forEach(id=>{
+      const det=document.getElementById('hist-detail-'+id);
+      const chev=document.getElementById('hist-chevron-'+id);
+      if(det)det.style.display='block';
+      if(chev)chev.style.transform='rotate(180deg)';
+    });
+  },30);
+}
+
+function editarHorasTurno(histId, nome, ini, dia, novasHoras){
+  if(isNaN(novasHoras)||novasHoras<=0) return;
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome]) return;
+  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===ini);
+  if(!t) return;
+  _khSnapshot('editar horas');
+  t.horas=novasHoras;
+  t.fim=t.ini+novasHoras;
+  localStorage.setItem(KH,JSON.stringify(hist));
+  _atualizarBtnDesfazer();
+  toast(`✏ ${nome} ${dia}: ${novasHoras}h`, 'tok');
 }
 
 function removerTurnoHist(histId, nome, dia, ini){
@@ -4019,24 +4118,13 @@ function removerTurnoHist(histId, nome, dia, ini){
     h.confirmacoes[nome].horasAbatidas=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
   }
 
-  // Salvar direto sem saveKH (snapshot já foi tirado acima)
   localStorage.setItem(KH,JSON.stringify(hist));
   toast(`🗑 Turno ${dia} ${fH(ini)} removido de ${nome}`,'tok');
   _atualizarBtnDesfazer();
-
-  // Re-renderizar preservando cards abertos
-  const abertos=Array.from(document.querySelectorAll('[id^="hist-detail-"]'))
-    .filter(el=>el.style.display!=='none').map(el=>el.id.replace('hist-detail-',''));
+  const abertos=_getAbertos();
   renderHistorico();
-  setTimeout(()=>{
-    abertos.forEach(id=>{
-      const det=document.getElementById('hist-detail-'+id);
-      const chev=document.getElementById('hist-chevron-'+id);
-      if(det)det.style.display='block';
-      if(chev)chev.style.transform='rotate(180deg)';
-    });
-    toggleEditarTurnos(histId,nome);
-  },50);
+  _reabrirCards(abertos);
+  setTimeout(()=>toggleEditarTurnos(histId,nome),80);
 }
 
 function toggleFaltaTurno(histId, nome, ini, dia, faltou){
