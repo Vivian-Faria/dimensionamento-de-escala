@@ -5064,6 +5064,7 @@ function renderIndicadores(){
 
     // Linha de média do grupo (só mensal com 2+ semanas)
     if(periodo==='mensal' && metricas.length>1){
+      const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
       const vols=metricas.map(x=>x.mt.volume);
       const cancs=metricas.map(x=>x.mt.cancelamentos);
       const pcts=metricas.map(x=>x.mt.pctCancel);
