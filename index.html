@@ -4891,16 +4891,14 @@ function renderIndicadores(){
   const semanas = periodo==='semanal' ? hist.slice(0,8).reverse() : todasSemanas;
   const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','Custo escala','CPP s/ adicional','Adicionais','CPP c/ adicional'];
 
-  // histEscMap: segISO → custo total acumulado de todas as escalas da semana
-  // O custo da equipe não muda por hub — os colaboradores atendem todos os hubs
-  // CPP por hub = custo_total / volume_hub (calculado no momento da linha)
+  // histEscMap: segISO → { total: N, entradas: [{custo, hubFiltro}] }
+  // Armazena por entrada para filtrar corretamente por hub depois
   let histEscMap={};
   try{
     const he=JSON.parse(localStorage.getItem(KH)||'[]');
     he.forEach(e=>{
       const seg=e.segISO;
       if(!seg) return;
-      // Custo líquido (descontando horas abatidas por faltas)
       let custo=e.resumo?.totalCusto||0;
       if(e.confirmacoes&&e.colabs){
         let custoAbatidoTotal=0;
@@ -4916,15 +4914,38 @@ function renderIndicadores(){
         });
         custo=Math.max(0,custo-custoAbatidoTotal);
       }
-      // Acumular — múltiplas escalas da mesma semana (ex: DS Cidade Nova + Cozinhas)
-      histEscMap[seg]=(histEscMap[seg]||0)+custo;
+      if(!histEscMap[seg]) histEscMap[seg]=[];
+      // hubFiltro é o array de hubs usados ao publicar, ex: ['DS Sion'] ou null
+      histEscMap[seg].push({custo, hubFiltro: e.hubFiltro||null});
     });
   }catch(e){}
 
-  // Retorna custo acumulado da semana (sempre total, CPP usa volume filtrado)
+  // Retorna custo filtrado pelo hub selecionado nos indicadores
   function getCustoFiltrado(seg){
-    const c=histEscMap[seg];
-    return c>0?c:null;
+    const entradas=histEscMap[seg];
+    if(!entradas||!entradas.length) return null;
+    const hubTodos=hub instanceof Set?hub.has('todos'):hub==='todos';
+    // Se filtro = todos os hubs → somar tudo
+    if(hubTodos) return entradas.reduce((t,e)=>t+e.custo,0)||null;
+    // Hub específico selecionado
+    const hubsAtivos=hub instanceof Set?[...hub]:[hub];
+    let total=0;
+    entradas.forEach(entrada=>{
+      const hf=entrada.hubFiltro; // array como ['DS Sion'] ou null
+      if(!hf||hf.length===0){
+        // Escala publicada sem filtro de hub = serve todos → inclui
+        total+=entrada.custo;
+      } else {
+        // Verifica se algum hub do filtro de publicação bate com o hub selecionado
+        const bate=hubsAtivos.some(h=>hf.some(hfh=>
+          hfh===h||
+          hfh.includes(h)||
+          h.includes(hfh)
+        ));
+        if(bate) total+=entrada.custo;
+      }
+    });
+    return total>0?total:null;
   }
 
   // Cabeçalho da tabela
