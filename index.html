@@ -4807,7 +4807,8 @@ function renderIndicadores(){
   const avisoSemanas = hist.length<=1 && periodo!=='semanal'
     ? '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:11px;color:#92400e;margin-bottom:12px">⚠️ Apenas 1 semana coletada — mensal e trimestral mostram os mesmos dados. Execute o bookmarklet a cada semana para enriquecer o histórico.</div>'
     : '';
-  document.getElementById('indBanner').innerHTML=avisoSemanas;
+  const _bannerEl=document.getElementById('indBanner');
+  if(_bannerEl) _bannerEl.innerHTML=avisoSemanas;
 
   // Inicializar painel de custos manuais
   setTimeout(()=>inicializarCppManual(), 50);
@@ -4962,7 +4963,8 @@ function renderIndicadores(){
   const grupos=agruparTabelaPor(semanas, periodo);
 
   let tbody='<tbody>';
-  grupos.forEach((grupo,gi)=>{
+  try{
+    grupos.forEach((grupo,gi)=>{
     // Cabeçalho do grupo (mensal / trimestral)
     if(grupo.label){
       tbody+=`<tr><td colspan="${cols.length}" style="background:#f0fdf4;color:#166534;font-weight:700;font-size:11px;padding:6px 12px;text-transform:capitalize;border-bottom:1px solid #bbf7d0">${grupo.label}</td></tr>`;
@@ -5065,6 +5067,10 @@ function renderIndicadores(){
       </tr>`;
     }
   });
+  }catch(_tbodyErr){
+    console.error('[Indicadores] Erro ao montar tabela:', _tbodyErr);
+    tbody+=`<tr><td colspan="11" style="padding:20px;color:#dc2626;font-size:12px">Erro ao carregar tabela: ${_tbodyErr.message}</td></tr>`;
+  }
   tbody+='</tbody>';
 
   // Insert informative note when 1 week only
