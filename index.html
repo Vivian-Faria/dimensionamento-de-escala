@@ -4702,6 +4702,8 @@ function getCustoEscalaSemana(semanaISO){
     let total=0, found=false;
     he.forEach(e=>{
       if(e.segISO===de||(ate&&e.domISO===ate)){
+        // Recalcular custo com a mesma lógica do histórico
+        if(e.colabs&&e.confirmacoes) recalcularCustoHist(e);
         total+=(e.resumo?.totalCusto||0);
         found=true;
       }
@@ -5183,31 +5185,18 @@ function renderIndicadores(){
   const semanas = periodo==='semanal' ? hist.slice(0,8).reverse() : todasSemanas;
   const cols=['Semana','Volume pedidos','Cancelamentos','% Cancel.','T. Preparo','T. Coleta','T. Despacho','Custo escala','CPP s/ adicional','Adicionais','CPP c/ adicional'];
 
-  // histEscMap: segISO → { total: N, entradas: [{custo, hubFiltro}] }
-  // Armazena por entrada para filtrar corretamente por hub depois
+  // histEscMap: segISO → [{custo, hubFiltro}]
+  // Usa recalcularCustoHist para garantir consistência com o histórico
   let histEscMap={};
   try{
     const he=JSON.parse(localStorage.getItem(KH)||'[]');
     he.forEach(e=>{
       const seg=e.segISO;
       if(!seg) return;
-      let custo=e.resumo?.totalCusto||0;
-      if(e.confirmacoes&&e.colabs){
-        let custoAbatidoTotal=0;
-        Object.entries(e.confirmacoes).forEach(([nome,conf])=>{
-          const colab=e.colabs.find(c=>c.nome===nome);
-          if(!colab) return;
-          const custoH=colab.custo||0;
-          const passagem=colab.passagem||0;
-          const turnos=conf.turnos||[];
-          const horasAbat=turnos.reduce((s,t)=>s+(t.horasAbatidas||0),0);
-          const diasFalt=new Set(turnos.filter(t=>t.faltou).map(t=>t.dia));
-          custoAbatidoTotal+=custoH*horasAbat+passagem*diasFalt.size;
-        });
-        custo=Math.max(0,custo-custoAbatidoTotal);
-      }
+      // Recalcular custo usando a mesma função do histórico
+      if(e.colabs&&e.confirmacoes) recalcularCustoHist(e);
+      const custo=e.resumo?.totalCusto||0;
       if(!histEscMap[seg]) histEscMap[seg]=[];
-      // hubFiltro é o array de hubs usados ao publicar, ex: ['DS Sion'] ou null
       histEscMap[seg].push({custo, hubFiltro: e.hubFiltro||null});
     });
   }catch(e){}
