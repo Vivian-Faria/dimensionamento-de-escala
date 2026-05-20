@@ -3665,19 +3665,6 @@ function renderHistorico(filtro){
     </div>`;
   }).join('');
   con.innerHTML=filterBar+cards;
-  // Persistir custos recalculados no localStorage
-  try{
-    const histAll=JSON.parse(localStorage.getItem(KH)||'[]');
-    let mudou=false;
-    hist.forEach(h=>{
-      const idx=histAll.findIndex(x=>x.id===h.id);
-      if(idx>=0&&histAll[idx].resumo?.totalCusto!==h.resumo?.totalCusto){
-        histAll[idx].resumo=h.resumo;
-        mudou=true;
-      }
-    });
-    if(mudou) localStorage.setItem(KH,JSON.stringify(histAll));
-  }catch(e){}
   };
   _renderBody(hist);
 }
@@ -4032,8 +4019,6 @@ function _atualizarBtnDesfazer(){
 
 // Wrapper que tira snapshot antes de salvar KH
 function saveKH(hist, label){
-  // Recalcular custo de todas as entradas antes de salvar
-  (hist||[]).forEach(h=>{ if(h.colabs&&h.confirmacoes) recalcularCustoHist(h); });
   _khSnapshot(label||'alteração');
   localStorage.setItem(KH,JSON.stringify(hist));
 }
@@ -4052,6 +4037,15 @@ function toggleEditarTurnos(histId, nome){
     editBtn.style.background=editando?'var(--card2)':'#dcfce7';
     editBtn.style.color=editando?'':'#166534';
   }
+}
+
+// Salva hist com custo recalculado explicitamente (só chamar após edições de turno)
+function salvarComCusto(hist, histId, label){
+  const h=hist.find(x=>x.id===histId);
+  if(h) recalcularCustoHist(h);
+  _khSnapshot(label||'alteração');
+  localStorage.setItem(KH,JSON.stringify(hist));
+  _atualizarBtnDesfazer();
 }
 
 function editarIniTurno(histId, nome, iniAntigo, dia, novoIni){
@@ -4155,27 +4149,30 @@ function removerTurnoHist(histId, nome, dia, ini){
 
 // ── Recalcula resumo.totalCusto a partir das confirmacoes atuais
 function recalcularCustoHist(h){
-  if(!h||!h.colabs) return;
+  if(!h||!h.colabs||!h.colabs.length) return;
+  // Só recalcula se ao menos um colab tem custo definido
+  const temCusto=h.colabs.some(c=>c.custo>0);
+  if(!temCusto) return;
+
   let totalCusto=0;
   Object.entries(h.confirmacoes||{}).forEach(([nome,conf])=>{
     const colab=h.colabs.find(c=>c.nome===nome);
-    if(!colab) return;
+    if(!colab||!colab.custo) return;
     const custoH=colab.custo||0;
     const passagem=colab.passagem||0;
     const turnos=conf.turnos||[];
-    // Somar horas efetivas (descontando abatidas)
     const horasEfetivas=turnos.reduce((s,t)=>{
-      const h2=t.horas!=null?t.horas:(t.fim-t.ini)||0;
+      const hh=t.horas!=null?t.horas:(t.fim-t.ini)||0;
       const abat=t.horasAbatidas||0;
-      return s+(h2-abat);
+      return s+(hh-abat);
     },0);
-    const diasTrabalhados=new Set(turnos.filter(t=>!t.faltou||((t.horas||1)-(t.horasAbatidas||0))>0).map(t=>t.dia));
     const diasFaltou=new Set(turnos.filter(t=>t.faltou&&(t.horasAbatidas||0)>=(t.horas||1)).map(t=>t.dia));
+    const diasComPresenca=new Set(turnos.filter(t=>!diasFaltou.has(t.dia)).map(t=>t.dia));
     totalCusto+=custoH*horasEfetivas;
-    totalCusto+=passagem*(diasTrabalhados.size-diasFaltou.size);
+    totalCusto+=passagem*diasComPresenca.size;
   });
-  h.resumo=h.resumo||{};
-  h.resumo.totalCusto=Math.max(0,totalCusto);
+  // Só atualiza se calculou algo positivo (nunca zera custo que já existe)
+  if(totalCusto>0) h.resumo=Object.assign({},h.resumo||{},{totalCusto});
 }
 
 // ── Adicionar colaborador ao histórico
