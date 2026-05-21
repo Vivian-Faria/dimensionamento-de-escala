@@ -4726,8 +4726,7 @@ function getCustoEscalaSemana(semanaISO){
     let total=0, found=false;
     he.forEach(e=>{
       if(e.segISO===de||(ate&&e.domISO===ate)){
-        // Recalcular custo com a mesma lógica do histórico
-        if(e.colabs&&e.confirmacoes) recalcularCustoHist(e);
+        // Usar resumo.totalCusto diretamente — consistente com o histórico
         total+=(e.resumo?.totalCusto||0);
         found=true;
       }
@@ -5217,8 +5216,8 @@ function renderIndicadores(){
     he.forEach(e=>{
       const seg=e.segISO;
       if(!seg) return;
-      // Recalcular custo usando a mesma função do histórico
-      if(e.colabs&&e.confirmacoes) recalcularCustoHist(e);
+      // Usar resumo.totalCusto diretamente — já é atualizado pelo renderHistorico ao editar
+      // Não recalcular do zero para não divergir do que está no histórico
       const custo=e.resumo?.totalCusto||0;
       if(!histEscMap[seg]) histEscMap[seg]=[];
       histEscMap[seg].push({custo, hubFiltro: e.hubFiltro||null});
