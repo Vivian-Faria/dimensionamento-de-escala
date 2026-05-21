@@ -3489,13 +3489,10 @@ function renderHistorico(filtro){
       }
       if(!turnosNaEscala.length)return;
       const turnosConf=confs[nome].turnos||[];
-      // Se a escala tem mais turnos do que as confirmações, reconstruir preservando faltou/horasAbatidas
-      if(turnosNaEscala.length>turnosConf.length){
-        confs[nome].turnos=turnosNaEscala.map(t=>{
-          const ex=turnosConf.find(e=>e.dia===t.dia&&e.ini===t.ini);
-          return ex?{...t,faltou:ex.faltou||false,horasAbatidas:ex.horasAbatidas||0}:t;
-        });
-        // Persistir a correção no localStorage para que delete/editar funcionem
+      // Só reconstruir se confirmações estiver VAZIA (nunca foi preenchida)
+      // Não sobrescrever se colaborador já tem turnos confirmados manualmente editados
+      if(turnosConf.length===0){
+        confs[nome].turnos=turnosNaEscala.map(t=>({...t,faltou:false,horasAbatidas:0}));
         _persistirCorrecaoConfs=true;
       }
       // Garantir que horas está definido em todos os turnos (fix para entradas antigas)
