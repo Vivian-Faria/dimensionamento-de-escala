@@ -4134,10 +4134,12 @@ function editarHorasTurno(histId, nome, ini, dia, novasHoras){
 function removerTurnoHist(histId, nome, dia, ini){
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const h=hist.find(x=>x.id===histId);
-  if(!h||!h.confirmacoes?.[nome]) return;
+  if(!h){ console.warn('[remover] hist não encontrado para id:', histId); return; }
+  if(!h.confirmacoes?.[nome]){ console.warn('[remover] confirmacao nao encontrada para:', nome, '| keys:', Object.keys(h.confirmacoes||{})); return; }
   const turnos=h.confirmacoes[nome].turnos||[];
   const idx=turnos.findIndex(t=>t.dia===dia&&t.ini===ini);
-  if(idx<0) return;
+  console.log('[remover]', nome, dia, ini, '| idx:', idx, '| turnos:', turnos.map(t=>t.dia+t.ini));
+  if(idx<0){ console.warn('[remover] turno nao encontrado!'); return; }
 
   // Snapshot para undo ANTES de modificar
   _khSnapshot('remover turno');
