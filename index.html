@@ -3495,6 +3495,8 @@ function renderHistorico(filtro){
           const ex=turnosConf.find(e=>e.dia===t.dia&&e.ini===t.ini);
           return ex?{...t,faltou:ex.faltou||false,horasAbatidas:ex.horasAbatidas||0}:t;
         });
+        // Persistir a correção no localStorage para que delete/editar funcionem
+        _persistirCorrecaoConfs=true;
       }
       // Garantir que horas está definido em todos os turnos (fix para entradas antigas)
       confs[nome].turnos=(confs[nome].turnos||[]).map(t=>({
@@ -3502,6 +3504,19 @@ function renderHistorico(filtro){
         horas:t.horas!=null?t.horas:(t.fim-t.ini)||1
       }));
     });
+
+    // Persistir auto-correções de confirmações no localStorage
+    if(window._persistirCorrecaoConfs){
+      window._persistirCorrecaoConfs=false;
+      try{
+        const histAll=JSON.parse(localStorage.getItem(KH)||'[]');
+        const idx=histAll.findIndex(x=>x.id===h.id);
+        if(idx>=0){
+          histAll[idx].confirmacoes=confs;
+          localStorage.setItem(KH,JSON.stringify(histAll));
+        }
+      }catch(e){}
+    }
 
     const confRows=Object.entries(confs).map(([nome,c])=>{
       const st=c.status||'pendente';
