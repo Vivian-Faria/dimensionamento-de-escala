@@ -3425,23 +3425,6 @@ function renderHistorico(filtro){
   const _renderBody=(hist)=>{
 
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-
-  // Recalcular e persistir custos
-  let _custosAtt=false;
-  hist.forEach(h=>{
-    if(!h.colabs||!h.confirmacoes) return;
-    const _ant=h.resumo?.totalCusto||0;
-    recalcularCustoHist(h);
-    if(Math.abs((h.resumo?.totalCusto||0)-_ant)>0.01) _custosAtt=true;
-  });
-  if(_custosAtt){
-    try{
-      const _ha=JSON.parse(localStorage.getItem(KH)||'[]');
-      hist.forEach(h=>{ const _i=_ha.findIndex(x=>x.id===h.id); if(_i>=0)_ha[_i].resumo=h.resumo; });
-      localStorage.setItem(KH,JSON.stringify(_ha));
-    }catch(e){}
-  }
-
   const cards=hist.map(h=>{
     // Recalcular custo sempre na renderização (reflete todas as edições)
     if(h.colabs&&h.confirmacoes) recalcularCustoHist(h);
