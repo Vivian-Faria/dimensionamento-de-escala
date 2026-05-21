@@ -3926,27 +3926,18 @@ function histDragStart(ev,el){
 function histDragEnd(ev,el){el.classList.remove('dragging');}
 function histDragOver(ev,el){
   if(!_histDragData)return;
-  // Subir até o conf-row (o evento pode vir de filhos)
-  const row=el.closest('.conf-row[data-histid]')||el;
-  const targetColab=row.dataset.colab;
-  if(!targetColab||row.dataset.histid!==_histDragData.histId)return;
+  const targetColab=el.dataset.colab;
+  if(!targetColab||el.dataset.histid!==_histDragData.histId)return;
   if(targetColab===_histDragData.de)return;
-  ev.preventDefault();ev.dataTransfer.dropEffect='move';
-  row.classList.add('drag-over');
+  ev.preventDefault();ev.dataTransfer.dropEffect='move';el.classList.add('drag-over');
 }
-function histDragLeave(ev,el){
-  const row=el.closest('.conf-row[data-histid]')||el;
-  row.classList.remove('drag-over');
-}
+function histDragLeave(ev,el){el.classList.remove('drag-over');}
 function histDrop(ev,el,paraColab,histId){
-  ev.preventDefault();
-  const row=el.closest('.conf-row[data-histid]')||el;
-  row.classList.remove('drag-over');
+  ev.preventDefault();el.classList.remove('drag-over');
   if(!_histDragData||_histDragData.histId!==histId)return;
   const {de,dia,ini}=_histDragData;
   if(de===paraColab)return;
-  _transferirTurnoHist(histId,de,paraColab,dia,ini);
-  _histDragData=null;
+  _transferirTurnoHist(histId,de,paraColab,dia,ini);_histDragData=null;
 }
 function _transferirTurnoHist(histId,de,para,dia,ini){
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
@@ -4033,11 +4024,7 @@ function saveKH(hist, label){
 }
 
 function toggleEditarTurnos(histId, nome){
-  // Loop para evitar problemas com acentos no CSS attribute selector
-  let confRow=null;
-  document.querySelectorAll(`.conf-row[data-histid="${histId}"]`).forEach(r=>{
-    if(r.dataset.colab===nome) confRow=r;
-  });
+  const confRow=document.querySelector(`.conf-row[data-histid="${histId}"][data-colab="${nome.replace(/"/g,'&quot;')}"]`);
   if(!confRow) return;
   const delBtns=confRow.querySelectorAll('.turno-del-btn');
   const editCampos=confRow.querySelectorAll('.turno-edit-campos');
