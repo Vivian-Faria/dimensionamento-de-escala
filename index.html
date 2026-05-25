@@ -3695,74 +3695,92 @@ function renderHistorico(filtro){
     </div>`;
   }).join('');
   // ── RESUMO MENSAL ─────────────────────────────────────────────
-  // Agrupa escalas por mês e calcula: turnos totais, faltas, coberturas via leilão
+  // Agrupa por mês. Usa segISO único por semana para evitar contar duplicatas
+  // (múltiplas publicações da mesma semana = mesmo segISO → pega a mais recente)
   const meses={};
+  // Deduplica: por mês+semana, usa a entrada mais recente (primeiro no array = mais recente)
+  const semanasVistas=new Set();
   hist.forEach(h=>{
     if(!h.segISO||!h.confirmacoes) return;
-    const mes=h.segISO.slice(0,7); // YYYY-MM
-    if(!meses[mes]) meses[mes]={label:'',turnos:0,faltas:0,horasFaltadas:0,coberturas:0,horasCobertasLeilao:0,semanas:0};
+    const chave=h.segISO+'_'+(h.hub||'');
+    if(semanasVistas.has(chave)) return; // já processou esta semana+hub
+    semanasVistas.add(chave);
+
+    const mes=h.segISO.slice(0,7);
+    if(!meses[mes]) meses[mes]={label:'',semanas:0,colabs:new Set(),turnos:0,faltas:0,horasFaltadas:0,coberturas:0,horasCobLeilao:0,rupturas:0};
     const d=new Date(h.segISO+'T12:00:00');
     meses[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
     meses[mes].semanas++;
+
     Object.entries(h.confirmacoes).forEach(([nome,conf])=>{
-      const turnos=conf.turnos||[];
-      turnos.forEach(t=>{
-        meses[mes].turnos++;
+      meses[mes].colabs.add(nome);
+      (conf.turnos||[]).forEach(t=>{
         const horas=t.horas!=null?t.horas:(t.fim-t.ini)||0;
+        meses[mes].turnos++;
         if(t.faltou){
           meses[mes].faltas++;
           meses[mes].horasFaltadas+=t.horasAbatidas||horas;
-          // Verificar se este turno foi coberto via leilão (deLeilao flag)
-          // ou se outro colaborador entrou no mesmo slot
         }
-        // Coberturas via leilão: turnos que vieram do leilão
         if(t.deLeilao||t.substituiu){
           meses[mes].coberturas++;
-          meses[mes].horasCobertasLeilao+=horas;
+          meses[mes].horasCobLeilao+=horas;
         }
       });
     });
+
+    // Rupturas = slots sem cobertura no leilão desta semana
+    const leilaoKey='orion_v7_leilao_'+h.id;
+    try{
+      const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+      const naoPreenchidos=leilao.filter(t=>!t.pegoPor&&t.semCobertura).length;
+      meses[mes].rupturas+=naoPreenchidos;
+    }catch(e){}
   });
 
   const mesesOrdenados=Object.entries(meses).sort(([a],[b])=>b.localeCompare(a));
 
   const resumoMensal=mesesOrdenados.length>0?`
   <div style="margin-bottom:20px">
-    <div style="font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Resumo mensal</div>
+    <div style="font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📊 Resumo mensal</div>
     <div style="display:flex;flex-direction:column;gap:8px">
       ${mesesOrdenados.map(([mes,m])=>{
-        const pctFalta=m.turnos>0?((m.faltas/m.turnos)*100).toFixed(1):0;
-        const pctCobertura=m.faltas>0?((m.coberturas/m.faltas)*100).toFixed(0):null;
+        const pctFalta=m.turnos>0?((m.faltas/m.turnos)*100).toFixed(1):'0.0';
         const corFalta=parseFloat(pctFalta)>15?'#dc2626':parseFloat(pctFalta)>8?'#d97706':'#16a34a';
-        return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-          <div style="min-width:130px">
-            <div style="font-size:13px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</div>
-            <div style="font-size:11px;color:var(--mu)">${m.semanas} semana${m.semanas!==1?'s':''}</div>
+        const pctCoberta=m.faltas>0?Math.round((m.coberturas/m.faltas)*100):null;
+        const corCob=pctCoberta>=80?'#7c3aed':'#dc2626';
+        return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</span>
+            <span style="font-size:11px;color:var(--mu)">${m.semanas} semana${m.semanas!==1?'s':''} · ${m.colabs.size} colaborador${m.colabs.size!==1?'es':''}</span>
           </div>
-          <div style="display:flex;gap:20px;flex-wrap:wrap;flex:1">
-            <div style="text-align:center">
-              <div style="font-size:20px;font-weight:800;color:var(--tx)">${m.turnos}</div>
-              <div style="font-size:10px;color:var(--mu)">turnos escalados</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:12px">
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:var(--tx)">${m.turnos}</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">turnos no mês</div>
             </div>
-            <div style="text-align:center">
-              <div style="font-size:20px;font-weight:800;color:${corFalta}">${m.faltas}</div>
-              <div style="font-size:10px;color:var(--mu)">faltas (${pctFalta}%)</div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:${corFalta}">${m.faltas}</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">faltas (${pctFalta}%)</div>
             </div>
-            <div style="text-align:center">
-              <div style="font-size:20px;font-weight:800;color:#2563eb">${m.horasFaltadas.toFixed(0)}h</div>
-              <div style="font-size:10px;color:var(--mu)">horas em falta</div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#2563eb">${m.horasFaltadas.toFixed(0)}h</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">horas faltadas</div>
             </div>
-            <div style="text-align:center">
-              <div style="font-size:20px;font-weight:800;color:#7c3aed">${m.coberturas}</div>
-              <div style="font-size:10px;color:var(--mu)">coberturas via leilão</div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#7c3aed">${m.coberturas}</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">coberturas leilão</div>
             </div>
-            <div style="text-align:center">
-              <div style="font-size:20px;font-weight:800;color:#7c3aed">${m.horasCobertasLeilao.toFixed(0)}h</div>
-              <div style="font-size:10px;color:var(--mu)">horas cobertas</div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#7c3aed">${m.horasCobLeilao.toFixed(0)}h</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">horas cobertas</div>
             </div>
-            ${pctCobertura!==null?`<div style="background:${parseInt(pctCobertura)>=80?'rgba(124,58,237,.1)':'rgba(239,68,68,.08)'};border:1px solid ${parseInt(pctCobertura)>=80?'rgba(124,58,237,.3)':'rgba(239,68,68,.2)'};border-radius:8px;padding:6px 12px;text-align:center">
-              <div style="font-size:18px;font-weight:800;color:${parseInt(pctCobertura)>=80?'#7c3aed':'#dc2626'}">${pctCobertura}%</div>
-              <div style="font-size:10px;color:var(--mu)">faltas cobertas</div>
+            ${m.rupturas>0?`<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#dc2626">${m.rupturas}</div>
+              <div style="font-size:10px;color:#dc2626;margin-top:2px">rupturas de escala</div>
+            </div>`:''}
+            ${pctCoberta!==null?`<div style="background:${pctCoberta>=80?'rgba(124,58,237,.1)':'rgba(239,68,68,.08)'};border:1px solid ${pctCoberta>=80?'rgba(124,58,237,.3)':'rgba(239,68,68,.2)'};border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:${corCob}">${pctCoberta}%</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">faltas cobertas</div>
             </div>`:''}
           </div>
         </div>`;
