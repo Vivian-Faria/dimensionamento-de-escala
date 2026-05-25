@@ -3739,11 +3739,11 @@ function renderHistorico(filtro){
         return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
             <span style="font-size:14px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</span>
-            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} sem. · ${m.colabsSet?m.colabsSet.size:0} pessoas</span>
+            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} sem. · ${(m.colabsSet||new Set()).size} pessoas</span>
             <span style="margin-left:auto;font-size:12px;font-weight:700;color:${corMeta};background:${metaOk?'rgba(22,163,74,.1)':parseFloat(pctEscala)>=70?'rgba(217,119,6,.1)':'rgba(220,38,38,.1)'};padding:3px 10px;border-radius:20px">${metaOk?'✅':'⚠'} ${pctEscala}% escala completa (meta 85%)</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px">
-            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--tx)">${m.colabsSet?m.colabsSet.size:0}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">pessoas escaladas</div></div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--tx)">${(m.colabsSet||new Set()).size}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">pessoas escaladas</div></div>
             <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--tx)">${m.turnos}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">turnos disponib.</div></div>
             <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:${corFalta}">${m.faltas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">faltas <span style="color:${corFalta};font-weight:700">(${pctFalta}%)</span></div></div>
             <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#2563eb">${m.horasFaltadas.toFixed(0)}h</div><div style="font-size:10px;color:var(--mu);margin-top:2px">horas faltadas</div></div>
