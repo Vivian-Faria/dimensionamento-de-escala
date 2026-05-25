@@ -3425,9 +3425,27 @@ function renderHistorico(filtro){
   const _renderBody=(hist)=>{
 
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+
+  // Recalcular e persistir custos de todas as entradas antes de renderizar
+  let _custosAtualizados=false;
+  hist.forEach(h=>{
+    if(!h.colabs||!h.confirmacoes) return;
+    const custoAntes=h.resumo?.totalCusto||0;
+    recalcularCustoHist(h);
+    if(Math.abs((h.resumo?.totalCusto||0)-custoAntes)>0.01) _custosAtualizados=true;
+  });
+  if(_custosAtualizados){
+    try{
+      const histAll=JSON.parse(localStorage.getItem(KH)||'[]');
+      hist.forEach(h=>{
+        const idx=histAll.findIndex(x=>x.id===h.id);
+        if(idx>=0) histAll[idx].resumo=h.resumo;
+      });
+      localStorage.setItem(KH,JSON.stringify(histAll));
+    }catch(e){}
+  }
+
   const cards=hist.map(h=>{
-    // Recalcular custo sempre na renderização (reflete todas as edições)
-    if(h.colabs&&h.confirmacoes) recalcularCustoHist(h);
     const custoLiq=h.resumo.totalCusto||0;
     const cpp=custoLiq>0&&h.resumo.totalPed>0?(custoLiq/h.resumo.totalPed).toFixed(2).replace('.',','):null;
     const hubLabel=h.hub&&h.hub!=='Todos os hubs'?h.hub:null;
@@ -3676,7 +3694,83 @@ function renderHistorico(filtro){
       </div>
     </div>`;
   }).join('');
-  con.innerHTML=filterBar+cards;
+  // ── RESUMO MENSAL ─────────────────────────────────────────────
+  // Agrupa escalas por mês e calcula: turnos totais, faltas, coberturas via leilão
+  const meses={};
+  hist.forEach(h=>{
+    if(!h.segISO||!h.confirmacoes) return;
+    const mes=h.segISO.slice(0,7); // YYYY-MM
+    if(!meses[mes]) meses[mes]={label:'',turnos:0,faltas:0,horasFaltadas:0,coberturas:0,horasCobertasLeilao:0,semanas:0};
+    const d=new Date(h.segISO+'T12:00:00');
+    meses[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+    meses[mes].semanas++;
+    Object.entries(h.confirmacoes).forEach(([nome,conf])=>{
+      const turnos=conf.turnos||[];
+      turnos.forEach(t=>{
+        meses[mes].turnos++;
+        const horas=t.horas!=null?t.horas:(t.fim-t.ini)||0;
+        if(t.faltou){
+          meses[mes].faltas++;
+          meses[mes].horasFaltadas+=t.horasAbatidas||horas;
+          // Verificar se este turno foi coberto via leilão (deLeilao flag)
+          // ou se outro colaborador entrou no mesmo slot
+        }
+        // Coberturas via leilão: turnos que vieram do leilão
+        if(t.deLeilao||t.substituiu){
+          meses[mes].coberturas++;
+          meses[mes].horasCobertasLeilao+=horas;
+        }
+      });
+    });
+  });
+
+  const mesesOrdenados=Object.entries(meses).sort(([a],[b])=>b.localeCompare(a));
+
+  const resumoMensal=mesesOrdenados.length>0?`
+  <div style="margin-bottom:20px">
+    <div style="font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Resumo mensal</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${mesesOrdenados.map(([mes,m])=>{
+        const pctFalta=m.turnos>0?((m.faltas/m.turnos)*100).toFixed(1):0;
+        const pctCobertura=m.faltas>0?((m.coberturas/m.faltas)*100).toFixed(0):null;
+        const corFalta=parseFloat(pctFalta)>15?'#dc2626':parseFloat(pctFalta)>8?'#d97706':'#16a34a';
+        return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+          <div style="min-width:130px">
+            <div style="font-size:13px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</div>
+            <div style="font-size:11px;color:var(--mu)">${m.semanas} semana${m.semanas!==1?'s':''}</div>
+          </div>
+          <div style="display:flex;gap:20px;flex-wrap:wrap;flex:1">
+            <div style="text-align:center">
+              <div style="font-size:20px;font-weight:800;color:var(--tx)">${m.turnos}</div>
+              <div style="font-size:10px;color:var(--mu)">turnos escalados</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:20px;font-weight:800;color:${corFalta}">${m.faltas}</div>
+              <div style="font-size:10px;color:var(--mu)">faltas (${pctFalta}%)</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:20px;font-weight:800;color:#2563eb">${m.horasFaltadas.toFixed(0)}h</div>
+              <div style="font-size:10px;color:var(--mu)">horas em falta</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:20px;font-weight:800;color:#7c3aed">${m.coberturas}</div>
+              <div style="font-size:10px;color:var(--mu)">coberturas via leilão</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:20px;font-weight:800;color:#7c3aed">${m.horasCobertasLeilao.toFixed(0)}h</div>
+              <div style="font-size:10px;color:var(--mu)">horas cobertas</div>
+            </div>
+            ${pctCobertura!==null?`<div style="background:${parseInt(pctCobertura)>=80?'rgba(124,58,237,.1)':'rgba(239,68,68,.08)'};border:1px solid ${parseInt(pctCobertura)>=80?'rgba(124,58,237,.3)':'rgba(239,68,68,.2)'};border-radius:8px;padding:6px 12px;text-align:center">
+              <div style="font-size:18px;font-weight:800;color:${parseInt(pctCobertura)>=80?'#7c3aed':'#dc2626'}">${pctCobertura}%</div>
+              <div style="font-size:10px;color:var(--mu)">faltas cobertas</div>
+            </div>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`:'';
+
+  con.innerHTML=filterBar+resumoMensal+cards;
   };
   _renderBody(hist);
 }
