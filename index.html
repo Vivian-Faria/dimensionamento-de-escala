@@ -3695,49 +3695,30 @@ function renderHistorico(filtro){
     </div>`;
   }).join('');
   // ── RESUMO MENSAL ─────────────────────────────────────────────
-  // Agrupa por mês. Usa segISO único por semana para evitar contar duplicatas
-  // (múltiplas publicações da mesma semana = mesmo segISO → pega a mais recente)
+  // Usa filtrado (respeita hub/período). Deduplica colab por semana.
   const meses={};
-  // Deduplica: por mês+semana, usa a entrada mais recente (primeiro no array = mais recente)
-  const semanasVistas=new Set();
-  hist.forEach(h=>{
+  filtrado.forEach(h=>{
     if(!h.segISO||!h.confirmacoes) return;
-    const chave=h.segISO+'_'+(h.hub||'');
-    if(semanasVistas.has(chave)) return; // já processou esta semana+hub
-    semanasVistas.add(chave);
-
     const mes=h.segISO.slice(0,7);
-    if(!meses[mes]) meses[mes]={label:'',semanas:0,colabs:new Set(),turnos:0,faltas:0,horasFaltadas:0,coberturas:0,horasCobLeilao:0,rupturas:0};
+    if(!meses[mes]) meses[mes]={label:'',semanasSet:new Set(),colabSemSet:new Set(),turnos:0,faltas:0,horasFaltadas:0,coberturas:0,horasCobLeilao:0,rupturas:0};
     const d=new Date(h.segISO+'T12:00:00');
     meses[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-    meses[mes].semanas++;
-
+    meses[mes].semanasSet.add(h.segISO);
     Object.entries(h.confirmacoes).forEach(([nome,conf])=>{
-      meses[mes].colabs.add(nome);
+      const ck=h.segISO+'|'+nome;
+      const ja=meses[mes].colabSemSet.has(ck);
+      meses[mes].colabSemSet.add(ck);
       (conf.turnos||[]).forEach(t=>{
-        const horas=t.horas!=null?t.horas:(t.fim-t.ini)||0;
+        if(ja) return;
+        const hr=t.horas!=null?t.horas:(t.fim-t.ini)||0;
         meses[mes].turnos++;
-        if(t.faltou){
-          meses[mes].faltas++;
-          meses[mes].horasFaltadas+=t.horasAbatidas||horas;
-        }
-        if(t.deLeilao||t.substituiu){
-          meses[mes].coberturas++;
-          meses[mes].horasCobLeilao+=horas;
-        }
+        if(t.faltou){meses[mes].faltas++;meses[mes].horasFaltadas+=t.horasAbatidas||hr;}
+        if(t.deLeilao||t.substituiu){meses[mes].coberturas++;meses[mes].horasCobLeilao+=hr;}
       });
     });
-
-    // Rupturas = slots sem cobertura no leilão desta semana
-    const leilaoKey='orion_v7_leilao_'+h.id;
-    try{
-      const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-      const naoPreenchidos=leilao.filter(t=>!t.pegoPor&&t.semCobertura).length;
-      meses[mes].rupturas+=naoPreenchidos;
-    }catch(e){}
+    try{const lk='orion_v7_leilao_'+h.id;const leilao=JSON.parse(localStorage.getItem(lk)||'[]');meses[mes].rupturas+=leilao.filter(t=>!t.pegoPor&&t.semCobertura).length;}catch(e){}
   });
-
-  const mesesOrdenados=Object.entries(meses).sort(([a],[b])=>b.localeCompare(a));
+    const mesesOrdenados=Object.entries(meses).sort(([a],[b])=>b.localeCompare(a));
 
   const resumoMensal=mesesOrdenados.length>0?`
   <div style="margin-bottom:20px">
@@ -3751,7 +3732,7 @@ function renderHistorico(filtro){
         return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px">
           <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
             <span style="font-size:14px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</span>
-            <span style="font-size:11px;color:var(--mu)">${m.semanas} semana${m.semanas!==1?'s':''} · ${m.colabs.size} colaborador${m.colabs.size!==1?'es':''}</span>
+            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} semana${m.semanasSet.size!==1?'s':''} · ${m.colabs.size} colaborador${m.colabs.size!==1?'es':''}</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:12px">
             <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
