@@ -3716,7 +3716,22 @@ function renderHistorico(filtro){
         if(t.deLeilao||t.substituiu){meses[mes].coberturas++;meses[mes].horasCobLeilao+=hr;}
       });
     });
-    try{const lk='orion_v7_leilao_'+h.id;const leilao=JSON.parse(localStorage.getItem(lk)||'[]');meses[mes].rupturas+=leilao.filter(t=>!t.pegoPor&&t.semCobertura).length;}catch(e){}
+    // Coberturas e rupturas do leilão (deduplicadas por slot)
+    try{
+      const _lk='orion_v7_leilao_'+h.id;
+      const _leilao=JSON.parse(localStorage.getItem(_lk)||'[]');
+      if(!meses[mes]._cobSlots) meses[mes]._cobSlots=new Set();
+      if(!meses[mes]._rupSlots) meses[mes]._rupSlots=new Set();
+      _leilao.forEach(t=>{
+        const sk=h.segISO+'|'+t.dia+'|'+t.ini+'|'+t.fim;
+        if(t.pegoPor&&!meses[mes]._cobSlots.has(sk)){
+          meses[mes]._cobSlots.add(sk); meses[mes].coberturas++; meses[mes].horasCobLeilao+=(t.fim-t.ini)||0;
+        }
+        if(!t.pegoPor&&t.semCobertura&&!meses[mes]._rupSlots.has(sk)){
+          meses[mes]._rupSlots.add(sk); meses[mes].rupturas++;
+        }
+      });
+    }catch(e){}
   });
     const mesesOrdenados=Object.entries(meses).sort(([a],[b])=>b.localeCompare(a));
 
