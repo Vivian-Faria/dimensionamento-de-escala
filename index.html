@@ -3700,7 +3700,7 @@ function renderHistorico(filtro){
   filtrado.forEach(h=>{
     if(!h.segISO||!h.confirmacoes) return;
     const mes=h.segISO.slice(0,7);
-    if(!meses[mes]) meses[mes]={label:'',semanasSet:new Set(),colabSemSet:new Set(),turnos:0,faltas:0,horasFaltadas:0,coberturas:0,trocas:0,rupturas:0};
+    if(!meses[mes]) meses[mes]={label:'',semanasSet:new Set(),colabSemSet:new Set(),colabsSet:new Set(),turnos:0,faltas:0,horasFaltadas:0,coberturas:0,trocas:0,rupturas:0};
     const d=new Date(h.segISO+'T12:00:00');
     meses[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
     meses[mes].semanasSet.add(h.segISO);
@@ -3735,22 +3735,21 @@ function renderHistorico(filtro){
         const metaOk=parseFloat(pctEscala)>=85;
         const corMeta=metaOk?'#16a34a':parseFloat(pctEscala)>=70?'#d97706':'#dc2626';
         const pctFalta=m.turnos>0?((m.faltas/m.turnos)*100).toFixed(1):'0.0';
-        const corFalta=parseFloat(pctFalta)>15?'#dc2626':parseFloat(pctFalta)>8?'#d97706':'#16a34a';
+        const corFalta=parseFloat(pctFalta)>15?'#dc2626':parseFloat(pctFalta)>8?'#d97706':'var(--tx)';
         return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px">
-          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
             <span style="font-size:14px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</span>
-            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} semana${m.semanasSet.size!==1?'s':''}</span>
-            ${(()=>{const corM=metaOk?'#16a34a':parseFloat(pctEscala)>=70?'#d97706':'#dc2626';const bg=metaOk?'rgba(22,163,74,.1)':parseFloat(pctEscala)>=70?'rgba(217,119,6,.1)':'rgba(220,38,38,.1)';return`<span style="font-size:12px;font-weight:700;color:${corM};background:${bg};padding:3px 10px;border-radius:20px">${metaOk?'✅':'⚠'} ${pctEscala}% escala completa (meta 85%)</span>`;})()}
-            <div style="background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.2);border-radius:8px;padding:10px;text-align:center">
-              <div style="font-size:22px;font-weight:800;color:#16a34a">${m.coberturas}</div>
-              <div style="font-size:10px;color:var(--mu);margin-top:2px">faltas cobertas</div>
-            </div>
-            <div style="background:${m.rupturas>0?'rgba(239,68,68,.08)':'var(--card2)'};border:1px solid ${m.rupturas>0?'rgba(239,68,68,.2)':'var(--brd)'};border-radius:8px;padding:10px;text-align:center">
-              <div style="font-size:22px;font-weight:800;color:${m.rupturas>0?'#dc2626':'var(--mu)'}">${m.rupturas}</div>
-              <div style="font-size:10px;color:${m.rupturas>0?'#dc2626':'var(--mu)'};margin-top:2px">rupturas</div>
-            </div>
+            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} sem. · ${m.colabsSet?m.colabsSet.size:0} pessoas</span>
+            <span style="margin-left:auto;font-size:12px;font-weight:700;color:${corMeta};background:${metaOk?'rgba(22,163,74,.1)':parseFloat(pctEscala)>=70?'rgba(217,119,6,.1)':'rgba(220,38,38,.1)'};padding:3px 10px;border-radius:20px">${metaOk?'✅':'⚠'} ${pctEscala}% escala completa (meta 85%)</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px">
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--tx)">${m.colabsSet?m.colabsSet.size:0}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">pessoas escaladas</div></div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--tx)">${m.turnos}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">turnos disponib.</div></div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:${corFalta}">${m.faltas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">faltas <span style="color:${corFalta};font-weight:700">(${pctFalta}%)</span></div></div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#2563eb">${m.horasFaltadas.toFixed(0)}h</div><div style="font-size:10px;color:var(--mu);margin-top:2px">horas faltadas</div></div>
+            <div style="background:${m.coberturas>0?'rgba(22,163,74,.08)':'var(--card2)'};border:1px solid ${m.coberturas>0?'rgba(22,163,74,.2)':'var(--brd)'};border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:${m.coberturas>0?'#16a34a':'var(--mu)'}">${m.coberturas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">faltas cobertas</div></div>
+            <div style="background:${m.rupturas>0?'rgba(239,68,68,.08)':'var(--card2)'};border:1px solid ${m.rupturas>0?'rgba(239,68,68,.2)':'var(--brd)'};border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:${m.rupturas>0?'#dc2626':'var(--mu)'}">${m.rupturas}</div><div style="font-size:10px;color:${m.rupturas>0?'#dc2626':'var(--mu)'};margin-top:2px">rupturas</div></div>
             ${m.trocas>0?`<div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#7c3aed">${m.trocas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">trocas</div></div>`:''}
-            ${m.trocas>0?`<div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#7c3aed">${m.trocas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">trocas de horário</div></div>`:''}
           </div>
         </div>`;
       }).join('')}
