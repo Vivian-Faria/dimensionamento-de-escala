@@ -3698,9 +3698,9 @@ function renderHistorico(filtro){
   // Agrupa por mês. Usa segISO único por semana para evitar contar duplicatas
   // (múltiplas publicações da mesma semana = mesmo segISO → pega a mais recente)
   const meses={};
-  // Deduplica: por mês+semana, usa a entrada mais recente (primeiro no array = mais recente)
+  // Usa filtrado (respeita filtro de hub selecionado)
   const semanasVistas=new Set();
-  hist.forEach(h=>{
+  filtrado.forEach(h=>{
     if(!h.segISO||!h.confirmacoes) return;
     const chave=h.segISO+'_'+(h.hub||'');
     if(semanasVistas.has(chave)) return; // já processou esta semana+hub
