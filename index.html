@@ -3597,7 +3597,9 @@ function renderHistorico(filtro){
               style="cursor:pointer;accent-color:#dc2626">
             Faltou
           </label>
-          ${t.faltou?`<input type="number" min="0" max="${horasT}" value="${t.horasAbatidas||horasT}" placeholder="h"
+          ${t.faltou?`
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px"><input type="checkbox" ${t.coberto?'checked':''} onchange="toggleCobertaTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',this.checked)" style="cursor:pointer;accent-color:#16a34a"><span style="color:${t.coberto?'#16a34a':'var(--mu)'}">✓ Coberto</span></label>
+          <input type="number" min="0" max="${horasT}" value="${t.horasAbatidas||horasT}" placeholder="h"
             style="width:44px;padding:2px 5px;border:1px solid #fca5a5;border-radius:5px;font-size:11px;font-family:var(--fn);color:#dc2626"
             onchange="setHorasAbatadasTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',this.value)"
             title="Horas abatidas por falta">`:''}
@@ -3695,12 +3697,11 @@ function renderHistorico(filtro){
     </div>`;
   }).join('');
   // ── RESUMO MENSAL ─────────────────────────────────────────────
-  // Usa filtrado (respeita hub/período). Deduplica colab por semana.
   const meses={};
   filtrado.forEach(h=>{
     if(!h.segISO||!h.confirmacoes) return;
     const mes=h.segISO.slice(0,7);
-    if(!meses[mes]) meses[mes]={label:'',semanasSet:new Set(),colabSemSet:new Set(),turnos:0,faltas:0,horasFaltadas:0,coberturas:0,horasCobLeilao:0,rupturas:0};
+    if(!meses[mes]) meses[mes]={label:'',semanasSet:new Set(),colabSemSet:new Set(),turnos:0,faltas:0,horasFaltadas:0,coberturas:0,trocas:0,rupturas:0};
     const d=new Date(h.segISO+'T12:00:00');
     meses[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
     meses[mes].semanasSet.add(h.segISO);
@@ -3712,28 +3713,18 @@ function renderHistorico(filtro){
         if(ja) return;
         const hr=t.horas!=null?t.horas:(t.fim-t.ini)||0;
         meses[mes].turnos++;
-        if(t.faltou){meses[mes].faltas++;meses[mes].horasFaltadas+=t.horasAbatidas||hr;}
-        if(t.deLeilao||t.substituiu){meses[mes].coberturas++;meses[mes].horasCobLeilao+=hr;}
+        if(t.faltou){
+          meses[mes].faltas++;
+          meses[mes].horasFaltadas+=t.horasAbatidas||hr;
+          if(t.coberto) meses[mes].coberturas++;
+          else meses[mes].rupturas++;
+        }
+        if(t.transferido) meses[mes].trocas++;
       });
     });
-    // Coberturas e rupturas do leilão (deduplicadas por slot)
-    try{
-      const _lk='orion_v7_leilao_'+h.id;
-      const _leilao=JSON.parse(localStorage.getItem(_lk)||'[]');
-      if(!meses[mes]._cobSlots) meses[mes]._cobSlots=new Set();
-      if(!meses[mes]._rupSlots) meses[mes]._rupSlots=new Set();
-      _leilao.forEach(t=>{
-        const sk=h.segISO+'|'+t.dia+'|'+t.ini+'|'+t.fim;
-        if(t.pegoPor&&!meses[mes]._cobSlots.has(sk)){
-          meses[mes]._cobSlots.add(sk); meses[mes].coberturas++; meses[mes].horasCobLeilao+=(t.fim-t.ini)||0;
-        }
-        if(!t.pegoPor&&t.semCobertura&&!meses[mes]._rupSlots.has(sk)){
-          meses[mes]._rupSlots.add(sk); meses[mes].rupturas++;
-        }
-      });
-    }catch(e){}
   });
-    const mesesOrdenados=Object.entries(meses).sort(([a],[b])=>b.localeCompare(a));
+
+  const mesesOrdenados=Object.entries(meses).sort(([a],[b])=>b.localeCompare(a));
 
   const resumoMensal=mesesOrdenados.length>0?`
   <div style="margin-bottom:20px">
@@ -3742,21 +3733,22 @@ function renderHistorico(filtro){
       ${mesesOrdenados.map(([mes,m])=>{
         const pctFalta=m.turnos>0?((m.faltas/m.turnos)*100).toFixed(1):'0.0';
         const corFalta=parseFloat(pctFalta)>15?'#dc2626':parseFloat(pctFalta)>8?'#d97706':'#16a34a';
-        const totalSlotsLeilao=m.rupturas+m.coberturas;
-        const pctCobertura=totalSlotsLeilao>0?Math.round((m.coberturas/totalSlotsLeilao)*100):null;
-        const metaOk=pctCobertura!==null&&pctCobertura>=85;
-        const corMeta=metaOk?'#16a34a':pctCobertura>=70?'#d97706':'#dc2626';
+        const pctCob=m.faltas>0?Math.round((m.coberturas/m.faltas)*100):null;
+        const metaOk=pctCob!==null&&pctCob>=85;
+        const corMeta=metaOk?'#16a34a':pctCob>=70?'#d97706':'#dc2626';
         return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px">
           <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
             <span style="font-size:14px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</span>
             <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} semana${m.semanasSet.size!==1?'s':''}</span>
-            ${pctCobertura!==null?`<span style="font-size:11px;font-weight:700;color:${corMeta};background:${metaOk?'rgba(22,163,74,.1)':pctCobertura>=70?'rgba(217,119,6,.1)':'rgba(220,38,38,.1)'};padding:2px 8px;border-radius:20px">${metaOk?'✅':'⚠'} ${pctCobertura}% cobertura (meta 85%)</span>`:''}
+            ${pctCob!==null?`<span style="font-size:11px;font-weight:700;color:${corMeta};background:${metaOk?'rgba(22,163,74,.1)':pctCob>=70?'rgba(217,119,6,.1)':'rgba(220,38,38,.1)'};padding:2px 8px;border-radius:20px">${metaOk?'✅':'⚠'} ${pctCob}% faltas cobertas (meta 85%)</span>`:m.faltas===0?'<span style="font-size:11px;color:#16a34a;background:rgba(22,163,74,.1);padding:2px 8px;border-radius:20px">✅ Sem faltas no mês</span>':''}
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px">
             <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--tx)">${m.turnos}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">turnos escalados</div></div>
             <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:${corFalta}">${m.faltas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">faltas (${pctFalta}%)</div></div>
             <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#2563eb">${m.horasFaltadas.toFixed(0)}h</div><div style="font-size:10px;color:var(--mu);margin-top:2px">horas faltadas</div></div>
-            ${totalSlotsLeilao>0?`<div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#7c3aed">${m.coberturas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">cobertos p/ leilão</div></div><div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#dc2626">${m.rupturas}</div><div style="font-size:10px;color:#dc2626;margin-top:2px">rupturas operac.</div></div>`:'<div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:13px;color:var(--mu)">Sem leilão no período</div></div>'}
+            ${m.coberturas>0?`<div style="background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#16a34a">${m.coberturas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">faltas cobertas</div></div>`:''}
+            ${m.rupturas>0?`<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#dc2626">${m.rupturas}</div><div style="font-size:10px;color:#dc2626;margin-top:2px">rupturas</div></div>`:''}
+            ${m.trocas>0?`<div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#7c3aed">${m.trocas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">trocas de horário</div></div>`:''}
           </div>
         </div>`;
       }).join('')}
@@ -4414,6 +4406,18 @@ function _confirmarAdicionarTurno(histId, nome){
   const abertos=_getAbertos();
   renderHistorico();
   _reabrirCards(abertos);
+}
+
+function toggleCobertaTurno(histId, nome, ini, dia, coberto){
+  const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+  const h=hist.find(x=>x.id===histId);
+  if(!h||!h.confirmacoes?.[nome]) return;
+  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===ini);
+  if(!t) return;
+  t.coberto=coberto;
+  saveKH(hist,'marcar cobertura');
+  _atualizarBadgesCard(histId,h);
+  toast(coberto?`✅ Falta de ${nome} ${dia} coberta`:`↩ Cobertura removida`,'tok');
 }
 
 function toggleFaltaTurno(histId, nome, ini, dia, faltou){
