@@ -3732,7 +3732,7 @@ function renderHistorico(filtro){
         return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px">
           <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
             <span style="font-size:14px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</span>
-            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} semana${m.semanasSet.size!==1?'s':''} · ${m.colabs.size} colaborador${m.colabs.size!==1?'es':''}</span>
+            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} semana${m.semanasSet.size!==1?'s':''} · ${new Set([...m.colabSemSet].map(k=>k.split('|')[1])).size} colaborador${new Set([...m.colabSemSet].map(k=>k.split('|')[1])).size!==1?'es':''}</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:12px">
             <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
