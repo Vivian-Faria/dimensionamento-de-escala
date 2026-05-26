@@ -3705,21 +3705,22 @@ function renderHistorico(filtro){
     meses[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
     meses[mes].semanasSet.add(h.segISO);
     Object.entries(h.confirmacoes).forEach(([nome,conf])=>{
-      const ck=h.segISO+'|'+nome;
+      const ck=h.segISO+'|'+h.id+'|'+nome;
       const ja=meses[mes].colabSemSet.has(ck);
       meses[mes].colabSemSet.add(ck);
+      if(ja) return;
       (conf.turnos||[]).forEach(t=>{
-        if(ja) return;
         const hr=t.horas!=null?t.horas:(t.fim-t.ini)||0;
         meses[mes].turnos++;
         if(t.faltou){
-          meses[mes].faltas++;
           meses[mes].horasFaltadas+=t.horasAbatidas||hr;
           if(t.coberto) meses[mes].coberturas++;
           else meses[mes].rupturas++;
         }
         if(t.transferido) meses[mes].trocas++;
       });
+      // Conta faltas por colaborador/escala (igual aos cards individuais: status==='faltou')
+      if(conf.status==='faltou') meses[mes].faltas++;
     });
   });
 
