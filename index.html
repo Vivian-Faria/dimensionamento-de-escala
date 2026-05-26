@@ -3451,8 +3451,9 @@ function renderHistorico(filtro){
     const confs=h.confirmacoes||{};
     const totalColab=Object.keys(confs).length;
     const confirmados=Object.values(confs).filter(c=>c.status==='confirmado').length;
-    const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
-    const pendentes=totalColab-confirmados-faltaram;
+    const faltaram=Object.values(confs).reduce((s,c)=>s+(c.turnos||[]).filter(t=>t.faltou).length,0);
+    const faltaramColab=Object.values(confs).filter(c=>c.status==='faltou').length;
+    const pendentes=totalColab-confirmados-faltaramColab;
     const horasAbatidas=Object.values(confs).reduce((s,c)=>s+(c.horasAbatidas||0),0);
     const custoAbatido=horasAbatidas>0?(()=>{
       let tot=0;
@@ -4469,8 +4470,9 @@ function _atualizarBadgesCard(histId, h){
   const confs=h.confirmacoes||{};
   const totalColab=Object.keys(confs).length;
   const confirmados=Object.values(confs).filter(c=>c.status==='confirmado').length;
-  const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
-  const pendentes=totalColab-confirmados-faltaram;
+  const faltaram=Object.values(confs).reduce((s,c)=>s+(c.turnos||[]).filter(t=>t.faltou).length,0);
+  const faltaramColab=Object.values(confs).filter(c=>c.status==='faltou').length;
+  const pendentes=totalColab-confirmados-faltaramColab;
 
   // 1. Recalcular e persistir custo
   if(h.colabs&&h.confirmacoes) recalcularCustoHist(h);
