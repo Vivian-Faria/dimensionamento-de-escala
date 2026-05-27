@@ -4829,24 +4829,33 @@ function getCustoEscalaSemana(semanaISO){
   }catch(e){ return null; }
 }
 
+function _segNorm(isoDate){
+  // Normaliza para segunda-feira da semana
+  if(!isoDate) return isoDate;
+  const d=new Date(isoDate+'T12:00:00');
+  const dw=d.getDay();
+  const diff=dw===0?-6:1-dw;
+  d.setDate(d.getDate()+diff);
+  const p=v=>String(v).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+
 function getVolumeSemana(semanaISO){
   // Retorna totalPed do resumo da escala — usado como fallback para semanas sem coleta
   try{
     const he=JSON.parse(localStorage.getItem(KH)||'[]');
     if(!he.length||!semanaISO) return null;
     const de=semanaISO.includes('/')?semanaISO.split('/')[0]:semanaISO;
-    const ate=semanaISO.includes('/')?semanaISO.split('/')[1]:null;
-    // Pegar o maior totalPed entre as escalas da semana (evitar dupla contagem entre hubs espelhados)
-    // Usa o maior valor único por segISO — mesma lógica do card de escala
+    const deNorm=_segNorm(de);
+    // Pegar o maior totalPed de qualquer escala na mesma semana (normalizado)
     const vals=[];
     he.forEach(e=>{
-      if(e.segISO===de||(ate&&e.domISO===ate)){
+      if(_segNorm(e.segISO)===deNorm){
         const v=e.resumo?.totalPed||0;
         if(v>0) vals.push(v);
       }
     });
     if(!vals.length) return null;
-    // Se há múltiplas escalas na semana, pegar o maior valor (escalas espelhadas têm mesmo totalPed)
     return Math.max(...vals);
   }catch(e){ return null; }
 }
@@ -5190,9 +5199,19 @@ function renderIndicadores(){
   const _histColeta=JSON.parse(localStorage.getItem(KIND)||'[]');
   const _histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
   const _segsColetados=new Set(_histColeta.map(s=>s.de));
-  // Coletar segISOs únicos do histórico de escalas que não foram coletados
-  const _segsEscala=[...new Set(_histEsc.map(e=>e.segISO).filter(Boolean))].filter(s=>!_segsColetados.has(s));
-  const _sinteticos=_segsEscala.map(seg=>{
+  // Normaliza qualquer data para a segunda-feira da semana (Seg=1, Dom=0)
+  function _normalizarParaSeg(isoDate){
+    const d=new Date(isoDate+'T12:00:00');
+    const dw=d.getDay(); // 0=Dom,1=Seg,...,6=Sab
+    const diff=dw===0?-6:1-dw; // voltar para segunda
+    d.setDate(d.getDate()+diff);
+    const p=v=>String(v).padStart(2,'0');
+    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+  }
+  // Coletar segISOs únicos, normalizados para segunda da semana
+  const _segsEscalaRaw=[...new Set(_histEsc.map(e=>e.segISO).filter(Boolean))];
+  const _segsNorm=[...new Set(_segsEscalaRaw.map(_normalizarParaSeg))].filter(s=>!_segsColetados.has(s));
+  const _sinteticos=_segsNorm.map(seg=>{
     const dom=new Date(seg+'T12:00:00'); dom.setDate(dom.getDate()+6);
     const p=v=>String(v).padStart(2,'0');
     const domISO=dom.getFullYear()+'-'+p(dom.getMonth()+1)+'-'+p(dom.getDate());
@@ -5413,17 +5432,24 @@ function renderIndicadores(){
     he.forEach(e=>{
       const seg=e.segISO;
       if(!seg) return;
-      // Usar resumo.totalCusto diretamente — já é atualizado pelo renderHistorico ao editar
-      // Não recalcular do zero para não divergir do que está no histórico
+      const segN=_segNorm(seg)||seg;
       const custo=e.resumo?.totalCusto||0;
-      if(!histEscMap[seg]) histEscMap[seg]=[];
-      histEscMap[seg].push({custo, hubFiltro: e.hubFiltro||null});
+      // Index por chave normalizada (segunda da semana) para agrupar escalas de hubs diferentes
+      if(!histEscMap[segN]) histEscMap[segN]=[];
+      histEscMap[segN].push({custo, hubFiltro: e.hubFiltro||null});
+      // Também indexar pela chave original para compatibilidade
+      if(seg!==segN){
+        if(!histEscMap[seg]) histEscMap[seg]=[];
+        histEscMap[seg].push({custo, hubFiltro: e.hubFiltro||null});
+      }
     });
   }catch(e){}
 
   // Retorna custo filtrado pelo hub selecionado nos indicadores
   function getCustoFiltrado(seg){
-    const entradas=histEscMap[seg];
+    const segN=_segNorm(seg)||seg;
+    // Try exact key first, then normalized
+    const entradas=histEscMap[seg]||histEscMap[segN];
     if(!entradas||!entradas.length) return null;
     const hubTodos=hub instanceof Set?hub.has('todos'):hub==='todos';
     // Se filtro = todos os hubs → somar tudo
