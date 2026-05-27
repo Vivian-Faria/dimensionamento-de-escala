@@ -5478,32 +5478,75 @@ function renderIndicadores(){
   const todasVendas=semanasPerido.flatMap(s=>s.vendas||[]);
   const todosCancels=semanasPerido.flatMap(s=>s.cancelamentos||[]);
   // Para KPIs do período: agregar métricas de todas as semanas
-  // Se há semanas com _metricas e semanas com vendas brutas, combinar
-  const semanasComDados=semanasPerido.filter(s=>(s.vendas&&s.vendas.length>0)||s._metricas);
+  // Combina semanas com vendas brutas + semanas com _metricas pré-calculadas
   const mReal=calcularMetricasSemana(todasVendas,todosCancels,hub);
-  // Somar volumes de semanas com _metricas que não têm vendas brutas
-  const _volMetricas=semanasPerido.reduce((t,s)=>{
-    if((!s.vendas||s.vendas.length===0)&&s._metricas){
-      const mS=calcularMetricasSemana([],[],hub,s);
-      return t+(mS.volume||0);
-    }
-    return t;
-  },0);
+
+  // Agregar métricas de semanas sem vendas brutas mas com _metricas
+  const _mMetricasSems=semanasPerido
+    .filter(s=>(!s.vendas||s.vendas.length===0)&&s._metricas)
+    .map(s=>calcularMetricasSemana([],[],hub,s));
+
+  // Volume total
+  const _volMetricas=_mMetricasSems.reduce((t,m)=>t+(m.volume||0),0);
   const _volEscala=semanasPerido.reduce((t,s)=>{
     if(s._sintetico&&(!s.vendas||s.vendas.length===0)&&!s._metricas){
-      const v=getVolumeSemana(s.semanaISO);
-      return t+(v||0);
+      return t+(getVolumeSemana(s.semanaISO)||0);
     }
     return t;
   },0);
-  const m={...mReal, volume: mReal.volume+_volMetricas||_volEscala||0};
+  const volTotal=mReal.volume+_volMetricas||_volEscala||0;
+
+  // Cancelamentos totais
+  const cancTotal=mReal.cancelamentos+_mMetricasSems.reduce((t,m)=>t+(m.cancelamentos||0),0);
+
+  // Tempos médios ponderados por volume
+  function _mediapond(semanas_mt){
+    // semanas_mt: [{tPreparoMed,tColetaMed,tDespachoMed,amostras}]
+    let spP=0,spC=0,spD=0, nP=0,nC=0,nD=0;
+    semanas_mt.forEach(mt=>{
+      const ap=mt.amostras?.preparo||0, ac=mt.amostras?.coleta||0, ad=mt.amostras?.despacho||0;
+      if(mt.tPreparoMed!=null&&ap>0){spP+=mt.tPreparoMed*ap;nP+=ap;}
+      if(mt.tColetaMed!=null&&ac>0){spC+=mt.tColetaMed*ac;nC+=ac;}
+      if(mt.tDespachoMed!=null&&ad>0){spD+=mt.tDespachoMed*ad;nD+=ad;}
+    });
+    return{
+      tPreparoMed:nP>0?spP/nP:null,
+      tColetaMed:nC>0?spC/nC:null,
+      tDespachoMed:nD>0?spD/nD:null,
+    };
+  }
+  const _todasMt=[mReal,..._mMetricasSems];
+  // Build final merged metrics
+  const _tMed=(function(mts){
+    let spP=0,spC=0,spD=0, nP=0,nC=0,nD=0;
+    mts.forEach(mt=>{
+      const ap=mt.amostras?.preparo||0, ac=mt.amostras?.coleta||0, ad=mt.amostras?.despacho||0;
+      if(mt.tPreparoMed!=null&&ap>0){spP+=mt.tPreparoMed*ap;nP+=ap;}
+      if(mt.tColetaMed!=null&&ac>0){spC+=mt.tColetaMed*ac;nC+=ac;}
+      if(mt.tDespachoMed!=null&&ad>0){spD+=mt.tDespachoMed*ad;nD+=ad;}
+    });
+    return{tPreparoMed:nP>0?spP/nP:null, tColetaMed:nC>0?spC/nC:null, tDespachoMed:nD>0?spD/nD:null};
+  })(_todasMt);
+
+  const m={...mReal, volume:volTotal, cancelamentos:cancTotal,
+    pctCancel:volTotal>0?(cancTotal/(volTotal+cancTotal)*100):0,
+    tPreparoMed:_tMed.tPreparoMed??mReal.tPreparoMed,
+    tColetaMed:_tMed.tColetaMed??mReal.tColetaMed,
+    tDespachoMed:_tMed.tDespachoMed??mReal.tDespachoMed};
 
   // Período anterior (mesmo tamanho) para comparação
   const nSems=semanasPerido.length;
   const semanasAnt=hist.slice(nSems, nSems*2);
-  const mAnt=semanasAnt.length
-    ? calcularMetricasSemana(semanasAnt.flatMap(s=>s.vendas||[]),semanasAnt.flatMap(s=>s.cancelamentos||[]),hub)
-    : null;
+  const _mAntReal=semanasAnt.length?calcularMetricasSemana(semanasAnt.flatMap(s=>s.vendas||[]),semanasAnt.flatMap(s=>s.cancelamentos||[]),hub):null;
+  const _mAntMetricas=semanasAnt.filter(s=>(!s.vendas||s.vendas.length===0)&&s._metricas).map(s=>calcularMetricasSemana([],[],hub,s));
+  const _volAnt=(_mAntReal?.volume||0)+_mAntMetricas.reduce((t,m)=>t+(m.volume||0),0);
+  const _cancAnt=(_mAntReal?.cancelamentos||0)+_mAntMetricas.reduce((t,m)=>t+(m.cancelamentos||0),0);
+  const _tMedAnt=_mAntReal?(function(mts){
+    let spP=0,spC=0,spD=0,nP=0,nC=0,nD=0;
+    mts.forEach(mt=>{const ap=mt.amostras?.preparo||0,ac=mt.amostras?.coleta||0,ad=mt.amostras?.despacho||0;if(mt.tPreparoMed!=null&&ap>0){spP+=mt.tPreparoMed*ap;nP+=ap;}if(mt.tColetaMed!=null&&ac>0){spC+=mt.tColetaMed*ac;nC+=ac;}if(mt.tDespachoMed!=null&&ad>0){spD+=mt.tDespachoMed*ad;nD+=ad;}});
+    return{tPreparoMed:nP>0?spP/nP:null,tColetaMed:nC>0?spC/nC:null,tDespachoMed:nD>0?spD/nD:null};
+  })([_mAntReal,..._mAntMetricas]):null;
+  const mAnt=_mAntReal?{..._mAntReal,volume:_volAnt,cancelamentos:_cancAnt,pctCancel:_volAnt>0?(_cancAnt/(_volAnt+_cancAnt)*100):0,...(_tMedAnt||{})}:null;
 
   // ── CPP do período
   const semanaRef=semanasPerido[0]||hist[0]; // mais recente para CPP de escala
