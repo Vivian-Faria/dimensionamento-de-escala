@@ -4607,6 +4607,19 @@ try {
     }
 
     var b64Escala=extrairParam(raw,'dados');
+    // Receptor de lote (ind_batch): múltiplas semanas de uma vez
+    var b64Batch=extrairParam(raw,'ind_batch');
+    if(b64Batch){
+      try{
+        var batchPayloads=JSON.parse(decodeURIComponent(escape(atob(b64Batch))));
+        if(Array.isArray(batchPayloads)){
+          batchPayloads.forEach(function(pl){ receberDadosIndicadores(pl); });
+          if(typeof renderIndicadores==='function') renderIndicadores();
+          history.replaceState(null,'',window.location.pathname);
+          console.log('[OrionEscala] ind_batch: '+batchPayloads.length+' semanas salvas');
+        }
+      }catch(e){ console.error('[OrionEscala] hash ind_batch erro:',e); }
+    }
     var b64Ind=extrairParam(raw,'ind_dados');
 
     if(b64Escala){
@@ -4765,7 +4778,28 @@ function parsearTabelaOrion(html, tipo='vendas'){
   return dados;
 }
 
-function calcularMetricasSemana(vendas, cancelamentos, hub){
+function calcularMetricasSemana(vendas, cancelamentos, hub, _semObj){
+  // Se a semana tem métricas pré-calculadas e não tem vendas brutas, usar _metricas
+  if((!vendas||vendas.length===0)&&_semObj&&_semObj._metricas){
+    const m=_semObj._metricas;
+    // Filtrar por hub se necessário
+    const hubSet=hub instanceof Set?hub:new Set([hub]);
+    const todos=hubSet.has('todos');
+    let volume=m.volume||0, cancelamentos_=m.cancelamentos||0;
+    if(!todos&&m.hubVol){
+      volume=0;
+      hubSet.forEach(h=>{ volume+=(m.hubVol[h]||0); });
+      cancelamentos_=0;
+      hubSet.forEach(h=>{ cancelamentos_+=(m.hubCanc?.[h]||0); });
+    }
+    return {
+      volume, cancelamentos:cancelamentos_,
+      pctCancel:volume>0?(cancelamentos_/(volume+cancelamentos_)*100):0,
+      tPreparoMed:m.tPreparoMed, tColetaMed:m.tColetaMed, tDespachoMed:m.tDespachoMed,
+      amostras:m.amostras||{preparo:0,coleta:0,despacho:0},
+      _fromMetricas:true
+    };
+  }
   // hub pode ser 'todos', string, ou Set de hubs (multi-seleção)
   const hubSet=hub instanceof Set?hub:new Set([hub]);
   const filtro=v=>{
@@ -4957,6 +4991,37 @@ function _bmIndParaSemana(deISO, ateISO){
   return BM_SCRIPT_IND.replace('__DE__', deISO).replace('__ATE__', ateISO);
 }
 
+async function coletarTodasSemanasPendentes(){
+  // Collect all pending weeks directly from Orion API (must be called from Orion tab)
+  // This function is injected into the Orion tab via bookmarklet
+  const script = `(async()=>{
+const p=v=>String(v).padStart(2,'0');
+const fmtBR=iso=>{const[y,m,d]=iso.split('-');return p(d)+'/'+p(m);};
+const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};
+const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}return{hub,motivo:t[4]?.textContent.trim()||''};}).filter(Boolean);};
+const media=arr=>arr.length?+(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2):null;
+const diffMin=(a,b)=>(!a||!b)?null:((b-a)/60000>=0&&(b-a)/60000<480)?+((b-a)/60000).toFixed(2):null;
+function calcM(vendas,cancelamentos){const tP=[],tC=[],tD=[];vendas.forEach(v=>{const tp=diffMin(v.cadastro,v.pronto);const tc=diffMin(v.pronto,v.coleta);const td=diffMin(v.cadastro,v.conclusao);if(tp!==null)tP.push(tp);if(tc!==null)tC.push(tc);if(td!==null)tD.push(td);});const hubVol={},hubCanc={};vendas.forEach(v=>{hubVol[v.hub]=(hubVol[v.hub]||0)+1;});cancelamentos.forEach(c=>{hubCanc[c.hub]=(hubCanc[c.hub]||0)+1;});return{volume:vendas.length,cancelamentos:cancelamentos.length,pctCancel:vendas.length>0?+(cancelamentos.length/(vendas.length+cancelamentos.length)*100).toFixed(3):0,tPreparoMed:media(tP),tColetaMed:media(tC),tDespachoMed:media(tD),amostras:{preparo:tP.length,coleta:tC.length,despacho:tD.length},hubVol,hubCanc};}
+const SEMANAS=__SEMANAS__;
+const resultados=[];
+for(const s of SEMANAS){
+  try{
+    const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+s.de+'&start_time=00:00&end_date='+s.ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+s.de+'&start_time=00:00&end_date='+s.ate+'&end_time=23:59&business=',{credentials:'include'})]);
+    const vendas=parse(await rv.text(),'v'),cancelamentos=parse(await rc.text(),'c');
+    const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();
+    const deBR=fmtBR(s.de),ateBR=fmtBR(s.ate);
+    const _metricas=calcM(vendas,cancelamentos);
+    const pl={de:s.de,ate:s.ate,deBR,ateBR,ts:Date.now(),hubs,semana:deBR+'\u2013'+ateBR,semanaISO:s.de+'/'+s.ate,vendas:[],cancelamentos:[],_metricas};
+    resultados.push(pl);
+  }catch(e){console.error('Erro semana '+s.de+':',e);}
+}
+const b64=btoa(unescape(encodeURIComponent(JSON.stringify(resultados))));
+window.open('https://orion-escala.netlify.app#ind_batch='+b64,'_blank');
+alert('Coleta concluída: '+resultados.length+' semanas. A plataforma foi aberta.');
+})()`;
+  return script;
+}
+
 function coletarIndicadores(){
   // Gera lista de semanas disponíveis: semanas do histórico de escalas + semana anterior padrão
   const he=JSON.parse(localStorage.getItem(KH)||'[]');
@@ -4994,25 +5059,61 @@ function coletarIndicadores(){
   banner.innerHTML=`
     <div class="b-title">📊 Coletar indicadores — selecione a semana</div>
     <div id="_indSemOpts" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:220px;overflow-y:auto;padding-right:4px">${opcoesHtml}</div>
+    <div style="margin-bottom:12px;background:rgba(255,255,255,.7);border-radius:8px;padding:12px;border:1px solid #bfdbfe">
+      <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:#1d4ed8">⚡ Coletar todas as semanas pendentes (recomendado)</div>
+      <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Abre o Órion e coleta automaticamente todas as semanas sem dados de uma vez.</p>
+      <button onclick="_coletarTodasClick()" class="btn bs sm" style="width:100%;background:#1d4ed8;color:#fff;font-weight:700;padding:9px">🚀 Coletar todas as semanas pendentes</button>
+    </div>
     <div id="_indMetodos" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
-        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Método 1 — Console do Chrome (F12)</div>
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Semana específica — Console (F12)</div>
         <ol class="b-steps">
           <li>Abra o Órion <button onclick="window.open('https://admin.orioncloudkitchens.com.br','_blank')" class="btn bs sm" style="margin-left:4px">↗</button></li>
           <li>Pressione <code>F12</code> → aba <strong>Console</strong></li>
-          <li>Se aparecer "allow pasting" → digite <code>allow pasting</code> e Enter</li>
           <li>Cole o script e pressione Enter</li>
         </ol>
-        <button onclick="copiarScriptInd()" id="copyBtnInd" class="btn bs sm" style="width:100%">📋 Copiar script</button>
+        <button onclick="copiarScriptInd()" id="copyBtnInd" class="btn bs sm" style="width:100%">📋 Copiar script da semana selecionada</button>
       </div>
       <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
-        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Método 2 — Abrir bookmarklet</div>
-        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Clique no link abaixo estando na aba do Órion aberta.</p>
-        <a id="_bmIndLink" href="javascript:void(0)" onclick="_bmIndClick(event)" style="display:block;background:#2563eb;color:#fff;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer">📈 Executar coleta</a>
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Semana específica — Bookmarklet</div>
+        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Clique no link abaixo estando na aba do Órion.</p>
+        <a id="_bmIndLink" href="javascript:void(0)" onclick="_bmIndClick(event)" style="display:block;background:#2563eb;color:#fff;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer">📈 Executar coleta da semana selecionada</a>
       </div>
     </div>
-    <div style="margin-top:10px;font-size:11px;color:var(--mu)">Após rodar o script, esta página será aberta automaticamente com os dados preenchidos.</div>`;
+    <div style="margin-top:10px;font-size:11px;color:var(--mu)">Após coletar, a plataforma abre automaticamente com todos os dados preenchidos.</div>`;
   document.getElementById('indEmp').style.display='none';
+}
+
+async function _coletarTodasClick(){
+  // Build list of weeks without operational data
+  const histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
+  const coletadas=new Set(histInd.filter(s=>s._metricas||((s.vendas||[]).length>0)).map(s=>s.de));
+  // Normalize escala segISOs to Monday
+  const segsNorm=[...new Set(histEsc.map(e=>e.segISO).filter(Boolean).map(_segNorm))];
+  const pendentes=segsNorm.filter(seg=>!coletadas.has(seg)).map(seg=>{
+    const d=new Date(seg+'T12:00:00'); d.setDate(d.getDate()+6);
+    const p=v=>String(v).padStart(2,'0');
+    return{de:seg, ate:d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())};
+  });
+  if(!pendentes.length){
+    alert('Todas as semanas já foram coletadas!');
+    return;
+  }
+  // Build the batch collection script
+  const semanasJSON=JSON.stringify(pendentes);
+  const script=(await coletarTodasSemanasPendentes()).replace('__SEMANAS__',semanasJSON);
+  // Copy to clipboard and open Orion
+  try{ await navigator.clipboard.writeText(script); }
+  catch(e){
+    const ta=document.createElement('textarea');ta.value=script;ta.style.cssText='position:fixed;opacity:0';
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+  }
+  const semDesc=pendentes.map(s=>s.de).join(', ');
+  const msg='Script copiado! Serão coletadas '+pendentes.length+' semana(s): '+semDesc+'\n\nPassos:\n1. Clique OK para abrir o Órion\n2. Pressione F12 → Console\n3. Se aparecer "allow pasting", digite allow pasting e Enter\n4. Cole o script (Ctrl+V) e pressione Enter\n5. A plataforma abrirá automaticamente com todos os dados';
+  if(confirm(msg)){
+    window.open('https://admin.orioncloudkitchens.com.br/admin/reports/orders','_blank');
+  }
 }
 
 function _getSemIndSelecionada(){
@@ -5289,16 +5390,26 @@ function renderIndicadores(){
   // ── Métricas do período selecionado (para KPIs)
   const todasVendas=semanasPerido.flatMap(s=>s.vendas||[]);
   const todosCancels=semanasPerido.flatMap(s=>s.cancelamentos||[]);
+  // Para KPIs do período: agregar métricas de todas as semanas
+  // Se há semanas com _metricas e semanas com vendas brutas, combinar
+  const semanasComDados=semanasPerido.filter(s=>(s.vendas&&s.vendas.length>0)||s._metricas);
   const mReal=calcularMetricasSemana(todasVendas,todosCancels,hub);
-  // Para períodos sem coleta, complementar volume com totalPed da escala
+  // Somar volumes de semanas com _metricas que não têm vendas brutas
+  const _volMetricas=semanasPerido.reduce((t,s)=>{
+    if((!s.vendas||s.vendas.length===0)&&s._metricas){
+      const mS=calcularMetricasSemana([],[],hub,s);
+      return t+(mS.volume||0);
+    }
+    return t;
+  },0);
   const _volEscala=semanasPerido.reduce((t,s)=>{
-    if(s._sintetico||(s.vendas||[]).length===0){
+    if(s._sintetico&&(!s.vendas||s.vendas.length===0)&&!s._metricas){
       const v=getVolumeSemana(s.semanaISO);
       return t+(v||0);
     }
     return t;
   },0);
-  const m={...mReal, volume: mReal.volume>0 ? mReal.volume : _volEscala};
+  const m={...mReal, volume: mReal.volume+_volMetricas||_volEscala||0};
 
   // Período anterior (mesmo tamanho) para comparação
   const nSems=semanasPerido.length;
@@ -5523,11 +5634,17 @@ function renderIndicadores(){
 
     if(isTrimestral && grupo.semanas.length>1){
       // Linha de totais + linha de cada semana expandível
-      const mtGrupo = calcularMetricasSemana(
-        grupo.semanas.flatMap(s=>s.vendas||[]),
-        grupo.semanas.flatMap(s=>s.cancelamentos||[]),
-        hub
-      );
+      // Aggregate metrics for group (month/quarter header row)
+      const _gVendas=grupo.semanas.flatMap(s=>s.vendas||[]);
+      const _gCancels=grupo.semanas.flatMap(s=>s.cancelamentos||[]);
+      const _gVolMetricas=grupo.semanas.reduce((t,s)=>{
+        if((!s.vendas||s.vendas.length===0)&&s._metricas){
+          return t+calcularMetricasSemana([],[],hub,s).volume;
+        }
+        return t;
+      },0);
+      const _mtGrupoRaw=calcularMetricasSemana(_gVendas,_gCancels,hub);
+      const mtGrupo={..._mtGrupoRaw, volume:_mtGrupoRaw.volume+_gVolMetricas};
       const escDataGrupo=grupo.semanas.map(s=>getCustoFiltrado(s.de)).filter(v=>v!==null);
       const custoGrupo=escDataGrupo.reduce((t,v)=>t+v,0);
       const avgCpp=custoGrupo>0&&mtGrupo.volume>0?custoGrupo/mtGrupo.volume:null;
@@ -5549,9 +5666,9 @@ function renderIndicadores(){
     }
 
     const metricas=grupo.semanas.map(sem=>{
-      const mtReal=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
-      // Para semanas sem coleta, usar volume projetado da escala
-      const volEsc=(!mtReal.volume&&sem._sintetico)?getVolumeSemana(sem.semanaISO):0;
+      const mtReal=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub,sem);
+      // Para semanas sem coleta e sem _metricas, usar volume projetado da escala
+      const volEsc=(!mtReal.volume&&(sem._sintetico||sem._metricas))?getVolumeSemana(sem.semanaISO):0;
       const mt={...mtReal, volume: mtReal.volume||volEsc||0, _volDaEscala: !mtReal.volume&&volEsc>0};
       const custoSem=getCustoFiltrado(sem.de);
       const cppSem=custoSem!==null&&mt.volume>0?custoSem/mt.volume:null;
