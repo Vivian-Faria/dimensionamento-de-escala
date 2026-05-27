@@ -5108,7 +5108,22 @@ function atualizarSelectHubs(hubs){
 }
 
 function renderIndicadores(){
-  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+  // ── Mesclar coleta real com semanas do histórico de escalas sem coleta
+  const _histColeta=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const _histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
+  const _segsColetados=new Set(_histColeta.map(s=>s.de));
+  // Coletar segISOs únicos do histórico de escalas que não foram coletados
+  const _segsEscala=[...new Set(_histEsc.map(e=>e.segISO).filter(Boolean))].filter(s=>!_segsColetados.has(s));
+  const _sinteticos=_segsEscala.map(seg=>{
+    const dom=new Date(seg+'T12:00:00'); dom.setDate(dom.getDate()+6);
+    const p=v=>String(v).padStart(2,'0');
+    const domISO=dom.getFullYear()+'-'+p(dom.getMonth()+1)+'-'+p(dom.getDate());
+    const fb=d=>{const x=new Date(d+'T12:00:00');return p(x.getDate())+'/'+p(x.getMonth()+1);};
+    return{de:seg,ate:domISO,deBR:fb(seg),ateBR:fb(domISO),ts:0,vendas:[],cancelamentos:[],hubs:[],semana:fb(seg)+'–'+fb(domISO),semanaISO:seg+'/'+domISO,_sintetico:true};
+  });
+  // Mesclar e ordenar do mais recente para o mais antigo
+  const hist=[..._histColeta,..._sinteticos].sort((a,b)=>b.de.localeCompare(a.de));
+  const nColetadas=_histColeta.length;
   if(!hist.length){
     document.getElementById('indEmp').style.display='block';
     document.getElementById('indKpis').innerHTML='';
@@ -5208,7 +5223,7 @@ function renderIndicadores(){
   }[periodo];
 
   // Aviso se mensal e trimestral mostram o mesmo dado (poucas semanas coletadas)
-  const avisoSemanas = hist.length<=1 && periodo!=='semanal'
+  const avisoSemanas = nColetadas<=1 && periodo!=='semanal'
     ? '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:11px;color:#92400e;margin-bottom:12px">⚠️ Apenas 1 semana coletada — mensal e trimestral mostram os mesmos dados. Execute o bookmarklet a cada semana para enriquecer o histórico.</div>'
     : '';
   const _bannerEl=document.getElementById('indBanner');
@@ -5445,14 +5460,18 @@ function renderIndicadores(){
       const rowBg=isTrimestral?'background:#fafafa':'';
       const rowPad=isTrimestral?'padding-left:20px':'';
       const cppAdicBg=adicionalSem>0?'background:#fff7ed':'';
-      tbody+=`<tr style="border-bottom:1px solid var(--brd);${rowBg}">
-        <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap;${rowPad}">${sem.deBR}–${sem.ateBR}</td>
+      const isSint=!!sem._sintetico;
+      const semLabel=isSint?`${sem.deBR}–${sem.ateBR} <span style="font-size:9px;color:#6b7280;font-weight:400;background:#f3f4f6;border-radius:3px;padding:1px 4px">só escala</span>`:`${sem.deBR}–${sem.ateBR}`;
+      const tdOp=v=>`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:${isSint?'#9ca3af':'inherit'}">${isSint?'—':v}</td>`;
+      tbody+=`<tr style="border-bottom:1px solid var(--brd);${rowBg}${isSint?'background:#fafafa':''}">
+        <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap;${rowPad}">${semLabel}</td>
+        ${isSint?`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af" colspan="6">— sem coleta</td>`:`
         ${celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR'))}
         ${celVar(mt.cancelamentos,prevMt?.cancelamentos,false,v=>v)}
         ${celVar(mt.pctCancel,prevMt?.pctCancel,false,v=>v.toFixed(2)+'%')}
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tPreparoMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tColetaMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>`}
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:600">${custoSem!==null?'R$ '+custoSem.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cppSem!==null?'R$ '+cppSem.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);${cppAdicBg}">${adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—'}</td>
@@ -5509,7 +5528,10 @@ function renderIndicadores(){
 
   const subTxt=`${periodoLabel} · ${todasVendas.length.toLocaleString('pt-BR')} pedidos analisados`;
   document.getElementById('indSub').textContent=subTxt;
-  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · tabela exibe todas`;
+  const _nTotal=hist.length, _nSint=hist.filter(s=>s._sintetico).length;
+  const _labelColet=nColetadas>0?`${nColetadas} semana${nColetadas!==1?'s':''} coletada${nColetadas!==1?'s':''}`:`sem coleta`;
+  const _labelEsc=_nSint>0?` · ${_nSint} só da escala`:'';
+  document.getElementById('indTabelaMeta').textContent=`${_labelColet}${_labelEsc} · tabela exibe todas`;
 
   // Atualiza select hubs
   atualizarSelectHubs([]);
