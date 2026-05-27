@@ -888,7 +888,7 @@ function getFeriadoBH(data){
 const BM_SCRIPT=`(async()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const rs=await fetch('/admin/reports/orders?start_date='+fi(ds)+'&start_time=00:00&end_date='+fi(da)+'&end_time=23:59&business=',{credentials:'include'});const ht=await rs.text();const dc=new DOMParser().parseFromString(ht,'text/html');const rw=dc.querySelectorAll('table tbody tr');const mx={};D.forEach(d=>{mx[d]={};for(let h=0;h<30;h++)mx[d][p(h)]=0;});let tt=0;rw.forEach(r=>{const cs=r.querySelectorAll('td');if(cs.length<10)return;const c=cs[9]?.textContent?.trim();if(!c||!c.includes('/')||!c.includes(' '))return;const[dp,tp]=c.split(' ');const[d2,mm,yy]=dp.split('/');const h=parseInt(tp.split(':')[0],10);const di=D[new Date(+yy,+mm-1,+d2).getDay()];const hk=p(h);if(mx[di]&&mx[di][hk]!==undefined){mx[di][hk]++;tt++;}});const pl={mx,total:tt,de:fi(ds),ate:fi(da),deBR:fb(ds),ateBR:fb(da),ts:Date.now()};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#dados='+b64,'_blank');})()`;
 
 // ── Bookmarklet de INDICADORES — roda no Orion, coleta vendas+cancelamentos+tempos, envia para a plataforma via hash
-const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const de=fi(ds),ate=fi(da);const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};const dMin=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?+d.toFixed(2):null;};const base='https://admin.orioncloudkitchens.com.br';try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};} }).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const pl={de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(ds)+'\u2013'+fb(da),semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
+const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const de='__DE__',ate='__ATE__';const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};const dMin=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?+d.toFixed(2):null;};const base='https://admin.orioncloudkitchens.com.br';try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};} }).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const pl={de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(ds)+'\u2013'+fb(da),semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
 
 // ── Colaboradores padrão com regras detalhadas
 const COLAB_DEF=[
@@ -4922,22 +4922,48 @@ function recalcularCppManual(){
 }
 let _cppManualDirty=false, _cppManualDebounce=null;
 
+function _bmIndParaSemana(deISO, ateISO){
+  return BM_SCRIPT_IND.replace('__DE__', deISO).replace('__ATE__', ateISO);
+}
+
 function coletarIndicadores(){
-  // A coleta direta via fetch falha por CORS (plataforma ≠ Orion).
-  // Solução idêntica à da escala: bookmarklet roda no Orion (mesma origem),
-  // serializa os dados em base64 e reabre a plataforma com #ind_dados=BASE64.
-  // O receptor abaixo captura o hash e salva no localStorage.
+  // Gera lista de semanas disponíveis: semanas do histórico de escalas + semana anterior padrão
+  const he=JSON.parse(localStorage.getItem(KH)||'[]');
+  const segsEscala=[...new Set(he.map(e=>e.segISO).filter(Boolean))].sort().reverse();
   const {segAnt,domAnt}=semanaAnterior();
-  const deBR=fmtBR(segAnt), ateBR=fmtBR(domAnt);
-  const per=`${deBR} (Seg) → ${ateBR} (Dom)`;
-  const bm='javascript:'+encodeURIComponent(BM_SCRIPT_IND);
+  const fi=d=>{const p=v=>String(v).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());};
+  const semAntISO=fi(segAnt);
+  // Montar lista única: semana anterior padrão + semanas da escala
+  const todasSegs=[semAntISO,...segsEscala.filter(s=>s!==semAntISO)];
+  const jaColetadas=new Set(JSON.parse(localStorage.getItem(KIND)||'[]').map(s=>s.de));
+
+  function segParaDom(segISO){
+    const d=new Date(segISO+'T12:00:00'); d.setDate(d.getDate()+6);
+    const p=v=>String(v).padStart(2,'0');
+    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+  }
+  function fmtLabel(segISO){
+    const dom=segParaDom(segISO);
+    const fb=s=>{const x=new Date(s+'T12:00:00');const p=v=>String(v).padStart(2,'0');return p(x.getDate())+'/'+p(x.getMonth()+1);};
+    const ok=jaColetadas.has(segISO)?'✓ ':'';
+    return ok+fb(segISO)+' – '+fb(dom);
+  }
+
+  const opcoesHtml=todasSegs.map((seg,i)=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;cursor:pointer;background:${i===0?'#eff6ff':'rgba(255,255,255,.5)'};border:1px solid ${i===0?'#bfdbfe':'var(--brd)'}">
+      <input type="radio" name="semInd" value="${seg}" ${i===0?'checked':''} style="accent-color:#2563eb">
+      <span style="font-size:12px;font-weight:${i===0?'700':'500'};color:${jaColetadas.has(seg)?'#16a34a':'var(--tx)'}">
+        ${fmtLabel(seg)}${i===0?' <span style="font-size:10px;color:#2563eb;font-weight:400">(padrão)</span>':''}
+        ${jaColetadas.has(seg)?'<span style="font-size:10px;color:#16a34a;font-weight:400;margin-left:4px">já coletada</span>':''}
+      </span>
+    </label>`).join('');
 
   const banner=document.getElementById('indBanner');
   banner.className='banner b-warn';
   banner.innerHTML=`
-    <div class="b-title">📊 Para coletar os indicadores, use um dos métodos abaixo</div>
-    <div style="font-size:11px;color:var(--mu);margin-bottom:10px">Período necessário: <strong>${per}</strong></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="b-title">📊 Coletar indicadores — selecione a semana</div>
+    <div id="_indSemOpts" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:220px;overflow-y:auto;padding-right:4px">${opcoesHtml}</div>
+    <div id="_indMetodos" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
         <div style="font-size:11px;font-weight:700;margin-bottom:6px">Método 1 — Console do Chrome (F12)</div>
         <ol class="b-steps">
@@ -4946,24 +4972,54 @@ function coletarIndicadores(){
           <li>Se aparecer "allow pasting" → digite <code>allow pasting</code> e Enter</li>
           <li>Cole o script e pressione Enter</li>
         </ol>
-        <button onclick="copiarScriptInd()" id="copyBtnInd" class="btn bs sm" style="width:100%">📋 Copiar script de indicadores</button>
+        <button onclick="copiarScriptInd()" id="copyBtnInd" class="btn bs sm" style="width:100%">📋 Copiar script</button>
       </div>
       <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
-        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Método 2 — Favorito no Chrome</div>
-        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Arraste para a barra de favoritos. Basta clicar toda semana estando no Órion.</p>
-        <a href="${bm}" style="display:block;background:#2563eb;color:#fff;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-size:12px;font-weight:600;cursor:grab" draggable="true">📈 Coletar Indicadores Órion</a>
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Método 2 — Abrir bookmarklet</div>
+        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Clique no link abaixo estando na aba do Órion aberta.</p>
+        <a id="_bmIndLink" href="javascript:void(0)" onclick="_bmIndClick(event)" style="display:block;background:#2563eb;color:#fff;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer">📈 Executar coleta</a>
       </div>
     </div>
-    <div style="margin-top:10px;font-size:11px;color:var(--mu)">Após clicar no bookmarklet ou rodar o script, esta página será aberta automaticamente com os dados preenchidos.</div>`;
+    <div style="margin-top:10px;font-size:11px;color:var(--mu)">Após rodar o script, esta página será aberta automaticamente com os dados preenchidos.</div>`;
   document.getElementById('indEmp').style.display='none';
 }
 
+function _getSemIndSelecionada(){
+  const r=document.querySelector('input[name="semInd"]:checked');
+  if(!r) return null;
+  const seg=r.value;
+  const d=new Date(seg+'T12:00:00'); d.setDate(d.getDate()+6);
+  const p=v=>String(v).padStart(2,'0');
+  const dom=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+  return{seg,dom};
+}
+
+function _bmIndClick(e){
+  e.preventDefault();
+  const sel=_getSemIndSelecionada();
+  if(!sel){alert('Selecione uma semana.');return;}
+  const script=_bmIndParaSemana(sel.seg,sel.dom);
+  // Tenta executar via bookmarklet no contexto da página atual (só funciona se estiver no Órion)
+  // Caso contrário, copia para a área de transferência com instrução
+  try{
+    // Abre o Orion com o script embutido — usuário precisa estar nessa aba
+    const bm='javascript:'+encodeURIComponent(script);
+    const link=document.getElementById('_bmIndLink');
+    if(link){ link.href=bm; link.onclick=null; link.click(); }
+  }catch(err){
+    copiarScriptInd();
+    alert('Script copiado! Cole no console do Órion (F12 → Console).');
+  }
+}
+
 function copiarScriptInd(){
-  navigator.clipboard.writeText(BM_SCRIPT_IND).catch(()=>{
-    const ta=document.createElement('textarea');ta.value=BM_SCRIPT_IND;ta.style.cssText='position:fixed;opacity:0';
+  const sel=_getSemIndSelecionada&&_getSemIndSelecionada();
+  const script=sel?_bmIndParaSemana(sel.seg,sel.dom):BM_SCRIPT_IND;
+  navigator.clipboard.writeText(script).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=script;ta.style.cssText='position:fixed;opacity:0';
     document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
   });
-  const b=document.getElementById('copyBtnInd');if(b){b.textContent='✓ Copiado!';setTimeout(()=>{b.textContent='📋 Copiar script de indicadores';},2500);}
+  const b=document.getElementById('copyBtnInd');if(b){b.textContent='✓ Copiado!';setTimeout(()=>{b.textContent='📋 Copiar script';},2500);}
 }
 
 function receberDadosIndicadores(payload){
