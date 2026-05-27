@@ -4829,6 +4829,28 @@ function getCustoEscalaSemana(semanaISO){
   }catch(e){ return null; }
 }
 
+function getVolumeSemana(semanaISO){
+  // Retorna totalPed do resumo da escala — usado como fallback para semanas sem coleta
+  try{
+    const he=JSON.parse(localStorage.getItem(KH)||'[]');
+    if(!he.length||!semanaISO) return null;
+    const de=semanaISO.includes('/')?semanaISO.split('/')[0]:semanaISO;
+    const ate=semanaISO.includes('/')?semanaISO.split('/')[1]:null;
+    // Pegar o maior totalPed entre as escalas da semana (evitar dupla contagem entre hubs espelhados)
+    // Usa o maior valor único por segISO — mesma lógica do card de escala
+    const vals=[];
+    he.forEach(e=>{
+      if(e.segISO===de||(ate&&e.domISO===ate)){
+        const v=e.resumo?.totalPed||0;
+        if(v>0) vals.push(v);
+      }
+    });
+    if(!vals.length) return null;
+    // Se há múltiplas escalas na semana, pegar o maior valor (escalas espelhadas têm mesmo totalPed)
+    return Math.max(...vals);
+  }catch(e){ return null; }
+}
+
 // ══════════════════════════════════════════════════════
 // CUSTOS MANUAIS CPP
 // ══════════════════════════════════════════════════════
@@ -5248,7 +5270,16 @@ function renderIndicadores(){
   // ── Métricas do período selecionado (para KPIs)
   const todasVendas=semanasPerido.flatMap(s=>s.vendas||[]);
   const todosCancels=semanasPerido.flatMap(s=>s.cancelamentos||[]);
-  const m=calcularMetricasSemana(todasVendas,todosCancels,hub);
+  const mReal=calcularMetricasSemana(todasVendas,todosCancels,hub);
+  // Para períodos sem coleta, complementar volume com totalPed da escala
+  const _volEscala=semanasPerido.reduce((t,s)=>{
+    if(s._sintetico||(s.vendas||[]).length===0){
+      const v=getVolumeSemana(s.semanaISO);
+      return t+(v||0);
+    }
+    return t;
+  },0);
+  const m={...mReal, volume: mReal.volume>0 ? mReal.volume : _volEscala};
 
   // Período anterior (mesmo tamanho) para comparação
   const nSems=semanasPerido.length;
@@ -5279,7 +5310,8 @@ function renderIndicadores(){
   }[periodo];
 
   // Aviso se mensal e trimestral mostram o mesmo dado (poucas semanas coletadas)
-  const avisoSemanas = nColetadas<=1 && periodo!=='semanal'
+  const _nColetadasNoPeriodo=semanasPerido.filter(s=>!s._sintetico).length;
+  const avisoSemanas = _nColetadasNoPeriodo<=1 && nColetadas<=1 && periodo!=='semanal'
     ? '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:11px;color:#92400e;margin-bottom:12px">⚠️ Apenas 1 semana coletada — mensal e trimestral mostram os mesmos dados. Execute o bookmarklet a cada semana para enriquecer o histórico.</div>'
     : '';
   const _bannerEl=document.getElementById('indBanner');
@@ -5491,7 +5523,10 @@ function renderIndicadores(){
     }
 
     const metricas=grupo.semanas.map(sem=>{
-      const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+      const mtReal=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+      // Para semanas sem coleta, usar volume projetado da escala
+      const volEsc=(!mtReal.volume&&sem._sintetico)?getVolumeSemana(sem.semanaISO):0;
+      const mt={...mtReal, volume: mtReal.volume||volEsc||0, _volDaEscala: !mtReal.volume&&volEsc>0};
       const custoSem=getCustoFiltrado(sem.de);
       const cppSem=custoSem!==null&&mt.volume>0?custoSem/mt.volume:null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
@@ -5518,10 +5553,15 @@ function renderIndicadores(){
       const cppAdicBg=adicionalSem>0?'background:#fff7ed':'';
       const isSint=!!sem._sintetico;
       const semLabel=isSint?`${sem.deBR}–${sem.ateBR} <span style="font-size:9px;color:#6b7280;font-weight:400;background:#f3f4f6;border-radius:3px;padding:1px 4px">só escala</span>`:`${sem.deBR}–${sem.ateBR}`;
-      const tdOp=v=>`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:${isSint?'#9ca3af':'inherit'}">${isSint?'—':v}</td>`;
       tbody+=`<tr style="border-bottom:1px solid var(--brd);${rowBg}${isSint?'background:#fafafa':''}">
         <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap;${rowPad}">${semLabel}</td>
-        ${isSint?`<td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af" colspan="6">— sem coleta</td>`:`
+        ${isSint?`
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mt.volume>0?mt.volume.toLocaleString('pt-BR')+' <span style="font-size:9px;color:#9ca3af">proj.</span>':'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>`:`
         ${celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR'))}
         ${celVar(mt.cancelamentos,prevMt?.cancelamentos,false,v=>v)}
         ${celVar(mt.pctCancel,prevMt?.pctCancel,false,v=>v.toFixed(2)+'%')}
@@ -5582,7 +5622,9 @@ function renderIndicadores(){
 
   document.getElementById('indTabela').innerHTML=thead+tbody;
 
-  const subTxt=`${periodoLabel} · ${todasVendas.length.toLocaleString('pt-BR')} pedidos analisados`;
+  const _volTotalSub=m.volume>0?m.volume:todasVendas.length;
+  const _volSuffix=mReal.volume===0&&_volEscala>0?' (proj.)':'';
+  const subTxt=`${periodoLabel} · ${_volTotalSub.toLocaleString('pt-BR')} pedidos analisados${_volSuffix}`;
   document.getElementById('indSub').textContent=subTxt;
   const _nTotal=hist.length, _nSint=hist.filter(s=>s._sintetico).length;
   const _labelColet=nColetadas>0?`${nColetadas} semana${nColetadas!==1?'s':''} coletada${nColetadas!==1?'s':''}`:`sem coleta`;
