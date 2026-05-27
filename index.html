@@ -635,24 +635,49 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <h4>💰 Custos adicionais para CPP</h4>
             <p style="font-size:11px;color:var(--mu);margin-top:2px">Informe custos que não são calculados automaticamente pela escala</p>
           </div>
-          <div id="cppManualSemanas" class="cpp-semana-sel"></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div id="cppManualSemanas" class="cpp-semana-sel"></div>
+          </div>
+        </div>
+        <div id="cppDefaultsBar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:6px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;font-size:11px;color:#166534">
+          <span>⚙️ Padrão aplicado automaticamente:</span>
+          <span id="cppDefaultsLabel" style="font-weight:600"></span>
+          <button onclick="abrirEditarPadrao()" style="margin-left:auto;background:none;border:1px solid #16a34a;color:#16a34a;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer">Editar padrão</button>
+          <button onclick="aplicarPadraoSemanaAtual()" style="background:none;border:1px solid #6b7280;color:#6b7280;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer" title="Repor valores padrão nesta semana">↺ Repor padrão</button>
+        </div>
+        <!-- Modal editar padrão -->
+        <div id="cppDefaultsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;align-items:center;justify-content:center">
+          <div style="background:#fff;border-radius:12px;padding:24px;min-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+            <h4 style="margin:0 0 4px;font-size:15px">⚙️ Editar custos padrão</h4>
+            <p style="font-size:11px;color:#6b7280;margin:0 0 16px">Aplicados automaticamente em semanas sem valores editados</p>
+            <div style="display:grid;gap:10px">
+              <label style="font-size:12px;font-weight:600">🧹 Limpeza Fixo<br><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:12px">R$</span><input type="number" min="0" step="0.01" id="defLimpezaFixo" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;width:100%;font-size:13px"></div></label>
+              <label style="font-size:12px;font-weight:600">🧽 Freela Limpeza<br><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:12px">R$</span><input type="number" min="0" step="0.01" id="defFreela" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;width:100%;font-size:13px"></div></label>
+              <label style="font-size:12px;font-weight:600">🎧 Atendimento<br><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:12px">R$</span><input type="number" min="0" step="0.01" id="defAtendimento" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;width:100%;font-size:13px"></div></label>
+              <label style="font-size:12px;font-weight:600">➕ Outros<br><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:12px">R$</span><input type="number" min="0" step="0.01" id="defOutros" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;width:100%;font-size:13px"></div></label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:18px">
+              <button onclick="salvarPadrao()" style="flex:1;background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px;font-size:13px;font-weight:600;cursor:pointer">Salvar padrão</button>
+              <button onclick="document.getElementById('cppDefaultsModal').style.display='none'" style="background:#f3f4f6;border:none;border-radius:7px;padding:9px 14px;font-size:13px;cursor:pointer">Cancelar</button>
+            </div>
+          </div>
         </div>
         <div class="cpp-manual-body">
           <div class="cpp-custo-grid">
             <div class="cpp-custo-item">
-              <div class="cpp-custo-label">🧹 Limpeza Fixo</div>
+              <div class="cpp-custo-label">🧹 LIMPEZA FIXO</div>
               <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppLimpezaFixo" placeholder="0,00" oninput="recalcularCppManual()"></div>
             </div>
             <div class="cpp-custo-item">
-              <div class="cpp-custo-label">🧽 Freela Limpeza</div>
+              <div class="cpp-custo-label">🧽 FREELA LIMPEZA</div>
               <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppFreela" placeholder="0,00" oninput="recalcularCppManual()"></div>
             </div>
             <div class="cpp-custo-item">
-              <div class="cpp-custo-label">🎧 Atendimento</div>
+              <div class="cpp-custo-label">🎧 ATENDIMENTO</div>
               <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppAtendimento" placeholder="0,00" oninput="recalcularCppManual()"></div>
             </div>
             <div class="cpp-custo-item">
-              <div class="cpp-custo-label">➕ Outros</div>
+              <div class="cpp-custo-label">➕ OUTROS</div>
               <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppOutros" placeholder="0,00" oninput="recalcularCppManual()"></div>
             </div>
           </div>
@@ -4898,12 +4923,30 @@ function getVolumeSemana(semanaISO){
 // CUSTOS MANUAIS CPP
 // ══════════════════════════════════════════════════════
 const KIND_CPP_MANUAL = 'orion_v7_cpp_manual';
+const KIND_CPP_DEFAULTS = 'orion_v7_cpp_defaults';
+
+// Valores padrão aplicados automaticamente a semanas sem dados manuais
+const CPP_DEFAULTS_FACTORY = {limpezaFixo:840, freela:150, atendimento:378, outros:0};
+
+function getCppDefaults(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(KIND_CPP_DEFAULTS)||'null');
+    return saved||CPP_DEFAULTS_FACTORY;
+  }catch(e){return CPP_DEFAULTS_FACTORY;}
+}
+
+function setCppDefaults(dados){
+  try{ localStorage.setItem(KIND_CPP_DEFAULTS,JSON.stringify(dados)); }catch(e){}
+}
 
 function getCppManualSemana(semanaISO){
   try{
     const d=JSON.parse(localStorage.getItem(KIND_CPP_MANUAL)||'{}');
-    return d[semanaISO]||{limpezaFixo:0,freela:0,atendimento:0,outros:0};
-  }catch(e){return{limpezaFixo:0,freela:0,atendimento:0,outros:0};}
+    // Se a semana tem dados salvos explicitamente, usar esses
+    // Caso contrário, aplicar os padrões
+    if(d[semanaISO]) return d[semanaISO];
+    return {...getCppDefaults()};
+  }catch(e){return {...getCppDefaults()};}
 }
 
 function setCppManualSemana(semanaISO, dados){
@@ -4937,18 +4980,62 @@ function inicializarCppManual(){
     return`<button class="cpp-semana-btn${s.semanaISO===_cppManualSemanaAtiva?' on':''}" onclick="selecionarSemanaManual('${s.semanaISO}')">${lbl}</button>`;
   }).join('');
 
-  // Carregar valores salvos
+  // Carregar valores salvos (ou padrões)
   const d=getCppManualSemana(_cppManualSemanaAtiva);
-  document.getElementById('cppLimpezaFixo').value=d.limpezaFixo||'';
-  document.getElementById('cppFreela').value=d.freela||'';
-  document.getElementById('cppAtendimento').value=d.atendimento||'';
-  document.getElementById('cppOutros').value=d.outros||'';
+  document.getElementById('cppLimpezaFixo').value=d.limpezaFixo>0?d.limpezaFixo:'';
+  document.getElementById('cppFreela').value=d.freela>0?d.freela:'';
+  document.getElementById('cppAtendimento').value=d.atendimento>0?d.atendimento:'';
+  document.getElementById('cppOutros').value=d.outros>0?d.outros:'';
   recalcularCppManual();
+  _atualizarDefaultsBar();
 }
 
 function selecionarSemanaManual(semanaISO){
   _cppManualSemanaAtiva=semanaISO;
   inicializarCppManual();
+}
+
+function _atualizarDefaultsBar(){
+  const def=getCppDefaults();
+  const total=(def.limpezaFixo||0)+(def.freela||0)+(def.atendimento||0)+(def.outros||0);
+  const lbl=document.getElementById('cppDefaultsLabel');
+  if(lbl) lbl.textContent=`Limpeza R$${def.limpezaFixo||0} · Freela R$${def.freela||0} · Atend. R$${def.atendimento||0}${def.outros>0?' · Outros R$'+def.outros:''} = R$${total}`;
+}
+
+function abrirEditarPadrao(){
+  const def=getCppDefaults();
+  document.getElementById('defLimpezaFixo').value=def.limpezaFixo||'';
+  document.getElementById('defFreela').value=def.freela||'';
+  document.getElementById('defAtendimento').value=def.atendimento||'';
+  document.getElementById('defOutros').value=def.outros||0;
+  document.getElementById('cppDefaultsModal').style.display='flex';
+}
+
+function salvarPadrao(){
+  const def={
+    limpezaFixo:parseFloat(document.getElementById('defLimpezaFixo').value)||0,
+    freela:parseFloat(document.getElementById('defFreela').value)||0,
+    atendimento:parseFloat(document.getElementById('defAtendimento').value)||0,
+    outros:parseFloat(document.getElementById('defOutros').value)||0,
+  };
+  setCppDefaults(def);
+  document.getElementById('cppDefaultsModal').style.display='none';
+  _atualizarDefaultsBar();
+  // Reload current week fields with new defaults if not customized
+  inicializarCppManual();
+  renderIndicadores();
+}
+
+function aplicarPadraoSemanaAtual(){
+  if(!_cppManualSemanaAtiva) return;
+  const def=getCppDefaults();
+  setCppManualSemana(_cppManualSemanaAtiva, {...def, _customizado:false});
+  // Clear the customized flag so defaults apply fresh
+  const d=JSON.parse(localStorage.getItem(KIND_CPP_MANUAL)||'{}');
+  delete d[_cppManualSemanaAtiva];
+  localStorage.setItem(KIND_CPP_MANUAL, JSON.stringify(d));
+  inicializarCppManual();
+  renderIndicadores();
 }
 
 function recalcularCppManual(){
@@ -4959,15 +5046,15 @@ function recalcularCppManual(){
   const ot=parseFloat(document.getElementById('cppOutros').value)||0;
   const total=lf+fr+at+ot;
 
-  // Salvar
-  setCppManualSemana(_cppManualSemanaAtiva,{limpezaFixo:lf,freela:fr,atendimento:at,outros:ot});
+  // Salvar (marcar como customizado para não sobrescrever com padrão)
+  setCppManualSemana(_cppManualSemanaAtiva,{limpezaFixo:lf,freela:fr,atendimento:at,outros:ot,_customizado:true});
 
   // Buscar custo escala + volume
   const custoEscala=getCustoEscalaSemana(_cppManualSemanaAtiva)||0;
   const hist=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
   const sem=hist.find(s=>s.semanaISO===_cppManualSemanaAtiva);
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
-  const volume=sem?calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub).volume:0;
+  const volume=sem?calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub,sem).volume:0;
 
   const fmtR=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
   const fmtCpp=v=>volume>0?'R$ '+(v/volume).toFixed(2).replace('.',','):'—';
@@ -8136,7 +8223,7 @@ function exportarIndicadores(){
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
   const linhas=[['Semana','Volume','Cancelamentos','% Cancel.','T.Preparo (min)','T.Coleta (min)','T.Despacho (min)','CPP']];
   hist.forEach(sem=>{
-    const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+    const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub,sem);
     let cppSem='';
     try{
       const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
