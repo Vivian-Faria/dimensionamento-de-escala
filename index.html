@@ -576,6 +576,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <div style="display:flex;gap:6px;align-items:center">
             <button class="btn bs sm" id="coHubBtn-Sion" onclick="filtrarCoHub('Sion')" style="background:var(--tx);color:var(--bg)">Sion</button>
             <button class="btn bs sm" id="coHubBtn-CN" onclick="filtrarCoHub('Cidade Nova')">Cidade Nova</button>
+            <button class="btn bs sm" id="coHubBtn-VS" onclick="filtrarCoHub('Varanda Sion')">Varanda Sion</button>
             <button class="btn ba" onclick="aM()">+ Novo colaborador</button>
           </div>
         </div>
@@ -592,6 +593,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <option value="todos">Todos os hubs</option>
             <option value="Sion">Cozinhas Sion + DS Sion</option>
             <option value="DS Cidade Nova">DS Cidade Nova</option>
+            <option value="Varanda Sion">Varanda Sion</option>
           </select>
           <button class="btn bs sm" onclick="limparHistorico()">🗑 Limpar histórico</button>
         </div>
@@ -739,6 +741,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <option value="todos">Todos os hubs</option>
             <option value="Sion">Sion</option>
             <option value="Cidade Nova">Cidade Nova</option>
+            <option value="Varanda Sion">Varanda Sion</option>
           </select>
           <select id="colHistColab" class="btn bs sm" style="padding:5px 8px;font-size:11px" onchange="renderColHist()">
             <option value="todos">Todos os colaboradores</option>
@@ -1239,6 +1242,7 @@ const HUB_IND_PARA_COLAB = {
   'Sem hub': 'Sion',
   'DS Cidade Nova': 'Cidade Nova',
   'Cidade Nova': 'Cidade Nova',
+  'Varanda Sion': 'Varanda Sion',
 };
 
 // Retorna o hub de colaborador ativo (persiste no localStorage)
@@ -2512,7 +2516,7 @@ let _coHubFiltro='Sion';
 function filtrarCoHub(hub){
   _coHubFiltro=hub;
   document.getElementById('coHubBtn-Sion').style.cssText=hub==='Sion'?'background:var(--tx);color:var(--bg)':'';
-  document.getElementById('coHubBtn-CN').style.cssText=hub==='Cidade Nova'?'background:var(--tx);color:var(--bg)':'';
+  document.getElementById('coHubBtn-CN').style.cssText=hub==='Cidade Nova'?'background:var(--tx);color:var(--bg)':'';const vs=document.getElementById('coHubBtn-VS');if(vs)vs.style.cssText=hub==='Varanda Sion'?'background:var(--tx);color:var(--bg)':''
   renderCo();
 }
 
@@ -2522,7 +2526,7 @@ function renderCo(){
   const lista=todos.filter(c=>(c.hub||'Sion')===_coHubFiltro);
   document.getElementById('sCo').textContent=todos.length;
   if(!lista.length){
-    g.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-ico">👤</div><h3>Nenhum colaborador em ${_coHubFiltro==='Cidade Nova'?'DS Cidade Nova':'Sion'}</h3><p style="margin-top:8px"><button class="btn ba sm" onclick="aM()">+ Adicionar</button></p></div>`;
+    g.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-ico">👤</div><h3>Nenhum colaborador em ${_coHubFiltro==='Cidade Nova'?'DS Cidade Nova':_coHubFiltro}</h3><p style="margin-top:8px"><button class="btn ba sm" onclick="aM()">+ Adicionar</button></p></div>`;
     return;
   }
   g.innerHTML=lista.map((c,i)=>`
@@ -3427,6 +3431,7 @@ function renderHistorico(filtro){
       const hubH=(h.hub||'').toLowerCase();
       if(hubFiltroHi==='Sion'&&!hubH.includes('sion')) return false;
       if(hubFiltroHi==='DS Cidade Nova'&&!hubH.includes('cidade nova')) return false;
+      if(hubFiltroHi==='Varanda Sion'&&!hubH.includes('varanda')) return false;
     }
     return true;
   });
