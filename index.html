@@ -378,6 +378,20 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     </div>
   </div>
 
+  <!-- ADICIONAL NOTURNO -->
+  <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:12px;font-weight:600">🌙 Adicional noturno</div>
+        <div style="font-size:10px;color:var(--mu);margin-top:2px;line-height:1.5">Quando ativo, horas a partir das 22h recebem<br>acréscimo de 20% sobre o custo/hora cadastrado.</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0;margin-left:12px">
+        <input type="checkbox" id="fAdicNoturno" style="width:16px;height:16px;cursor:pointer;accent-color:#7c3aed">
+        Ativar
+      </label>
+    </div>
+  </div>
+
   <div class="mf">
     <button class="btn bd" onclick="fM()">Cancelar</button>
     <button class="btn ba" onclick="salvarC()">Salvar colaborador</button>
@@ -2183,12 +2197,15 @@ function calcularCustos(){
   });
 
   DIAS.forEach(dia=>{
-    Object.values(S.escala[dia]||{}).forEach(cell=>{
+    Object.entries(S.escala[dia]||{}).forEach(([hora,cell])=>{
       if(!cell)return;
+      const h=parseInt(hora);
       let custoHora=0;
       cell.alocados.forEach(nome=>{
         const c=S.colabs.find(x=>x.nome===nome);
-        if(c&&c.custo>0)custoHora+=c.custo;
+        if(!c||c.custo<=0)return;
+        const adicNoturno=(c.adicionalNoturno&&h>=22)?c.custo*0.2:0;
+        custoHora+=c.custo+adicNoturno;
       });
       cell.custo=custoHora;
       cell.custoPorPedido=(custoHora>0&&cell.ped>0)?custoHora/cell.ped:0;
@@ -2570,6 +2587,7 @@ function renderCo(){
           tf.dias.join('/')+' '+String(tf.horaIn).padStart(2,'0')+'h–'+String(tf.horaOut).padStart(2,'0')+'h'
         ).join(' · ')}</div>`;
       })():''}
+      ${c.adicionalNoturno?`<div class="badge-fixo" style="background:rgba(124,58,237,.1);color:#7c3aed;border-color:rgba(124,58,237,.3)">🌙 ADIC. NOTURNO +20% (≥22h)</div>`:''}
       <div class="c-custo">
         <span>R$/h:</span>
         <input type="number" step="0.01" value="${c.custo||''}" placeholder="0,00" onchange="atualizarCusto('${c.id}',this.value)" title="Custo por hora">
@@ -2634,6 +2652,7 @@ function aM(id){
     document.querySelectorAll('.dt').forEach(t=>t.classList.toggle('on',['Seg','Ter','Qua','Qui','Sex'].includes(t.dataset.d)));
   }
   document.getElementById('mCo').style.display='flex';
+  document.getElementById('fAdicNoturno').checked=!!(_c?.adicionalNoturno);
   // Preenche checkbox de turno fixo
   document.getElementById('fFixo').checked=!!(c&&c.fixo);
   setTimeout(()=>document.getElementById('fN').focus(),80);
@@ -2700,7 +2719,7 @@ function salvarC(){
   const turnosFixos=isFixo?dias.map(d=>({dias:[d],horaIn:dispDia[d].horaIn,horaOut:dispDia[d].horaOut})):[];
   const hub=document.getElementById('fHub')?.value||'Sion';
   const tipoContrato=document.getElementById('fTipo')?.value||'hora';
-  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota};
+  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota,adicionalNoturno:document.getElementById('fAdicNoturno')?.checked||false};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
   save();renderCo();fM();atualizarSideRegras();
