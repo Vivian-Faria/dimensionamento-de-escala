@@ -5564,7 +5564,7 @@ function renderIndicadores(){
   // ── CPP do período
   const semanaRef=semanasPerido[0]||hist[0]; // mais recente para CPP de escala
   const custoEscalaPer=semanasPerido.reduce((t,s)=>{
-    const c=getCustoFiltrado(s.de);
+    const c=getCustoEscalaSemana(s.semanaISO);
     return t+(c||0);
   },0);
   const custoManualPer=semanasPerido.reduce((t,s)=>t+getCppManualTotal(s.semanaISO||''),0);
