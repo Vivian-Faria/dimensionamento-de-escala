@@ -1134,8 +1134,10 @@ function abrirSeletorHub(){
   const drop = document.getElementById('hubSeletorDrop');
   const lista = document.getElementById('hubSeletorLista');
   const raw = localStorage.getItem('orion_coleta');
+  const HUBS_FIXOS=['Varanda Sion'];
   let hubs = [];
   if(raw){ try{ const p=JSON.parse(raw); if(p.mxPorHub) hubs=Object.keys(p.mxPorHub).filter(hubVisivel).sort((a,b)=>nomeHub(a).localeCompare(nomeHub(b))); }catch(e){} }
+  HUBS_FIXOS.forEach(h=>{ if(!hubs.includes(h)) hubs.push(h); });
   if(!hubs.length){ montarEscala(); return; }
 
   let totais = {};
@@ -5317,8 +5319,10 @@ function toggleHubDropdown(e){
 function _popularListaHub(){
   const lista=document.getElementById('indHubLista');
   if(!lista)return;
+  const HUBS_FIXOS_IND=['Varanda Sion'];
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
-  const todosHubs=[...new Set(hist.flatMap(h=>h.hubs||[]))].filter(hubVisivel).sort();
+  const hubsDosDados=[...new Set(hist.flatMap(h=>h.hubs||[]))].filter(hubVisivel).sort();
+  const todosHubs=[...new Set([...hubsDosDados,...HUBS_FIXOS_IND])].filter(hubVisivel).sort();
   // Item "Todos"
   const todosMarcado=_hubsTemp.has('todos');
   lista.innerHTML=`<label style="display:flex;align-items:center;gap:10px;padding:7px 14px;cursor:pointer;font-size:12px;color:#f3f4f6;border-bottom:1px solid rgba(255,255,255,.06)"
