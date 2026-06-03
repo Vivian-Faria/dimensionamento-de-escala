@@ -579,8 +579,18 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div class="panel" id="panel-hm">
       <div id="hmEmp" class="empty"><div class="empty-ico">🌡️</div><h3>Sem dados</h3><p>Execute "Montar escala" primeiro.</p></div>
       <div id="hmCon" style="display:none">
-        <div class="sh"><div><h2>Mapa de calor — demanda real</h2><p id="hmSub">—</p></div></div>
-        <div class="card"><div class="card-body" style="overflow-x:auto"><table class="ht" id="hmT"></table></div></div>
+        <div class="sh">
+          <div><h2>Mapas de calor</h2><p id="hmSub">—</p></div>
+          <div class="sh-r" style="gap:8px">
+            <select id="hmPeriodo" class="btn bs sm" style="padding:5px 10px;font-size:12px" onchange="renderHM()">
+              <option value="atual">Semana atual</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
+          <div class="card"><div class="card-body"><div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">🌡 Demanda — pedidos/hora</div><div style="overflow-x:auto"><table class="ht" id="hmT"></table></div></div></div>
+          <div class="card"><div class="card-body"><div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">👥 Força — pessoas/hora</div><div style="overflow-x:auto"><table class="ht" id="hmF"></table></div></div></div>
+        </div>
       </div>
     </div>
 
@@ -2504,32 +2514,64 @@ function renderHM(){
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   document.getElementById('hmEmp').style.display='none';
   document.getElementById('hmCon').style.display='block';
-  let mx=1;DIAS.forEach(d=>Object.values(S.matrix[d]).forEach(v=>{if(v>mx)mx=v;}));
-  const{segAnt,domAnt}=semanaAnterior();
-  document.getElementById('hmSub').textContent=`Pedidos por hora × dia — semana ${fmtBR(segAnt)} a ${fmtBR(domAnt)}`;
-  const tbl=document.getElementById('hmT');
-  tbl.innerHTML=`<thead><tr><th></th>${diasO.map(d=>`<th>${d}</th>`).join('')}<th>Total</th></tr></thead>`;
-  const tb=document.createElement('tbody');
-  for(let h=hI;h<=hO;h++){
-    const hk=String(h<24?h:h-24).padStart(2,'0');
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td class="hh">${fH(h)}</td>`;
-    let rowTot=0;
-    diasO.forEach(dia=>{
-      const v=S.matrix[dia]?.[hk]||0;rowTot+=v;
-      const t=v/mx;
-      const bg=t===0?'#f3f4f6':`rgb(${Math.round(240-(240-22)*t)},${Math.round(253-(253-163)*t)},${Math.round(244-(244-74)*t)})`;
-      const fg=t>0.6?'#065f46':'#374151';
-      const td=document.createElement('td');
-      td.innerHTML=`<div class="hc" style="background:${bg};color:${fg}" title="${dia} ${fH(h)}: ${v} pedidos">${v||''}</div>`;
-      tr.appendChild(td);
-    });
-    tr.innerHTML+=`<td style="padding:0 8px;font-family:var(--mo);font-size:10px;font-weight:700;color:var(--mu)">${rowTot}</td>`;
-    tb.appendChild(tr);
+  const sel=document.getElementById('hmPeriodo');
+  const histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
+  const histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
+  const {segAnt,domAnt}=semanaAnterior();
+  const semAtual=fmtBR(segAnt)+' a '+fmtBR(domAnt);
+  const semanas=new Map();
+  semanas.set('atual','Semana atual ('+semAtual+')');
+  histInd.forEach(s=>{if(s.semanaISO&&s.semana)semanas.set(s.semanaISO,s.semana);});
+  const curVal=sel.value||'atual';
+  sel.innerHTML=[...semanas.entries()].map(([v,l])=>`<option value="${v}"${v===curVal?' selected':''}>${l}</option>`).join('');
+  const periodoSel=sel.value||'atual';
+  let demMatrix=null;
+  if(periodoSel==='atual'){
+    demMatrix=S.matrix;
+    document.getElementById('hmSub').textContent='Semana atual: '+semAtual;
+  } else {
+    const semInd=histInd.find(s=>s.semanaISO===periodoSel);
+    document.getElementById('hmSub').textContent=semInd?.semana||periodoSel;
+    if(semInd&&semInd.vendas?.length){
+      const vendas=semInd.vendas;
+      demMatrix={};
+      diasO.forEach(d=>{demMatrix[d]={};for(let h=hI;h<=hO;h++)demMatrix[d][String(h<24?h:h-24).padStart(2,'0')]=0;});
+      const diasPT=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
+      vendas.forEach(v=>{
+        if(!v.cadastro)return;
+        const dt=new Date(v.cadastro);
+        const dia=diasPT[dt.getDay()];const h=dt.getHours();const hk=String(h).padStart(2,'0');
+        if(demMatrix[dia]&&demMatrix[dia][hk]!==undefined)demMatrix[dia][hk]++;
+      });
+    }
   }
-  tbl.appendChild(tb);
+  const forcaMatrix={};
+  diasO.forEach(d=>{forcaMatrix[d]={};for(let h=hI;h<=hO;h++)forcaMatrix[d][h]=0;});
+  if(periodoSel==='atual'){
+    diasO.forEach(dia=>{for(let h=hI;h<=hO;h++){const cell=S.escala?.[dia]?.[h];forcaMatrix[dia][h]=(cell?.alocados?.length)||0;}});
+  } else {
+    const deStr=periodoSel.split('/')[0];const ateStr=periodoSel.split('/')[1];
+    const escSems=histEsc.filter(e=>e.segISO===deStr||(ateStr&&e.domISO===ateStr));
+    const colabSet={};
+    escSems.forEach(esc=>{Object.entries(esc.confirmacoes||{}).forEach(([nome,conf])=>{(conf.turnos||[]).forEach(t=>{if(t.faltou)return;for(let h=t.ini;h<t.fim;h++){if(h<hI||h>hO)continue;const k=t.dia+'|'+h;if(!colabSet[k])colabSet[k]=new Set();colabSet[k].add(nome);}});});});
+    diasO.forEach(dia=>{for(let h=hI;h<=hO;h++){forcaMatrix[dia][h]=colabSet[dia+'|'+h]?.size||0;}});
+  }
+  function makeTable(tblId,getVal,colorFn,tip){
+    const tbl=document.getElementById(tblId);if(!tbl)return;
+    let mx=0;diasO.forEach(d=>{for(let h=hI;h<=hO;h++){const v=getVal(d,h);if(v>mx)mx=v;}});
+    tbl.innerHTML=`<thead><tr><th></th>${diasO.map(d=>`<th>${d}</th>`).join('')}<th>Total</th></tr></thead>`;
+    const tb=document.createElement('tbody');
+    for(let h=hI;h<=hO;h++){
+      const tr=document.createElement('tr');tr.innerHTML=`<td class="hh">${fH(h)}</td>`;
+      let tot=0;
+      diasO.forEach(dia=>{const v=getVal(dia,h);tot+=v;const {bg,fg}=colorFn(v,mx);const td=document.createElement('td');td.innerHTML=`<div class="hc" style="background:${bg};color:${fg}" title="${tip(dia,h,v)}">${v||''}</div>`;tr.appendChild(td);});
+      tr.innerHTML+=`<td style="padding:0 8px;font-family:var(--mo);font-size:10px;font-weight:700;color:var(--mu)">${tot}</td>`;tb.appendChild(tr);
+    }
+    tbl.appendChild(tb);
+  }
+  if(demMatrix){makeTable('hmT',(d,h)=>demMatrix[d]?.[String(h<24?h:h-24).padStart(2,'0')]||0,(v,mx)=>{const t=mx>0?v/mx:0;return{bg:t===0?'#f3f4f6':`rgb(${Math.round(240-(240-22)*t)},${Math.round(253-(253-163)*t)},${Math.round(244-(244-74)*t)})`,fg:t>0.6?'#065f46':'#374151'};},(d,h,v)=>d+' '+fH(h)+': '+v+' pedidos');}
+  makeTable('hmF',(d,h)=>forcaMatrix[d]?.[h]||0,(v,mx)=>{const t=mx>0?v/mx:0;return{bg:t===0?'#f3f4f6':`rgb(${Math.round(239-(239-37)*t)},${Math.round(246-(246-99)*t)},${Math.round(255-(255-235)*t)})`,fg:t>0.6?'#1e3a5f':'#374151'};},(d,h,v)=>d+' '+fH(h)+': '+v+' pessoa'+(v!==1?'s':''));
 }
-
 // ══════════════════════════════════════════════════════
 // COLABORADORES
 // ══════════════════════════════════════════════════════
