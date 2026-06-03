@@ -4787,8 +4787,8 @@ function diffMinutos(a,b){
 function fmtTempo(minutos){
   if(minutos===null||isNaN(minutos))return'—';
   const h=Math.floor(minutos/60);
-  const m=Math.round(minutos%60);
-  return h>0?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`:`00:${String(m).padStart(2,'0')}`;
+  const m=(minutos%60).toFixed(1);
+  return h>0?`${String(h).padStart(2,'0')}:${m.padStart(4,'0')}`:`00:${m.padStart(4,'0')}`;
 }
 
 function calcVariacao(atual, anterior){
