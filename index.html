@@ -2522,8 +2522,7 @@ function renderHM(){
   const semanas=new Map();
   semanas.set('atual','Semana atual ('+semAtual+')');
   histInd.forEach(s=>{if(s.semanaISO&&s.semana)semanas.set(s.semanaISO,s.semana);});
-  const curVal=sel.value||'atual';
-  sel.innerHTML=[...semanas.entries()].map(([v,l])=>`<option value="${v}"${v===curVal?' selected':''}>${l}</option>`).join('');
+  if(!sel.dataset.init){sel.innerHTML=[...semanas.entries()].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');sel.dataset.init='1';}
   const periodoSel=sel.value||'atual';
   let demMatrix=null;
   if(periodoSel==='atual'){
