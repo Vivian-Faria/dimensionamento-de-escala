@@ -1335,6 +1335,12 @@ function horaPermitidaHub(hub, hora){
 
 function gerarEscala(dados, hubFiltro){
   if(dados) S.params = dados; // salva para re-uso ao navegar semanas
+  // Salvar segISO da semana sendo gerada para preencher() usar a chave certa de disponibilidade
+  try{
+    const {seg:_sg}=proximaSemana();
+    const _p2=v=>String(v).padStart(2,'0');
+    S.escalaSegISO=_sg.getFullYear()+'-'+_p2(_sg.getMonth()+1)+'-'+_p2(_sg.getDate());
+  }catch(e){}
   setLd('Calculando projeção...');
   // hubFiltro pode ser: string, array de strings, ou 'todos'
   const hubFiltro_ = hubFiltro || dados._hubFiltro || 'todos';
@@ -1483,9 +1489,15 @@ function inverter12x36(){
 // ══════════════════════════════════════════════════════
 
 function verRespostasDisp(){
-  const {seg:segProx}=proximaSemana();
-  const p2=v=>String(v).padStart(2,'0');
-  const segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+  // Usa S.escalaSegISO se disponível para achar a chave certa de disponibilidade
+  let segProxISO;
+  if(S.escalaSegISO){
+    segProxISO=S.escalaSegISO;
+  } else {
+    const {seg:segProx}=proximaSemana();
+    const p2=v=>String(v).padStart(2,'0');
+    segProxISO=segProx.getFullYear()+'-'+p2(segProx.getMonth()+1)+'-'+p2(segProx.getDate());
+  }
   const disp=JSON.parse(localStorage.getItem('orion_v7_disp_'+segProxISO)||'{}');
   const nomes=Object.keys(disp).sort();
   if(!nomes.length){toast('Nenhuma resposta ainda.','tok');return;}
@@ -2048,9 +2060,15 @@ function preencher(){
   S.colabs.forEach(c=>{ _custoHora[c.nome] = c.custo||0; });
 
   // Carregar disponibilidades declaradas pelos colaboradores para esta semana
-  const {seg:_segDisp} = proximaSemana();
-  const _p2d=v=>String(v).padStart(2,'0');
-  const _segISODisp=_segDisp.getFullYear()+'-'+_p2d(_segDisp.getMonth()+1)+'-'+_p2d(_segDisp.getDate());
+  // Usa S.escalaSegISO se disponível (evita problema quando _semOffset foi alterado)
+  let _segISODisp;
+  if(S.escalaSegISO){
+    _segISODisp = S.escalaSegISO;
+  } else {
+    const {seg:_segDisp} = proximaSemana();
+    const _p2d=v=>String(v).padStart(2,'0');
+    _segISODisp=_segDisp.getFullYear()+'-'+_p2d(_segDisp.getMonth()+1)+'-'+_p2d(_segDisp.getDate());
+  }
   const _dispSemana = JSON.parse(localStorage.getItem('orion_v7_disp_'+_segISODisp)||'{}');
   // Debug: mostrar quantas respostas foram recebidas
   const _nRespostas = Object.keys(_dispSemana).length;
@@ -4262,6 +4280,9 @@ function restaurarEscalaHistorico(id){
 
   calcularCustos();
   save();
+
+  // Salvar segISO da escala restaurada para preencher() usar a chave certa
+  S.escalaSegISO = entrada.segISO||null;
 
   // Ajustar _semOffset para que proximaSemana() aponte para a semana restaurada
   if(entrada.segISO){
