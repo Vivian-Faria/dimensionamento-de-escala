@@ -4254,8 +4254,18 @@ function restaurarEscalaHistorico(id){
     saveC(); renderColabs();
   }
 
+  // Restaurar params para navegação de semana funcionar
+  try{
+    const col=lerColetaLocal();
+    if(col) S.params=col;
+  }catch(e){}
+
   calcularCustos();
   save();
+
+  // Garante que esCon aparece e esEmp some
+  document.getElementById('esEmp').style.display='none';
+  document.getElementById('esCon').style.display='block';
   renderEscala();
   atualizarCustoTotal();
   if(S.matrix) renderHM();
@@ -4279,7 +4289,8 @@ function setPtConf(nome, segISO, status){
   const h=hist.find(x=>x.segISO===segISO&&(x.hub||'Todos os hubs')===_ha)||hist.find(x=>x.segISO===segISO);
   if(!h){toast('Publique a escala primeiro para registrar confirmações.','ter');return;}
   if(!h.confirmacoes)h.confirmacoes={};
-  if(!h.confirmacoes[nome])h.confirmacoes[nome]={status:'pendente',horasAbatidas:0};
+  if(!h.confirmacoes[nome])h.confirmacoes[nome]={status:'pendente',turnos:[],horasAbatidas:0};
+  if(!h.confirmacoes[nome].turnos)h.confirmacoes[nome].turnos=[];
   h.confirmacoes[nome].status=status;
   if(status==='confirmado')h.confirmacoes[nome].horasAbatidas=0;
   saveKH(hist,'confirmação');
@@ -4685,6 +4696,7 @@ function _confirmarAdicionarTurno(histId, nome){
   const h=hist.find(x=>x.id===histId);
   if(!h||!h.confirmacoes?.[nome]) return;
   _khSnapshot('adicionar turno');
+  if(!h.confirmacoes[nome].turnos) h.confirmacoes[nome].turnos=[];
 
   const horas=fim-ini;
   const novoTurno={dia,ini,fim,horas,faltou:false,horasAbatidas:0};
@@ -4750,7 +4762,8 @@ function setConfirmacao(histId, nome, status){
   const h=hist.find(x=>x.id===histId);
   if(!h)return;
   if(!h.confirmacoes)h.confirmacoes={};
-  if(!h.confirmacoes[nome])h.confirmacoes[nome]={status:'pendente',horasAbatidas:0};
+  if(!h.confirmacoes[nome])h.confirmacoes[nome]={status:'pendente',turnos:[],horasAbatidas:0};
+  if(!h.confirmacoes[nome].turnos)h.confirmacoes[nome].turnos=[];
   h.confirmacoes[nome].status=status;
   if(status==='confirmado')h.confirmacoes[nome].horasAbatidas=0;
   saveKH(hist,'confirmação');
