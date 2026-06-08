@@ -1189,18 +1189,26 @@ function abrirSeletorHub(){
     const total = (totais[h]||0).toLocaleString('pt-BR');
     const sel = _hubsSelecionados.has(h);
     const chk = sel ? 'checked' : '';
-    const selBg = sel ? 'background:#f0fdf4;' : '';
-    return `<label style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;font-size:12px;color:var(--tx);transition:.1s;${selBg}"
-      onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='${sel?'#f0fdf4':''}'"
-      onclick="event.preventDefault();const cb=this.querySelector('input[type=checkbox]');cb.checked=!cb.checked;toggleHubSeletor(cb);Array.from(document.querySelectorAll('#hubSeletorLista label')).forEach(l=>{const c2=l.querySelector('input');l.style.background=c2&&c2.checked?'#f0fdf4':'';})">
+    return `<label data-hub-label="${h.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;font-size:12px;color:var(--tx);border-bottom:1px solid var(--brd);${sel?'background:#f0fdf4;':''}"
+      onclick="(function(el){
+        const cb=el.querySelector('input[type=checkbox]');
+        cb.checked=!cb.checked;
+        toggleHubSeletor(cb);
+        document.querySelectorAll('#hubSeletorLista label').forEach(l=>{
+          const c2=l.querySelector('input');
+          l.style.background=c2&&c2.checked?'#f0fdf4':'';
+          const ck=l.querySelector('.hub-check-icon');
+          if(ck) ck.style.display=c2&&c2.checked?'inline':'none';
+        });
+      })(this)">
       <input type="checkbox" ${chk} data-hub="${h.replace(/"/g,'&quot;')}"
         style="width:15px;height:15px;accent-color:#16a34a;cursor:pointer;flex-shrink:0"
         onclick="event.stopPropagation()">
       <div style="flex:1">
         <div style="font-weight:600;font-size:12px">${nome}</div>
-        <div style="font-size:10px;color:var(--mu);margin-top:1px">${total ? total+' ped. semana ant.' : 'sem dados coletados'}</div>
+        <div style="font-size:10px;color:var(--mu);margin-top:1px">${total ? total+' ped.' : 'sem dados coletados'}</div>
       </div>
-      ${sel ? '<span style="color:#16a34a;font-size:14px;font-weight:700">✓</span>' : ''}
+      <span class="hub-check-icon" style="color:#16a34a;font-size:15px;font-weight:700;display:${sel?'inline':'none'}">✓</span>
     </label>`;
   }).join('');
 
@@ -4192,13 +4200,48 @@ function restaurarEscalaHistorico(id){
   const entrada=hist.find(h=>h.id===id);
   if(!entrada)return;
   if(!confirm('Restaurar esta escala como a atual? A escala atual será sobrescrita.'))return;
-  S.escala=JSON.parse(JSON.stringify(entrada.escala));
+
+  // Começa com a escala base (estrutura de pedidos por slot)
+  const escalaBase=JSON.parse(JSON.stringify(entrada.escala));
+
+  // Reconstruir alocados de cada slot a partir dos confirmacoes.turnos (que têm edições manuais)
+  // Primeiro, zera todos os alocados da escala base
+  if(entrada.confirmacoes&&Object.keys(entrada.confirmacoes).length>0){
+    const DIAS_='Dom,Seg,Ter,Qua,Qui,Sex,Sab'.split(',');
+    // Zerar alocados em todos os slots
+    DIAS_.forEach(dia=>{
+      if(!escalaBase[dia]) return;
+      Object.keys(escalaBase[dia]).forEach(h=>{
+        if(escalaBase[dia][h]) escalaBase[dia][h].alocados=[];
+      });
+    });
+    // Repopular alocados conforme os turnos (editados) de cada colaborador
+    Object.entries(entrada.confirmacoes).forEach(([nome,conf])=>{
+      const turnos=conf.turnos||[];
+      turnos.forEach(t=>{
+        if(t.faltou) return; // Não repõe quem faltou
+        const hI=t.ini, hF=t.fim;
+        for(let h=hI;h<hF;h++){
+          if(!escalaBase[t.dia]) escalaBase[t.dia]={};
+          if(!escalaBase[t.dia][h]){
+            // Slot que não existia (turno adicionado manualmente) — cria estrutura mínima
+            escalaBase[t.dia][h]={alocados:[],ped:0,pessoas:1,custo:0};
+          }
+          if(!escalaBase[t.dia][h].alocados) escalaBase[t.dia][h].alocados=[];
+          if(!escalaBase[t.dia][h].alocados.includes(nome)){
+            escalaBase[t.dia][h].alocados.push(nome);
+          }
+        }
+      });
+    });
+  }
+
+  S.escala=escalaBase;
 
   // Restaurar matrix de demanda se existir na entrada do histórico
   if(entrada.matrix){
     S.matrix=JSON.parse(JSON.stringify(entrada.matrix));
   } else {
-    // Tentar reconstruir matrix a partir dos dados de coleta do localStorage
     try{
       const coleta=lerColetaLocal();
       if(coleta&&coleta.mx) S.matrix=coleta.mx;
@@ -4221,7 +4264,7 @@ function restaurarEscalaHistorico(id){
   renderEscala();
   atualizarCustoTotal();
   if(S.matrix) renderHM();
-  toast('↩ Escala restaurada! Você está vendo a semana '+entrada.semana,'tok');
+  toast('↩ Escala restaurada com horários atualizados! Semana '+entrada.semana,'tok');
   goT('es');
 }
 
