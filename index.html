@@ -4263,9 +4263,21 @@ function restaurarEscalaHistorico(id){
   calcularCustos();
   save();
 
-  // Garante que esCon aparece e esEmp some
+  // Ajustar _semOffset para que proximaSemana() aponte para a semana restaurada
+  if(entrada.segISO){
+    try{
+      const segRest=new Date(entrada.segISO+'T12:00:00');
+      const{segAnt}=semanaAnterior();
+      // proxima semana padrão (offset=0) = segAnt + 14 dias
+      const segPadrao=new Date(segAnt);segPadrao.setDate(segAnt.getDate()+14);
+      const diffMs=segRest.getTime()-segPadrao.getTime();
+      _semOffset=Math.round(diffMs/(7*24*3600*1000));
+    }catch(e){_semOffset=0;}
+  }
+
   document.getElementById('esEmp').style.display='none';
   document.getElementById('esCon').style.display='block';
+  _atualizarLabelSemanaEscala();
   renderEscala();
   atualizarCustoTotal();
   if(S.matrix) renderHM();
