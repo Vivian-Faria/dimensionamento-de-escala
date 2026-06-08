@@ -5095,6 +5095,41 @@ function calcularMetricasSemana(vendas, cancelamentos, hub){
   };
 }
 
+// Wrapper que usa _metricas quando vendas[] está vazio (bookmarklet legado)
+function calcularMetricasSem(sem, hub){
+  // Se tem vendas brutas, calcula normalmente
+  if(sem.vendas&&sem.vendas.length>0){
+    return calcularMetricasSemana(sem.vendas||[], sem.cancelamentos||[], hub);
+  }
+  // Se tem _metricas pré-calculadas, usa diretamente
+  if(sem._metricas){
+    const mt=sem._metricas;
+    // Se hub é todos ou não filtra por hub, retorna direto
+    const hubSet=hub instanceof Set?hub:new Set([hub]);
+    const todos=hubSet.has('todos');
+    // _metricas tem hubVol com volume por hub — filtra se necessário
+    let vol=mt.volume||0;
+    let canc=mt.cancelamentos||0;
+    if(!todos&&mt.hubVol){
+      const hubsAtivos=[...hubSet];
+      vol=hubsAtivos.reduce((s,h)=>s+(mt.hubVol[h]||0),0);
+      // Proporção aproximada de cancelamentos
+      canc=vol>0&&mt.volume>0?Math.round(mt.cancelamentos*(vol/mt.volume)):0;
+    }
+    return {
+      volume: vol,
+      cancelamentos: canc,
+      pctCancel: (vol+canc)>0?(canc/(vol+canc)*100):0,
+      tPreparoMed: mt.tPreparoMed||null,
+      tColetaMed: mt.tColetaMed||null,
+      tDespachoMed: mt.tDespachoMed||null,
+      amostras: mt.amostras||{preparo:0,coleta:0,despacho:0},
+    };
+  }
+  // Sem dados: retorna zeros
+  return {volume:0,cancelamentos:0,pctCancel:0,tPreparoMed:null,tColetaMed:null,tDespachoMed:null,amostras:{preparo:0,coleta:0,despacho:0}};
+}
+
 // CPP por hub: custo total da escala (mesmo para todos) ÷ volume de pedidos do hub
 // O custo da escala não é separado por hub — a equipe é compartilhada
 function calcularCppPorHub(volumeHub, custoEscala){
@@ -5197,7 +5232,7 @@ function recalcularCppManual(){
   const hist=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
   const sem=hist.find(s=>s.semanaISO===_cppManualSemanaAtiva);
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
-  const volume=sem?calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub).volume:0;
+  const volume=sem?calcularMetricasSem(sem,hub).volume:0;
 
   const fmtR=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
   const fmtCpp=v=>volume>0?'R$ '+(v/volume).toFixed(2).replace('.',','):'—';
@@ -5480,13 +5515,23 @@ function renderIndicadores(){
   // ── Métricas do período selecionado (para KPIs)
   const todasVendas=semanasPerido.flatMap(s=>s.vendas||[]);
   const todosCancels=semanasPerido.flatMap(s=>s.cancelamentos||[]);
-  const m=calcularMetricasSemana(todasVendas,todosCancels,hub);
+  // Agrega métricas de todas as semanas do período, suportando _metricas legado
+  const _mtsPerido=semanasPerido.map(s=>calcularMetricasSem(s,hub));
+  const _avgNP=arr=>{const f=arr.filter(v=>v!==null);return f.length?f.reduce((a,b)=>a+b,0)/f.length:null;};
+  const m={
+    volume:_mtsPerido.reduce((s,mt)=>s+mt.volume,0),
+    cancelamentos:_mtsPerido.reduce((s,mt)=>s+mt.cancelamentos,0),
+    pctCancel:_avgNP(_mtsPerido.map(mt=>mt.pctCancel)),
+    tPreparoMed:_avgNP(_mtsPerido.map(mt=>mt.tPreparoMed)),
+    tColetaMed:_avgNP(_mtsPerido.map(mt=>mt.tColetaMed)),
+    tDespachoMed:_avgNP(_mtsPerido.map(mt=>mt.tDespachoMed)),
+  };
 
   // Período anterior (mesmo tamanho) para comparação
   const nSems=semanasPerido.length;
   const semanasAnt=hist.slice(nSems, nSems*2);
   const mAnt=semanasAnt.length
-    ? calcularMetricasSemana(semanasAnt.flatMap(s=>s.vendas||[]),semanasAnt.flatMap(s=>s.cancelamentos||[]),hub)
+    ? (()=>{const _ma=semanasAnt.map(s=>calcularMetricasSem(s,hub));const _an=arr=>{const f=arr.filter(v=>v!==null);return f.length?f.reduce((a,b)=>a+b,0)/f.length:null;};return{volume:_ma.reduce((s,m)=>s+m.volume,0),cancelamentos:_ma.reduce((s,m)=>s+m.cancelamentos,0),pctCancel:_an(_ma.map(m=>m.pctCancel)),tPreparoMed:_an(_ma.map(m=>m.tPreparoMed)),tColetaMed:_an(_ma.map(m=>m.tColetaMed)),tDespachoMed:_an(_ma.map(m=>m.tDespachoMed))};})()
     : null;
 
   // ── CPP do período — getCustoEscalaSemana (histEscMap ainda não inicializado aqui)
@@ -5545,7 +5590,7 @@ function renderIndicadores(){
     const totalGeral = m.volume;
     if(!totalGeral) return '';
     const rows = hubsAtivos.map(h=>{
-      const mH = calcularMetricasSemana(todasVendas, todosCancels, new Set([h]));
+      const mH = (()=>{const _mhArr=semanasPerido.map(s=>calcularMetricasSem(s,new Set([h])));const _ahn=arr=>{const f=arr.filter(v=>v!==null);return f.length?f.reduce((a,b)=>a+b,0)/f.length:null;};return{volume:_mhArr.reduce((s,m)=>s+m.volume,0),cancelamentos:_mhArr.reduce((s,m)=>s+m.cancelamentos,0),pctCancel:_ahn(_mhArr.map(m=>m.pctCancel)),tPreparoMed:_ahn(_mhArr.map(m=>m.tPreparoMed)),tColetaMed:_ahn(_mhArr.map(m=>m.tColetaMed)),tDespachoMed:_ahn(_mhArr.map(m=>m.tDespachoMed))};})();
       const pct = totalGeral > 0 ? (mH.volume / totalGeral * 100) : 0;
       return { nome: nomeHub(h), vol: mH.volume, pct };
     }).sort((a,b) => b.vol - a.vol);
@@ -5697,11 +5742,17 @@ function renderIndicadores(){
 
     if(isTrimestral && grupo.semanas.length>1){
       // Linha de totais + linha de cada semana expandível
-      const mtGrupo = calcularMetricasSemana(
-        grupo.semanas.flatMap(s=>s.vendas||[]),
-        grupo.semanas.flatMap(s=>s.cancelamentos||[]),
-        hub
-      );
+      // Agrega métricas do grupo usando calcularMetricasSem (suporta _metricas legado)
+      const _mtsG=grupo.semanas.map(s=>calcularMetricasSem(s,hub));
+      const _avgG=arr=>{const f=arr.filter(v=>v!==null);return f.length?f.reduce((a,b)=>a+b,0)/f.length:null;};
+      const mtGrupo={
+        volume:_mtsG.reduce((s,m)=>s+m.volume,0),
+        cancelamentos:_mtsG.reduce((s,m)=>s+m.cancelamentos,0),
+        pctCancel:_avgG(_mtsG.map(m=>m.pctCancel)),
+        tPreparoMed:_avgG(_mtsG.map(m=>m.tPreparoMed)),
+        tColetaMed:_avgG(_mtsG.map(m=>m.tColetaMed)),
+        tDespachoMed:_avgG(_mtsG.map(m=>m.tDespachoMed)),
+      };
       const escDataGrupo=grupo.semanas.map(s=>getCustoFiltrado(s.de)).filter(v=>v!==null);
       const custoGrupo=escDataGrupo.reduce((t,v)=>t+v,0);
       const avgCpp=custoGrupo>0&&mtGrupo.volume>0?custoGrupo/mtGrupo.volume:null;
@@ -5723,7 +5774,7 @@ function renderIndicadores(){
     }
 
     const metricas=grupo.semanas.map(sem=>{
-      const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+      const mt=calcularMetricasSem(sem,hub);
       const custoSem=getCustoFiltrado(sem.de);
       const cppSem=custoSem!==null&&mt.volume>0?custoSem/mt.volume:null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
@@ -5911,11 +5962,16 @@ function gerarRelatorioIndicadores(){
   }
 
   function calcGrupo(semanas){
-    return calcularMetricasSemana(
-      semanas.flatMap(s=>s.vendas||[]),
-      semanas.flatMap(s=>s.cancelamentos||[]),
-      hub
-    );
+    const _mg=semanas.map(s=>calcularMetricasSem(s,hub));
+    const _an=arr=>{const f=arr.filter(v=>v!==null);return f.length?f.reduce((a,b)=>a+b,0)/f.length:null;};
+    return{
+      volume:_mg.reduce((s,m)=>s+m.volume,0),
+      cancelamentos:_mg.reduce((s,m)=>s+m.cancelamentos,0),
+      pctCancel:_an(_mg.map(m=>m.pctCancel)),
+      tPreparoMed:_an(_mg.map(m=>m.tPreparoMed)),
+      tColetaMed:_an(_mg.map(m=>m.tColetaMed)),
+      tDespachoMed:_an(_mg.map(m=>m.tDespachoMed)),
+    };
   }
 
   function var$(atual,ant,inverso=false){
@@ -8216,7 +8272,7 @@ function exportarIndicadores(){
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
   const linhas=[['Semana','Volume','Cancelamentos','% Cancel.','T.Preparo (min)','T.Coleta (min)','T.Despacho (min)','CPP']];
   hist.forEach(sem=>{
-    const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+    const mt=calcularMetricasSem(sem,hub);
     let cppSem='';
     try{
       const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
