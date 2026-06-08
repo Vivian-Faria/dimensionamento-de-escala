@@ -332,9 +332,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div class="fr">
     <div class="fg">
       <label>Hub</label>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <div style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.05em">Hubs</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <div id="fHubWrap">
+        <div style="display:flex;flex-direction:row;gap:10px;flex-wrap:wrap">
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Sion" style="accent-color:var(--ac)"> Sion</label>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Cidade Nova" style="accent-color:var(--ac)"> DS Cidade Nova</label>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Varanda Sion" style="accent-color:var(--ac)"> Varanda Sion</label>
@@ -1025,9 +1024,7 @@ let _semOffset=0; // 0 = próxima semana padrão, -1 = semana atual, +1 = semana
 function _mudarSemanaEscala(delta){
   _semOffset+=delta;
   _atualizarLabelSemanaEscala();
-  // Remontar com nova semana se já tem escala montada
-  if(S.escala) gerarEscala(S.params, S.hubAtual?S._hubFiltroAtual:undefined);
-  else renderEscala();
+  renderEscala();
 }
 
 function _atualizarLabelSemanaEscala(){
@@ -5654,7 +5651,10 @@ function renderIndicadores(){
     }
 
     const metricas=grupo.semanas.map(sem=>{
-      const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
+      let mt;
+      if(sem.vendas?.length){mt=calcularMetricasSemana(sem.vendas,sem.cancelamentos||[],hub);}
+      else if(sem._metricas){mt=sem._metricas;}
+      else{mt=calcularMetricasSemana([],[],hub);}
       const custoSem=getCustoFiltrado(sem.de);
       const cppSem=custoSem!==null&&mt.volume>0?custoSem/mt.volume:null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
