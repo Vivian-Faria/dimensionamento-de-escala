@@ -333,11 +333,10 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div class="fg">
       <label>Hub</label>
       <div style="display:flex;flex-direction:column;gap:6px">
-        <div style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.05em">Hubs</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px">
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Sion" style="accent-color:var(--ac)"> Sion</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Cidade Nova" style="accent-color:var(--ac)"> DS Cidade Nova</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Varanda Sion" style="accent-color:var(--ac)"> Varanda Sion</label>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500"><input type="checkbox" class="fHubChk" value="Sion" style="accent-color:var(--ac);width:15px;height:15px"> Sion</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500"><input type="checkbox" class="fHubChk" value="Cidade Nova" style="accent-color:var(--ac);width:15px;height:15px"> DS Cidade Nova</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500"><input type="checkbox" class="fHubChk" value="Varanda Sion" style="accent-color:var(--ac);width:15px;height:15px"> Varanda Sion</label>
         </div>
         <input type="hidden" id="fHub" value="Sion">
       </div>
@@ -1335,6 +1334,7 @@ function horaPermitidaHub(hub, hora){
 }
 
 function gerarEscala(dados, hubFiltro){
+  if(dados) S.params = dados; // salva para re-uso ao navegar semanas
   setLd('Calculando projeção...');
   // hubFiltro pode ser: string, array de strings, ou 'todos'
   const hubFiltro_ = hubFiltro || dados._hubFiltro || 'todos';
@@ -3712,14 +3712,15 @@ function renderHistorico(filtro){
           turnosNaEscala.push({dia,ini:g[0],fim:g[g.length-1]+1,horas:g.length});
         });
       }
-      if(!turnosNaEscala.length)return;
       const turnosConf=confs[nome].turnos||[];
-      // Só reconstruir se confirmações estiver VAZIA (nunca foi preenchida)
-      // Não sobrescrever se colaborador já tem turnos confirmados manualmente editados
       if(turnosConf.length===0){
+        // Sem turnos salvos e sem slots na escala → nada a mostrar
+        if(!turnosNaEscala.length)return;
+        // Reconstruir a partir da escala
         confs[nome].turnos=turnosNaEscala.map(t=>({...t,faltou:false,horasAbatidas:0}));
         _persistirCorrecaoConfs=true;
       }
+      // Se já tem turnos (adicionados manualmente ou via publicação), mostra sempre
       // Garantir que horas está definido em todos os turnos (fix para entradas antigas)
       confs[nome].turnos=(confs[nome].turnos||[]).map(t=>({
         ...t,
@@ -4201,36 +4202,36 @@ function restaurarEscalaHistorico(id){
   if(!entrada)return;
   if(!confirm('Restaurar esta escala como a atual? A escala atual será sobrescrita.'))return;
 
-  // Começa com a escala base (estrutura de pedidos por slot)
-  const escalaBase=JSON.parse(JSON.stringify(entrada.escala));
+  // Base: cópia profunda da escala salva
+  const escalaBase=JSON.parse(JSON.stringify(entrada.escala||{}));
+  const DIAS_ALL=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 
-  // Reconstruir alocados de cada slot a partir dos confirmacoes.turnos (que têm edições manuais)
-  // Primeiro, zera todos os alocados da escala base
-  if(entrada.confirmacoes&&Object.keys(entrada.confirmacoes).length>0){
-    const DIAS_='Dom,Seg,Ter,Qua,Qui,Sex,Sab'.split(',');
-    // Zerar alocados em todos os slots
-    DIAS_.forEach(dia=>{
-      if(!escalaBase[dia]) return;
-      Object.keys(escalaBase[dia]).forEach(h=>{
-        if(escalaBase[dia][h]) escalaBase[dia][h].alocados=[];
+  // Se há confirmações com turnos (incluindo edições manuais),
+  // reconstrói os alocados do zero a partir deles
+  const confs=entrada.confirmacoes||{};
+  const temTurnos=Object.values(confs).some(c=>(c.turnos||[]).length>0);
+
+  if(temTurnos){
+    // 1. Zera alocados em todos os slots existentes
+    DIAS_ALL.forEach(dia=>{
+      if(!escalaBase[dia])return;
+      Object.keys(escalaBase[dia]).forEach(hk=>{
+        const slot=escalaBase[dia][hk];
+        if(slot) slot.alocados=[];
       });
     });
-    // Repopular alocados conforme os turnos (editados) de cada colaborador
-    Object.entries(entrada.confirmacoes).forEach(([nome,conf])=>{
-      const turnos=conf.turnos||[];
-      turnos.forEach(t=>{
-        if(t.faltou) return; // Não repõe quem faltou
-        const hI=t.ini, hF=t.fim;
-        for(let h=hI;h<hF;h++){
+    // 2. Repopula slot a slot conforme turnos de cada colaborador
+    Object.entries(confs).forEach(([nome,conf])=>{
+      (conf.turnos||[]).forEach(t=>{
+        if(t.faltou) return;
+        for(let h=t.ini;h<t.fim;h++){
           if(!escalaBase[t.dia]) escalaBase[t.dia]={};
-          if(!escalaBase[t.dia][h]){
-            // Slot que não existia (turno adicionado manualmente) — cria estrutura mínima
+          if(!escalaBase[t.dia][h])
             escalaBase[t.dia][h]={alocados:[],ped:0,pessoas:1,custo:0};
-          }
-          if(!escalaBase[t.dia][h].alocados) escalaBase[t.dia][h].alocados=[];
-          if(!escalaBase[t.dia][h].alocados.includes(nome)){
+          if(!escalaBase[t.dia][h].alocados)
+            escalaBase[t.dia][h].alocados=[];
+          if(!escalaBase[t.dia][h].alocados.includes(nome))
             escalaBase[t.dia][h].alocados.push(nome);
-          }
         }
       });
     });
@@ -4238,25 +4239,19 @@ function restaurarEscalaHistorico(id){
 
   S.escala=escalaBase;
 
-  // Restaurar matrix de demanda se existir na entrada do histórico
+  // Restaurar matrix de demanda (salva ao publicar, ou do cache local)
   if(entrada.matrix){
     S.matrix=JSON.parse(JSON.stringify(entrada.matrix));
   } else {
-    try{
-      const coleta=lerColetaLocal();
-      if(coleta&&coleta.mx) S.matrix=coleta.mx;
-    }catch(e){}
+    try{ const col=lerColetaLocal(); if(col?.mx) S.matrix=col.mx; }catch(e){}
   }
 
-  // Restaurar hub info
-  if(entrada.hub) S.hubAtual=entrada.hub;
-  if(entrada.hubFiltro) S._hubFiltroAtual=entrada.hubFiltro;
-
-  // Restaurar colaboradores do momento da publicação se necessário
-  if(entrada.colabs&&entrada.colabs.length>0&&S.colabs.length===0){
+  // Restaurar hub e colaboradores
+  if(entrada.hub!==undefined) S.hubAtual=entrada.hub;
+  if(entrada.hubFiltro!==undefined) S._hubFiltroAtual=entrada.hubFiltro;
+  if(entrada.colabs?.length>0){
     S.colabs=JSON.parse(JSON.stringify(entrada.colabs));
-    saveC();
-    renderColabs();
+    saveC(); renderColabs();
   }
 
   calcularCustos();
@@ -4264,7 +4259,7 @@ function restaurarEscalaHistorico(id){
   renderEscala();
   atualizarCustoTotal();
   if(S.matrix) renderHM();
-  toast('↩ Escala restaurada com horários atualizados! Semana '+entrada.semana,'tok');
+  toast('↩ Escala restaurada! Semana: '+entrada.semana,'tok');
   goT('es');
 }
 
