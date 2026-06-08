@@ -235,7 +235,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 .hb-pub{background:#dcfce7;color:#166534;border:1px solid #86efac}
 .hb-rascunho{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
 .hist-meta{font-size:11px;color:var(--mu);margin-left:auto}
-.hist-resumo{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;padding:12px 18px;background:var(--card2);border-bottom:1px solid var(--brd)}
+.hist-resumo{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;padding:12px 18px;background:var(--card2);border-bottom:1px solid var(--brd)}
 .hist-stat{text-align:center}
 .hist-stat-v{font-size:16px;font-weight:700;font-family:var(--mo);color:var(--ac)}
 .hist-stat-l{font-size:10px;color:var(--mu);margin-top:1px}
@@ -332,11 +332,15 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div class="fr">
     <div class="fg">
       <label>Hub</label>
-      <select id="fHub">
-        <option value="Sion">Sion (DS Sion + Cozinhas Sion)</option>
-        <option value="Cidade Nova">DS Cidade Nova</option>
-        <option value="Varanda Sion">Varanda Sion</option>
-      </select>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.05em">Hubs</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Sion" style="accent-color:var(--ac)"> Sion</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Cidade Nova" style="accent-color:var(--ac)"> DS Cidade Nova</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fHubChk" value="Varanda Sion" style="accent-color:var(--ac)"> Varanda Sion</label>
+        </div>
+        <input type="hidden" id="fHub" value="Sion">
+      </div>
     </div>
     <div class="fg">
       <label>Tipo de contrato</label>
@@ -383,7 +387,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-size:12px;font-weight:600">🌙 Adicional noturno</div>
-        <div style="font-size:10px;color:var(--mu);margin-top:2px;line-height:1.5">Quando ativo, horas a partir das 22h recebem<br>acréscimo de 20% sobre o custo/hora cadastrado.</div>
+        <div style="font-size:10px;color:var(--mu);margin-top:2px;line-height:1.5">Quando ativo, horas trabalhadas a partir das 22h<br>recebem acréscimo de 20% sobre o custo/hora.</div>
       </div>
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0;margin-left:12px">
         <input type="checkbox" id="fAdicNoturno" style="width:16px;height:16px;cursor:pointer;accent-color:#7c3aed">
@@ -484,8 +488,16 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       </div>
       <div id="esCon" style="display:none">
         <div class="sh">
-          <div><h2>Projeção da próxima semana</h2><p id="esSub">—</p></div>
-          <div class="sh-r">
+          <div>
+            <h2 id="esTitulo">Projeção da próxima semana</h2>
+            <p id="esSub">—</p>
+          </div>
+          <div class="sh-r" style="gap:6px;flex-wrap:wrap;align-items:center">
+            <div style="display:flex;align-items:center;gap:4px;background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:2px 4px">
+              <button class="btn bs sm" onclick="_mudarSemanaEscala(-1)" title="Semana anterior">‹</button>
+              <span id="esSemLabel" style="font-size:11px;font-weight:600;color:var(--tx);padding:0 6px;white-space:nowrap">—</span>
+              <button class="btn bs sm" onclick="_mudarSemanaEscala(+1)" title="Próxima semana">›</button>
+            </div>
             <button class="btn bs" onclick="inverter12x36()" id="btn12x36" title="Inverte quais dias cada colaborador 12x36 trabalha nesta semana" style="display:none">↔ Inverter 12x36</button>
             <button class="btn bs" onclick="abrirPainelTurnos()">📋 Painel de turnos</button>
             <button class="btn bs sm" onclick="limpar()">↺ Limpar</button>
@@ -588,8 +600,18 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
-          <div class="card"><div class="card-body"><div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">🌡 Demanda — pedidos/hora</div><div style="overflow-x:auto"><table class="ht" id="hmT"></table></div></div></div>
-          <div class="card"><div class="card-body"><div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">👥 Força — pessoas/hora</div><div style="overflow-x:auto"><table class="ht" id="hmF"></table></div></div></div>
+          <div class="card">
+            <div class="card-body">
+              <div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">🌡 Demanda — pedidos/hora</div>
+              <div style="overflow-x:auto"><table class="ht" id="hmT"></table></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div style="font-size:12px;font-weight:700;color:var(--mu);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">👥 Força — pessoas escaladas/hora</div>
+              <div style="overflow-x:auto"><table class="ht" id="hmF"></table></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -663,49 +685,24 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <h4>💰 Custos adicionais para CPP</h4>
             <p style="font-size:11px;color:var(--mu);margin-top:2px">Informe custos que não são calculados automaticamente pela escala</p>
           </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <div id="cppManualSemanas" class="cpp-semana-sel"></div>
-          </div>
-        </div>
-        <div id="cppDefaultsBar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:6px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;font-size:11px;color:#166534">
-          <span>⚙️ Padrão aplicado automaticamente:</span>
-          <span id="cppDefaultsLabel" style="font-weight:600"></span>
-          <button onclick="abrirEditarPadrao()" style="margin-left:auto;background:none;border:1px solid #16a34a;color:#16a34a;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer">Editar padrão</button>
-          <button onclick="aplicarPadraoSemanaAtual()" style="background:none;border:1px solid #6b7280;color:#6b7280;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer" title="Repor valores padrão nesta semana">↺ Repor padrão</button>
-        </div>
-        <!-- Modal editar padrão -->
-        <div id="cppDefaultsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;align-items:center;justify-content:center">
-          <div style="background:#fff;border-radius:12px;padding:24px;min-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-            <h4 style="margin:0 0 4px;font-size:15px">⚙️ Editar custos padrão</h4>
-            <p style="font-size:11px;color:#6b7280;margin:0 0 16px">Aplicados automaticamente em semanas sem valores editados</p>
-            <div style="display:grid;gap:10px">
-              <label style="font-size:12px;font-weight:600">🧹 Limpeza Fixo<br><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:12px">R$</span><input type="number" min="0" step="0.01" id="defLimpezaFixo" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;width:100%;font-size:13px"></div></label>
-              <label style="font-size:12px;font-weight:600">🧽 Freela Limpeza<br><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:12px">R$</span><input type="number" min="0" step="0.01" id="defFreela" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;width:100%;font-size:13px"></div></label>
-              <label style="font-size:12px;font-weight:600">🎧 Atendimento<br><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:12px">R$</span><input type="number" min="0" step="0.01" id="defAtendimento" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;width:100%;font-size:13px"></div></label>
-              <label style="font-size:12px;font-weight:600">➕ Outros<br><div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:12px">R$</span><input type="number" min="0" step="0.01" id="defOutros" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;width:100%;font-size:13px"></div></label>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:18px">
-              <button onclick="salvarPadrao()" style="flex:1;background:#16a34a;color:#fff;border:none;border-radius:7px;padding:9px;font-size:13px;font-weight:600;cursor:pointer">Salvar padrão</button>
-              <button onclick="document.getElementById('cppDefaultsModal').style.display='none'" style="background:#f3f4f6;border:none;border-radius:7px;padding:9px 14px;font-size:13px;cursor:pointer">Cancelar</button>
-            </div>
-          </div>
+          <div id="cppManualSemanas" class="cpp-semana-sel"></div>
         </div>
         <div class="cpp-manual-body">
           <div class="cpp-custo-grid">
             <div class="cpp-custo-item">
-              <div class="cpp-custo-label">🧹 LIMPEZA FIXO</div>
+              <div class="cpp-custo-label">🧹 Limpeza Fixo</div>
               <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppLimpezaFixo" placeholder="0,00" oninput="recalcularCppManual()"></div>
             </div>
             <div class="cpp-custo-item">
-              <div class="cpp-custo-label">🧽 FREELA LIMPEZA</div>
+              <div class="cpp-custo-label">🧽 Freela Limpeza</div>
               <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppFreela" placeholder="0,00" oninput="recalcularCppManual()"></div>
             </div>
             <div class="cpp-custo-item">
-              <div class="cpp-custo-label">🎧 ATENDIMENTO</div>
+              <div class="cpp-custo-label">🎧 Atendimento</div>
               <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppAtendimento" placeholder="0,00" oninput="recalcularCppManual()"></div>
             </div>
             <div class="cpp-custo-item">
-              <div class="cpp-custo-label">➕ OUTROS</div>
+              <div class="cpp-custo-label">➕ Outros</div>
               <div class="cpp-custo-input"><span>R$</span><input type="number" min="0" step="0.01" id="cppOutros" placeholder="0,00" oninput="recalcularCppManual()"></div>
             </div>
           </div>
@@ -942,7 +939,7 @@ function getFeriadoBH(data){
 const BM_SCRIPT=`(async()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const rs=await fetch('/admin/reports/orders?start_date='+fi(ds)+'&start_time=00:00&end_date='+fi(da)+'&end_time=23:59&business=',{credentials:'include'});const ht=await rs.text();const dc=new DOMParser().parseFromString(ht,'text/html');const rw=dc.querySelectorAll('table tbody tr');const mx={};D.forEach(d=>{mx[d]={};for(let h=0;h<30;h++)mx[d][p(h)]=0;});let tt=0;rw.forEach(r=>{const cs=r.querySelectorAll('td');if(cs.length<10)return;const c=cs[9]?.textContent?.trim();if(!c||!c.includes('/')||!c.includes(' '))return;const[dp,tp]=c.split(' ');const[d2,mm,yy]=dp.split('/');const h=parseInt(tp.split(':')[0],10);const di=D[new Date(+yy,+mm-1,+d2).getDay()];const hk=p(h);if(mx[di]&&mx[di][hk]!==undefined){mx[di][hk]++;tt++;}});const pl={mx,total:tt,de:fi(ds),ate:fi(da),deBR:fb(ds),ateBR:fb(da),ts:Date.now()};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#dados='+b64,'_blank');})()`;
 
 // ── Bookmarklet de INDICADORES — roda no Orion, coleta vendas+cancelamentos+tempos, envia para a plataforma via hash
-const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const de='__DE__',ate='__ATE__';const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};const dMin=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?+d.toFixed(2):null;};const base='https://admin.orioncloudkitchens.com.br';try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[9]?.textContent.trim()),pronto:pDt(t[10]?.textContent.trim()),coleta:pDt(t[11]?.textContent.trim()),conclusao:pDt(t[13]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};} }).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const fmtBR=iso=>{const[y,m,d]=iso.split('-');return String(d).padStart(2,'0')+'/'+String(m).padStart(2,'0');};const deBR=fmtBR(de),ateBR=fmtBR(ate);const pl={de,ate,deBR,ateBR,ts:Date.now(),vendas,cancelamentos,hubs,semana:deBR+'\u2013'+ateBR,semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
+const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const de=fi(ds),ate=fi(da);const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};const dMin=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?+d.toFixed(2):null;};const base='https://admin.orioncloudkitchens.com.br';try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};} }).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const pl={de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(ds)+'\u2013'+fb(da),semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
 
 // ── Colaboradores padrão com regras detalhadas
 const COLAB_DEF=[
@@ -1005,7 +1002,7 @@ function goT(n){
   document.getElementById('panel-'+n)?.classList.add('on');
   if(n==='hi')renderHistorico();
   if(n==='col')renderColHist();
-  if(n==='es') setTimeout(()=>{ verificarDisponibilidadesExistentes(); atualizarPainelPassos(); }, 50);
+  if(n==='es') setTimeout(()=>{ verificarDisponibilidadesExistentes(); atualizarPainelPassos(); _atualizarLabelSemanaEscala(); }, 50);
   if(n==='ind'){
     const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
     if(hist.length){atualizarSelectHubs([]);renderIndicadores();}
@@ -1023,14 +1020,29 @@ function semanaAnterior(){
   const segAnt=new Date(domAnt);segAnt.setDate(domAnt.getDate()-6);
   return{segAnt,domAnt};
 }
+let _semOffset=0; // 0 = próxima semana padrão, -1 = semana atual, +1 = semana seguinte, etc.
+
+function _mudarSemanaEscala(delta){
+  _semOffset+=delta;
+  _atualizarLabelSemanaEscala();
+  // Remontar com nova semana se já tem escala montada
+  if(S.escala) gerarEscala(S.params, S.hubAtual?S._hubFiltroAtual:undefined);
+  else renderEscala();
+}
+
+function _atualizarLabelSemanaEscala(){
+  const {seg,dom}=proximaSemana();
+  const label=fmtBR(seg)+'/'+String(seg.getDate()).padStart(2,'0')+' – '+fmtBR(dom)+'/'+String(dom.getFullYear()).toString().slice(2);
+  const el=document.getElementById('esSemLabel');
+  if(el) el.textContent=fmtBR(seg)+' – '+fmtBR(dom);
+  const titulo=document.getElementById('esTitulo');
+  if(titulo) titulo.textContent=_semOffset===0?'Projeção da próxima semana':_semOffset<0?'Semana em andamento':'Semana futura';
+}
+
 function proximaSemana(){
-  // REGRA: projeta sempre para a semana SEGUINTE à semana coletada.
-  // A semana coletada é sempre seg–dom anterior.
-  // Então a projeção é sempre a semana que começa 7 dias após
-  // a segunda-feira da semana coletada.
   const {segAnt} = semanaAnterior();
   const seg = new Date(segAnt);
-  seg.setDate(segAnt.getDate()+14); // 14 dias após a seg da semana coletada = semana seguinte
+  seg.setDate(segAnt.getDate()+14+(_semOffset*7));
   const dom = new Date(seg);
   dom.setDate(seg.getDate()+6);
   return{seg,dom};
@@ -1160,9 +1172,12 @@ function abrirSeletorHub(){
   const drop = document.getElementById('hubSeletorDrop');
   const lista = document.getElementById('hubSeletorLista');
   const raw = localStorage.getItem('orion_coleta');
-  const HUBS_FIXOS=['Varanda Sion'];
+  // Hubs fixos que sempre aparecem (mesmo sem dados coletados)
+  const HUBS_FIXOS = ['Varanda Sion'];
+
   let hubs = [];
   if(raw){ try{ const p=JSON.parse(raw); if(p.mxPorHub) hubs=Object.keys(p.mxPorHub).filter(hubVisivel).sort((a,b)=>nomeHub(a).localeCompare(nomeHub(b))); }catch(e){} }
+  // Adicionar hubs fixos que não estejam nos dados
   HUBS_FIXOS.forEach(h=>{ if(!hubs.includes(h)) hubs.push(h); });
   if(!hubs.length){ montarEscala(); return; }
 
@@ -2207,13 +2222,14 @@ function calcularCustos(){
   });
 
   DIAS.forEach(dia=>{
-    Object.entries(S.escala[dia]||{}).forEach(([hora,cell])=>{
+    Object.entries(S.escala[dia]||{}).forEach(([hora, cell])=>{
       if(!cell)return;
       const h=parseInt(hora);
       let custoHora=0;
       cell.alocados.forEach(nome=>{
         const c=S.colabs.find(x=>x.nome===nome);
-        if(!c||c.custo<=0)return;
+        if(!c||c.custo<=0) return;
+        // Adicional noturno: +20% para horas a partir das 22h
         const adicNoturno=(c.adicionalNoturno&&h>=22)?c.custo*0.2:0;
         custoHora+=c.custo+adicNoturno;
       });
@@ -2514,63 +2530,138 @@ function renderHM(){
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   document.getElementById('hmEmp').style.display='none';
   document.getElementById('hmCon').style.display='block';
+
+  // ── Populate period selector from indicadores + hist escala ──────────────
   const sel=document.getElementById('hmPeriodo');
   const histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
   const histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
   const {segAnt,domAnt}=semanaAnterior();
   const semAtual=fmtBR(segAnt)+' a '+fmtBR(domAnt);
-  const semanas=new Map();
-  semanas.set('atual','Semana atual ('+semAtual+')');
-  histInd.forEach(s=>{if(s.semanaISO&&s.semana)semanas.set(s.semanaISO,s.semana);});
-  if(!sel.dataset.init){sel.innerHTML=[...semanas.entries()].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');sel.dataset.init='1';}
+
+  // Collect unique weeks from both sources
+  const semanas=new Map(); // semanaISO → label
+  semanas.set('atual', 'Semana atual ('+semAtual+')');
+  // From indicadores history (has demand data)
+  histInd.forEach(s=>{ if(s.semanaISO&&s.semana) semanas.set(s.semanaISO, s.semana); });
+
+  // Rebuild options only on first render (preserve user selection)
+  const curVal=sel.dataset.init?sel.value:(sel.value||'atual');
+  if(!sel.dataset.init){
+    sel.innerHTML=[...semanas.entries()].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+    sel.value=curVal;
+    sel.dataset.init='1';
+  }
   const periodoSel=sel.value||'atual';
-  let demMatrix=null;
+
+  // ── Demand matrix ────────────────────────────────────────────────────────
+  let demMatrix=null; // dia→hora→count
   if(periodoSel==='atual'){
     demMatrix=S.matrix;
-    document.getElementById('hmSub').textContent='Semana atual: '+semAtual;
+    document.getElementById('hmSub').textContent=`Semana atual: ${semAtual}`;
   } else {
     const semInd=histInd.find(s=>s.semanaISO===periodoSel);
     document.getElementById('hmSub').textContent=semInd?.semana||periodoSel;
-    if(semInd&&semInd.vendas?.length){
-      const vendas=semInd.vendas;
+    if(semInd&&(semInd.vendas?.length||semInd._metricas)){
+      // Build demand matrix from raw vendas
+      const vendas=semInd.vendas||[];
       demMatrix={};
-      diasO.forEach(d=>{demMatrix[d]={};for(let h=hI;h<=hO;h++)demMatrix[d][String(h<24?h:h-24).padStart(2,'0')]=0;});
+      diasO.forEach(d=>{ demMatrix[d]={}; for(let h=hI;h<=hO;h++) demMatrix[d][String(h<24?h:h-24).padStart(2,'0')]=0; });
       const diasPT=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
       vendas.forEach(v=>{
         if(!v.cadastro)return;
         const dt=new Date(v.cadastro);
-        const dia=diasPT[dt.getDay()];const h=dt.getHours();const hk=String(h).padStart(2,'0');
-        if(demMatrix[dia]&&demMatrix[dia][hk]!==undefined)demMatrix[dia][hk]++;
+        const dia=diasPT[dt.getDay()];
+        const h=dt.getHours();
+        const hk=String(h).padStart(2,'0');
+        if(demMatrix[dia]&&demMatrix[dia][hk]!==undefined) demMatrix[dia][hk]++;
       });
     }
   }
+
+  // ── Force matrix from hist escala ────────────────────────────────────────
+  // Build força matrix: dia→hora→count of people scheduled
   const forcaMatrix={};
-  diasO.forEach(d=>{forcaMatrix[d]={};for(let h=hI;h<=hO;h++)forcaMatrix[d][h]=0;});
+  diasO.forEach(d=>{ forcaMatrix[d]={}; for(let h=hI;h<=hO;h++) forcaMatrix[d][h]=0; });
+
+  let escSemanas=[];
   if(periodoSel==='atual'){
-    diasO.forEach(dia=>{for(let h=hI;h<=hO;h++){const cell=S.escala?.[dia]?.[h];forcaMatrix[dia][h]=(cell?.alocados?.length)||0;}});
+    // Use S.escala (current week)
+    diasO.forEach(dia=>{
+      for(let h=hI;h<=hO;h++){
+        const cell=S.escala?.[dia]?.[h];
+        forcaMatrix[dia][h]=(cell?.alocados?.length)||0;
+      }
+    });
   } else {
-    const deStr=periodoSel.split('/')[0];const ateStr=periodoSel.split('/')[1];
-    const escSems=histEsc.filter(e=>e.segISO===deStr||(ateStr&&e.domISO===ateStr));
-    const colabSet={};
-    escSems.forEach(esc=>{Object.entries(esc.confirmacoes||{}).forEach(([nome,conf])=>{(conf.turnos||[]).forEach(t=>{if(t.faltou)return;for(let h=t.ini;h<t.fim;h++){if(h<hI||h>hO)continue;const k=t.dia+'|'+h;if(!colabSet[k])colabSet[k]=new Set();colabSet[k].add(nome);}});});});
-    diasO.forEach(dia=>{for(let h=hI;h<=hO;h++){forcaMatrix[dia][h]=colabSet[dia+'|'+h]?.size||0;}});
+    // Use hist escala for the selected period
+    const deStr=periodoSel.split('/')[0]; // "2026-05-18"
+    const ateStr=periodoSel.split('/')[1];
+    escSemanas=histEsc.filter(e=>e.segISO===deStr||(ateStr&&e.domISO===ateStr));
+    // Merge multiple hubs: max people per hour (avoid double-counting same colab across hubs)
+    const colabHorasSet={}; // "dia|h" → Set<nome>
+    escSemanas.forEach(esc=>{
+      Object.entries(esc.confirmacoes||{}).forEach(([nome,conf])=>{
+        (conf.turnos||[]).forEach(t=>{
+          if(t.faltou)return;
+          for(let h=t.ini;h<t.fim;h++){
+            if(h<hI||h>hO)continue;
+            const k=t.dia+'|'+h;
+            if(!colabHorasSet[k])colabHorasSet[k]=new Set();
+            colabHorasSet[k].add(nome);
+          }
+        });
+      });
+    });
+    diasO.forEach(dia=>{
+      for(let h=hI;h<=hO;h++){
+        const k=dia+'|'+h;
+        forcaMatrix[dia][h]=colabHorasSet[k]?colabHorasSet[k].size:0;
+      }
+    });
   }
-  function makeTable(tblId,getVal,colorFn,tip){
-    const tbl=document.getElementById(tblId);if(!tbl)return;
-    let mx=0;diasO.forEach(d=>{for(let h=hI;h<=hO;h++){const v=getVal(d,h);if(v>mx)mx=v;}});
+
+  // ── Render demand table ──────────────────────────────────────────────────
+  function renderTable(tblId, matrix, getVal, colorFn, tooltipFn){
+    const tbl=document.getElementById(tblId);
+    if(!tbl)return;
+    let mx=0;
+    diasO.forEach(d=>{ for(let h=hI;h<=hO;h++){ const v=getVal(matrix,d,h); if(v>mx)mx=v; } });
     tbl.innerHTML=`<thead><tr><th></th>${diasO.map(d=>`<th>${d}</th>`).join('')}<th>Total</th></tr></thead>`;
     const tb=document.createElement('tbody');
     for(let h=hI;h<=hO;h++){
-      const tr=document.createElement('tr');tr.innerHTML=`<td class="hh">${fH(h)}</td>`;
-      let tot=0;
-      diasO.forEach(dia=>{const v=getVal(dia,h);tot+=v;const {bg,fg}=colorFn(v,mx);const td=document.createElement('td');td.innerHTML=`<div class="hc" style="background:${bg};color:${fg}" title="${tip(dia,h,v)}">${v||''}</div>`;tr.appendChild(td);});
-      tr.innerHTML+=`<td style="padding:0 8px;font-family:var(--mo);font-size:10px;font-weight:700;color:var(--mu)">${tot}</td>`;tb.appendChild(tr);
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td class="hh">${fH(h)}</td>`;
+      let rowTot=0;
+      diasO.forEach(dia=>{
+        const v=getVal(matrix,dia,h); rowTot+=v;
+        const td=document.createElement('td');
+        const {bg,fg}=colorFn(v,mx);
+        td.innerHTML=`<div class="hc" style="background:${bg};color:${fg}" title="${tooltipFn(dia,h,v)}">${v||''}</div>`;
+        tr.appendChild(td);
+      });
+      tr.innerHTML+=`<td style="padding:0 8px;font-family:var(--mo);font-size:10px;font-weight:700;color:var(--mu)">${rowTot}</td>`;
+      tb.appendChild(tr);
     }
     tbl.appendChild(tb);
   }
-  if(demMatrix){makeTable('hmT',(d,h)=>demMatrix[d]?.[String(h<24?h:h-24).padStart(2,'0')]||0,(v,mx)=>{const t=mx>0?v/mx:0;return{bg:t===0?'#f3f4f6':`rgb(${Math.round(240-(240-22)*t)},${Math.round(253-(253-163)*t)},${Math.round(244-(244-74)*t)})`,fg:t>0.6?'#065f46':'#374151'};},(d,h,v)=>d+' '+fH(h)+': '+v+' pedidos');}
-  makeTable('hmF',(d,h)=>forcaMatrix[d]?.[h]||0,(v,mx)=>{const t=mx>0?v/mx:0;return{bg:t===0?'#f3f4f6':`rgb(${Math.round(239-(239-37)*t)},${Math.round(246-(246-99)*t)},${Math.round(255-(255-235)*t)})`,fg:t>0.6?'#1e3a5f':'#374151'};},(d,h,v)=>d+' '+fH(h)+': '+v+' pessoa'+(v!==1?'s':''));
+
+  // Demand: green scale
+  if(demMatrix){
+    renderTable('hmT', demMatrix,
+      (m,d,h)=>m[d]?.[String(h<24?h:h-24).padStart(2,'0')]||0,
+      (v,mx)=>{ const t=v/mx; return { bg:t===0?'#f3f4f6':`rgb(${Math.round(240-(240-22)*t)},${Math.round(253-(253-163)*t)},${Math.round(244-(244-74)*t)})`, fg:t>0.6?'#065f46':'#374151' }; },
+      (d,h,v)=>`${d} ${fH(h)}: ${v} pedidos`
+    );
+  }
+
+  // Force: blue scale
+  renderTable('hmF', forcaMatrix,
+    (m,d,h)=>m[d]?.[h]||0,
+    (v,mx)=>{ const t=mx>0?v/mx:0; return { bg:t===0?'#f3f4f6':`rgb(${Math.round(239-(239-37)*t)},${Math.round(246-(246-99)*t)},${Math.round(255-(255-235)*t)})`, fg:t>0.6?'#1e3a5f':'#374151' }; },
+    (d,h,v)=>`${d} ${fH(h)}: ${v} pessoa${v!==1?'s':''}`
+  );
 }
+
 // ══════════════════════════════════════════════════════
 // COLABORADORES
 // ══════════════════════════════════════════════════════
@@ -2578,14 +2669,16 @@ let _coHubFiltro='Sion';
 function filtrarCoHub(hub){
   _coHubFiltro=hub;
   document.getElementById('coHubBtn-Sion').style.cssText=hub==='Sion'?'background:var(--tx);color:var(--bg)':'';
-  document.getElementById('coHubBtn-CN').style.cssText=hub==='Cidade Nova'?'background:var(--tx);color:var(--bg)':'';const vs=document.getElementById('coHubBtn-VS');if(vs)vs.style.cssText=hub==='Varanda Sion'?'background:var(--tx);color:var(--bg)':''
+  document.getElementById('coHubBtn-CN').style.cssText=hub==='Cidade Nova'?'background:var(--tx);color:var(--bg)':'';
+  const vs=document.getElementById('coHubBtn-VS');
+  if(vs) vs.style.cssText=hub==='Varanda Sion'?'background:var(--tx);color:var(--bg)':'';
   renderCo();
 }
 
 function renderCo(){
   const g=document.getElementById('cG');
   const todos=S.colabs;
-  const lista=todos.filter(c=>(c.hub||'Sion')===_coHubFiltro);
+  const lista=todos.filter(c=>(c.hubs||[c.hub||'Sion']).includes(_coHubFiltro));
   document.getElementById('sCo').textContent=todos.length;
   if(!lista.length){
     g.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-ico">👤</div><h3>Nenhum colaborador em ${_coHubFiltro==='Cidade Nova'?'DS Cidade Nova':_coHubFiltro}</h3><p style="margin-top:8px"><button class="btn ba sm" onclick="aM()">+ Adicionar</button></p></div>`;
@@ -2609,7 +2702,7 @@ function renderCo(){
               return '';
             })()}
           </div>
-          <div class="cf">${c.funcao||'Colaborador'} ${c.tipoContrato&&c.tipoContrato!=='hora'?`<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:3px">${c.tipoContrato==='12x36'?'12×36':'Folguista'}</span>`:''}</div>
+          <div class="cf">${c.funcao||'Colaborador'} ${c.tipoContrato&&c.tipoContrato!=='hora'?`<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:3px">${c.tipoContrato==='12x36'?'12×36':c.tipoContrato==='6x1'?'6×1':'Folguista'}</span>`:''} <span style="font-size:9px;color:var(--mu);margin-left:2px">${(c.hubs||[c.hub||'Sion']).join(' + ')}</span></div>
         </div>
         <div class="ca">
           <button class="btn bs sm" onclick="editC('${c.id}')">✏</button>
@@ -2660,14 +2753,17 @@ function aM(id){
   const _c=id?S.colabs.find(x=>x.id===id):null;
   const fHub=document.getElementById('fHub');
   const fTipo=document.getElementById('fTipo');
-  if(fHub) fHub.value=_c?.hub||(_coHubFiltro||'Sion');
+  // Preencher hub checkboxes
+  const hubsColab=_c?.hubs||(_c?.hub?[_c.hub]:null)||[_coHubFiltro||'Sion'];
+  document.querySelectorAll('.fHubChk').forEach(chk=>{ chk.checked=hubsColab.includes(chk.value); });
+  document.getElementById('fHub').value=hubsColab[0]||'Sion';
   if(fTipo) fTipo.value=_c?.tipoContrato||'hora';
   // Ao trocar para Cidade Nova, ajusta defaults de horário
   if(fHub) fHub.onchange=function(){
     if(this.value==='Cidade Nova'&&!_c){
       document.getElementById('fMinH').value='6';
       document.getElementById('fMaxH').value='12';
-    } else if(this.value==='Sion'&&!_c){
+    } else if((this.value==='Sion'||this.value==='Varanda Sion')&&!_c){
       document.getElementById('fMinH').value='3';
       document.getElementById('fMaxH').value='8';
     }
@@ -2693,8 +2789,9 @@ function aM(id){
     document.querySelectorAll('.dt').forEach(t=>t.classList.toggle('on',['Seg','Ter','Qua','Qui','Sex'].includes(t.dataset.d)));
   }
   document.getElementById('mCo').style.display='flex';
+  // Preencher adicional noturno
   document.getElementById('fAdicNoturno').checked=!!(_c?.adicionalNoturno);
-  // Preenche checkbox de turno fixo
+  // Preencher checkbox de turno fixo
   document.getElementById('fFixo').checked=!!(c&&c.fixo);
   setTimeout(()=>document.getElementById('fN').focus(),80);
 }
@@ -2758,9 +2855,11 @@ function salvarC(){
   // Turno fixo — um bloco por dia com horário específico
   const isFixo=document.getElementById('fFixo').checked;
   const turnosFixos=isFixo?dias.map(d=>({dias:[d],horaIn:dispDia[d].horaIn,horaOut:dispDia[d].horaOut})):[];
-  const hub=document.getElementById('fHub')?.value||'Sion';
+  const hubsSelected=[...document.querySelectorAll('.fHubChk:checked')].map(c=>c.value);
+  const hub=hubsSelected[0]||'Sion'; // primary hub (backward compat)
+  const hubs=hubsSelected.length>0?hubsSelected:[hub];
   const tipoContrato=document.getElementById('fTipo')?.value||'hora';
-  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota,adicionalNoturno:document.getElementById('fAdicNoturno')?.checked||false};
+  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,hubs,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota,adicionalNoturno:document.getElementById('fAdicNoturno')?.checked||false};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
   save();renderCo();fM();atualizarSideRegras();
@@ -3545,9 +3644,8 @@ function renderHistorico(filtro){
     const confs=h.confirmacoes||{};
     const totalColab=Object.keys(confs).length;
     const confirmados=Object.values(confs).filter(c=>c.status==='confirmado').length;
-    const faltaram=Object.values(confs).reduce((s,c)=>s+(c.turnos||[]).filter(t=>t.faltou).length,0);
-    const faltaramColab=Object.values(confs).filter(c=>c.status==='faltou').length;
-    const pendentes=totalColab-confirmados-faltaramColab;
+    const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
+    const pendentes=totalColab-confirmados-faltaram;
     const horasAbatidas=Object.values(confs).reduce((s,c)=>s+(c.horasAbatidas||0),0);
     const custoAbatido=horasAbatidas>0?(()=>{
       let tot=0;
@@ -3692,11 +3790,17 @@ function renderHistorico(filtro){
             Faltou
           </label>
           ${t.faltou?`
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px"><input type="checkbox" ${t.coberto?'checked':''} onchange="toggleCobertaTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',this.checked)" style="cursor:pointer;accent-color:#16a34a"><span style="color:${t.coberto?'#16a34a':'var(--mu)'}">✓ Coberto</span></label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px">
+            <input type="checkbox" ${t.coberto?'checked':''}
+              onchange="toggleCobertaTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',this.checked)"
+              style="cursor:pointer;accent-color:#16a34a">
+            <span style="color:${t.coberto?'#16a34a':'var(--mu)'}">Coberto</span>
+          </label>
           <input type="number" min="0" max="${horasT}" value="${t.horasAbatidas||horasT}" placeholder="h"
             style="width:44px;padding:2px 5px;border:1px solid #fca5a5;border-radius:5px;font-size:11px;font-family:var(--fn);color:#dc2626"
             onchange="setHorasAbatadasTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',this.value)"
             title="Horas abatidas por falta">`:''}
+          ${t.transferido?`<span style="font-size:10px;background:rgba(124,58,237,.1);color:#7c3aed;border-radius:4px;padding:1px 6px">↕ troca</span>`:''}
         </div>`;
       }).join('');
 
@@ -3791,26 +3895,29 @@ function renderHistorico(filtro){
     </div>`;
   }).join('');
   // ── RESUMO MENSAL ─────────────────────────────────────────────
+  // Agrupa por mês usando filtrado (respeita hub e período selecionados)
+  // Semanas = segISOs únicos. Colaboradores deduplificados por semana+nome.
   const meses={};
   filtrado.forEach(h=>{
     if(!h.segISO||!h.confirmacoes) return;
     const mes=h.segISO.slice(0,7);
-    if(!meses[mes]) meses[mes]={label:'',semanasSet:new Set(),colabSemSet:new Set(),colabsSet:new Set(),turnos:0,faltas:0,horasFaltadas:0,coberturas:0,trocas:0,rupturas:0};
+    if(!meses[mes]) meses[mes]={label:'',semanasSet:new Set(),colabSemSet:new Set(),colabsSet:new Set(),nColabs:0,turnos:0,faltas:0,horasFaltadas:0,coberturas:0,trocas:0,rupturas:0};
     const d=new Date(h.segISO+'T12:00:00');
     meses[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
     meses[mes].semanasSet.add(h.segISO);
+
     Object.entries(h.confirmacoes).forEach(([nome,conf])=>{
-      // Chave usa h.id para não deduplicar colaboradores entre escalas diferentes
-      const ck=h.id+'|'+nome;
-      const ja=meses[mes].colabSemSet.has(ck);
-      meses[mes].colabSemSet.add(ck);
-      if(ja) return;
+      const colabSemKey=h.segISO+'|'+nome;
+      const jaContou=meses[mes].colabSemSet.has(colabSemKey);
+      meses[mes].colabSemSet.add(colabSemKey);
+      if(!meses[mes].colabsSet.has(nome)){ meses[mes].colabsSet.add(nome); meses[mes].nColabs++; }
       (conf.turnos||[]).forEach(t=>{
-        const hr=t.horas!=null?t.horas:(t.fim-t.ini)||0;
+        if(jaContou) return;
+        const horas=t.horas!=null?t.horas:(t.fim-t.ini)||0;
         meses[mes].turnos++;
         if(t.faltou){
           meses[mes].faltas++;
-          meses[mes].horasFaltadas+=t.horasAbatidas||hr;
+          meses[mes].horasFaltadas+=t.horasAbatidas||horas;
           if(t.coberto) meses[mes].coberturas++;
           else meses[mes].rupturas++;
         }
@@ -3835,22 +3942,44 @@ function renderHistorico(filtro){
         return`<div style="background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 18px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
             <span style="font-size:14px;font-weight:700;color:var(--tx);text-transform:capitalize">${m.label}</span>
-            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} sem. · ${(m.colabsSet||new Set()).size} pessoas</span>
+            <span style="font-size:11px;color:var(--mu)">${m.semanasSet.size} sem. · ${m.nColabs} pessoas</span>
             <span style="margin-left:auto;font-size:12px;font-weight:700;color:${corMeta};background:${metaOk?'rgba(22,163,74,.1)':parseFloat(pctEscala)>=70?'rgba(217,119,6,.1)':'rgba(220,38,38,.1)'};padding:3px 10px;border-radius:20px">${metaOk?'✅':'⚠'} ${pctEscala}% escala completa (meta 85%)</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px">
-            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--tx)">${(m.colabsSet||new Set()).size}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">pessoas escaladas</div></div>
-            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--tx)">${m.turnos}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">turnos disponib.</div></div>
-            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:${corFalta}">${m.faltas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">faltas <span style="color:${corFalta};font-weight:700">(${pctFalta}%)</span></div></div>
-            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#2563eb">${m.horasFaltadas.toFixed(0)}h</div><div style="font-size:10px;color:var(--mu);margin-top:2px">horas faltadas</div></div>
-            <div style="background:${m.coberturas>0?'rgba(22,163,74,.08)':'var(--card2)'};border:1px solid ${m.coberturas>0?'rgba(22,163,74,.2)':'var(--brd)'};border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:${m.coberturas>0?'#16a34a':'var(--mu)'}">${m.coberturas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">faltas cobertas</div></div>
-            <div style="background:${m.rupturas>0?'rgba(239,68,68,.08)':'var(--card2)'};border:1px solid ${m.rupturas>0?'rgba(239,68,68,.2)':'var(--brd)'};border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:${m.rupturas>0?'#dc2626':'var(--mu)'}">${m.rupturas}</div><div style="font-size:10px;color:${m.rupturas>0?'#dc2626':'var(--mu)'};margin-top:2px">rupturas</div></div>
-            ${m.trocas>0?`<div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:22px;font-weight:800;color:#7c3aed">${m.trocas}</div><div style="font-size:10px;color:var(--mu);margin-top:2px">trocas</div></div>`:''}
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:var(--tx)">${m.nColabs}</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">pessoas escaladas</div>
+            </div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:var(--tx)">${m.turnos}</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">turnos disponib.</div>
+            </div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:${corFalta}">${m.faltas}</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">faltas <span style="color:${corFalta};font-weight:700">(${pctFalta}%)</span></div>
+            </div>
+            <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#2563eb">${m.horasFaltadas.toFixed(0)}h</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">horas faltadas</div>
+            </div>
+            <div style="background:${m.coberturas>0?'rgba(22,163,74,.08)':'var(--card2)'};border:1px solid ${m.coberturas>0?'rgba(22,163,74,.2)':'var(--brd)'};border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:${m.coberturas>0?'#16a34a':'var(--mu)'}">${m.coberturas}</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">faltas cobertas</div>
+            </div>
+            <div style="background:${m.rupturas>0?'rgba(239,68,68,.08)':'var(--card2)'};border:1px solid ${m.rupturas>0?'rgba(239,68,68,.2)':'var(--brd)'};border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:${m.rupturas>0?'#dc2626':'var(--mu)'}">${m.rupturas}</div>
+              <div style="font-size:10px;color:${m.rupturas>0?'#dc2626':'var(--mu)'};margin-top:2px">rupturas</div>
+            </div>
+            ${m.trocas>0?`<div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#7c3aed">${m.trocas}</div>
+              <div style="font-size:10px;color:var(--mu);margin-top:2px">trocas</div>
+            </div>`:''}
           </div>
         </div>`;
       }).join('')}
     </div>
   </div>`:'';
+
   con.innerHTML=filterBar+resumoMensal+cards;
   };
   _renderBody(hist);
@@ -4154,7 +4283,7 @@ function _transferirTurnoHist(histId,de,para,dia,ini){
   // Adicionar ao destino
   if(!h.confirmacoes[para])h.confirmacoes[para]={status:'pendente',turnos:[],horasAbatidas:0};
   if(!h.confirmacoes[para].turnos.find(t=>t.dia===dia&&t.ini===ini)){
-    turno.faltou=false;turno.horasAbatidas=0;
+    turno.faltou=false;turno.horasAbatidas=0;turno.transferido=true;
     h.confirmacoes[para].turnos.push(turno);
     const dO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
     h.confirmacoes[para].turnos.sort((a,b)=>dO.indexOf(a.dia)-dO.indexOf(b.dia)||a.ini-b.ini);
@@ -4514,7 +4643,7 @@ function toggleCobertaTurno(histId, nome, ini, dia, coberto){
   t.coberto=coberto;
   saveKH(hist,'marcar cobertura');
   _atualizarBadgesCard(histId,h);
-  toast(coberto?`✅ Falta de ${nome} ${dia} coberta`:`↩ Cobertura removida`,'tok');
+  toast(coberto?`✅ Falta de ${nome} ${dia} marcada como coberta`:`↩ Cobertura removida`,'tok');
 }
 
 function toggleFaltaTurno(histId, nome, ini, dia, faltou){
@@ -4564,9 +4693,8 @@ function _atualizarBadgesCard(histId, h){
   const confs=h.confirmacoes||{};
   const totalColab=Object.keys(confs).length;
   const confirmados=Object.values(confs).filter(c=>c.status==='confirmado').length;
-  const faltaram=Object.values(confs).reduce((s,c)=>s+(c.turnos||[]).filter(t=>t.faltou).length,0);
-  const faltaramColab=Object.values(confs).filter(c=>c.status==='faltou').length;
-  const pendentes=totalColab-confirmados-faltaramColab;
+  const faltaram=Object.values(confs).filter(c=>c.status==='faltou').length;
+  const pendentes=totalColab-confirmados-faltaram;
 
   // 1. Recalcular e persistir custo
   if(h.colabs&&h.confirmacoes) recalcularCustoHist(h);
@@ -4701,19 +4829,6 @@ try {
     }
 
     var b64Escala=extrairParam(raw,'dados');
-    // Receptor de lote (ind_batch): múltiplas semanas de uma vez
-    var b64Batch=extrairParam(raw,'ind_batch');
-    if(b64Batch){
-      try{
-        var batchPayloads=JSON.parse(decodeURIComponent(escape(atob(b64Batch))));
-        if(Array.isArray(batchPayloads)){
-          batchPayloads.forEach(function(pl){ receberDadosIndicadores(pl); });
-          if(typeof renderIndicadores==='function') renderIndicadores();
-          history.replaceState(null,'',window.location.pathname);
-          console.log('[OrionEscala] ind_batch: '+batchPayloads.length+' semanas salvas');
-        }
-      }catch(e){ console.error('[OrionEscala] hash ind_batch erro:',e); }
-    }
     var b64Ind=extrairParam(raw,'ind_dados');
 
     if(b64Escala){
@@ -4872,28 +4987,7 @@ function parsearTabelaOrion(html, tipo='vendas'){
   return dados;
 }
 
-function calcularMetricasSemana(vendas, cancelamentos, hub, _semObj){
-  // Se a semana tem métricas pré-calculadas e não tem vendas brutas, usar _metricas
-  if((!vendas||vendas.length===0)&&_semObj&&_semObj._metricas){
-    const m=_semObj._metricas;
-    // Filtrar por hub se necessário
-    const hubSet=hub instanceof Set?hub:new Set([hub]);
-    const todos=hubSet.has('todos');
-    let volume=m.volume||0, cancelamentos_=m.cancelamentos||0;
-    if(!todos&&m.hubVol){
-      volume=0;
-      hubSet.forEach(h=>{ volume+=(m.hubVol[h]||0); });
-      cancelamentos_=0;
-      hubSet.forEach(h=>{ cancelamentos_+=(m.hubCanc?.[h]||0); });
-    }
-    return {
-      volume, cancelamentos:cancelamentos_,
-      pctCancel:volume>0?(cancelamentos_/(volume+cancelamentos_)*100):0,
-      tPreparoMed:m.tPreparoMed, tColetaMed:m.tColetaMed, tDespachoMed:m.tDespachoMed,
-      amostras:m.amostras||{preparo:0,coleta:0,despacho:0},
-      _fromMetricas:true
-    };
-  }
+function calcularMetricasSemana(vendas, cancelamentos, hub){
   // hub pode ser 'todos', string, ou Set de hubs (multi-seleção)
   const hubSet=hub instanceof Set?hub:new Set([hub]);
   const filtro=v=>{
@@ -4957,65 +5051,16 @@ function getCustoEscalaSemana(semanaISO){
   }catch(e){ return null; }
 }
 
-function _segNorm(isoDate){
-  // Normaliza para segunda-feira da semana
-  if(!isoDate) return isoDate;
-  const d=new Date(isoDate+'T12:00:00');
-  const dw=d.getDay();
-  const diff=dw===0?-6:1-dw;
-  d.setDate(d.getDate()+diff);
-  const p=v=>String(v).padStart(2,'0');
-  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
-}
-
-function getVolumeSemana(semanaISO){
-  // Retorna totalPed do resumo da escala — usado como fallback para semanas sem coleta
-  try{
-    const he=JSON.parse(localStorage.getItem(KH)||'[]');
-    if(!he.length||!semanaISO) return null;
-    const de=semanaISO.includes('/')?semanaISO.split('/')[0]:semanaISO;
-    const deNorm=_segNorm(de);
-    // Pegar o maior totalPed de qualquer escala na mesma semana (normalizado)
-    const vals=[];
-    he.forEach(e=>{
-      if(_segNorm(e.segISO)===deNorm){
-        const v=e.resumo?.totalPed||0;
-        if(v>0) vals.push(v);
-      }
-    });
-    if(!vals.length) return null;
-    return Math.max(...vals);
-  }catch(e){ return null; }
-}
-
 // ══════════════════════════════════════════════════════
 // CUSTOS MANUAIS CPP
 // ══════════════════════════════════════════════════════
 const KIND_CPP_MANUAL = 'orion_v7_cpp_manual';
-const KIND_CPP_DEFAULTS = 'orion_v7_cpp_defaults';
-
-// Valores padrão aplicados automaticamente a semanas sem dados manuais
-const CPP_DEFAULTS_FACTORY = {limpezaFixo:840, freela:150, atendimento:378, outros:0};
-
-function getCppDefaults(){
-  try{
-    const saved=JSON.parse(localStorage.getItem(KIND_CPP_DEFAULTS)||'null');
-    return saved||CPP_DEFAULTS_FACTORY;
-  }catch(e){return CPP_DEFAULTS_FACTORY;}
-}
-
-function setCppDefaults(dados){
-  try{ localStorage.setItem(KIND_CPP_DEFAULTS,JSON.stringify(dados)); }catch(e){}
-}
 
 function getCppManualSemana(semanaISO){
   try{
     const d=JSON.parse(localStorage.getItem(KIND_CPP_MANUAL)||'{}');
-    // Se a semana tem dados salvos explicitamente, usar esses
-    // Caso contrário, aplicar os padrões
-    if(d[semanaISO]) return d[semanaISO];
-    return {...getCppDefaults()};
-  }catch(e){return {...getCppDefaults()};}
+    return d[semanaISO]||{limpezaFixo:0,freela:0,atendimento:0,outros:0};
+  }catch(e){return{limpezaFixo:0,freela:0,atendimento:0,outros:0};}
 }
 
 function setCppManualSemana(semanaISO, dados){
@@ -5049,63 +5094,22 @@ function inicializarCppManual(){
     return`<button class="cpp-semana-btn${s.semanaISO===_cppManualSemanaAtiva?' on':''}" onclick="selecionarSemanaManual('${s.semanaISO}')">${lbl}</button>`;
   }).join('');
 
-  // Carregar valores salvos (ou padrões)
+  // Carregar valores salvos
   const d=getCppManualSemana(_cppManualSemanaAtiva);
-  document.getElementById('cppLimpezaFixo').value=d.limpezaFixo>0?d.limpezaFixo:'';
-  document.getElementById('cppFreela').value=d.freela>0?d.freela:'';
-  document.getElementById('cppAtendimento').value=d.atendimento>0?d.atendimento:'';
-  document.getElementById('cppOutros').value=d.outros>0?d.outros:'';
+  document.getElementById('cppLimpezaFixo').value=d.limpezaFixo||'';
+  document.getElementById('cppFreela').value=d.freela||'';
+  document.getElementById('cppAtendimento').value=d.atendimento||'';
+  document.getElementById('cppOutros').value=d.outros||'';
   recalcularCppManual();
-  _atualizarDefaultsBar();
 }
 
 function selecionarSemanaManual(semanaISO){
   _cppManualSemanaAtiva=semanaISO;
   inicializarCppManual();
-  if(document.getElementById('indPeriodo')?.value==='semanal') renderIndicadores();
-}
-
-function _atualizarDefaultsBar(){
-  const def=getCppDefaults();
-  const total=(def.limpezaFixo||0)+(def.freela||0)+(def.atendimento||0)+(def.outros||0);
-  const lbl=document.getElementById('cppDefaultsLabel');
-  if(lbl) lbl.textContent=`Limpeza R$${def.limpezaFixo||0} · Freela R$${def.freela||0} · Atend. R$${def.atendimento||0}${def.outros>0?' · Outros R$'+def.outros:''} = R$${total}`;
-}
-
-function abrirEditarPadrao(){
-  const def=getCppDefaults();
-  document.getElementById('defLimpezaFixo').value=def.limpezaFixo||'';
-  document.getElementById('defFreela').value=def.freela||'';
-  document.getElementById('defAtendimento').value=def.atendimento||'';
-  document.getElementById('defOutros').value=def.outros||0;
-  document.getElementById('cppDefaultsModal').style.display='flex';
-}
-
-function salvarPadrao(){
-  const def={
-    limpezaFixo:parseFloat(document.getElementById('defLimpezaFixo').value)||0,
-    freela:parseFloat(document.getElementById('defFreela').value)||0,
-    atendimento:parseFloat(document.getElementById('defAtendimento').value)||0,
-    outros:parseFloat(document.getElementById('defOutros').value)||0,
-  };
-  setCppDefaults(def);
-  document.getElementById('cppDefaultsModal').style.display='none';
-  _atualizarDefaultsBar();
-  // Reload current week fields with new defaults if not customized
-  inicializarCppManual();
-  renderIndicadores();
-}
-
-function aplicarPadraoSemanaAtual(){
-  if(!_cppManualSemanaAtiva) return;
-  const def=getCppDefaults();
-  setCppManualSemana(_cppManualSemanaAtiva, {...def, _customizado:false});
-  // Clear the customized flag so defaults apply fresh
-  const d=JSON.parse(localStorage.getItem(KIND_CPP_MANUAL)||'{}');
-  delete d[_cppManualSemanaAtiva];
-  localStorage.setItem(KIND_CPP_MANUAL, JSON.stringify(d));
-  inicializarCppManual();
-  renderIndicadores();
+  // Sincroniza KPIs com a semana selecionada
+  if(document.getElementById('indPeriodo')?.value==='semanal'){
+    renderIndicadores();
+  }
 }
 
 function recalcularCppManual(){
@@ -5116,15 +5120,15 @@ function recalcularCppManual(){
   const ot=parseFloat(document.getElementById('cppOutros').value)||0;
   const total=lf+fr+at+ot;
 
-  // Salvar (marcar como customizado para não sobrescrever com padrão)
-  setCppManualSemana(_cppManualSemanaAtiva,{limpezaFixo:lf,freela:fr,atendimento:at,outros:ot,_customizado:true});
+  // Salvar
+  setCppManualSemana(_cppManualSemanaAtiva,{limpezaFixo:lf,freela:fr,atendimento:at,outros:ot});
 
   // Buscar custo escala + volume
   const custoEscala=getCustoEscalaSemana(_cppManualSemanaAtiva)||0;
   const hist=JSON.parse(localStorage.getItem(typeof KIND!=='undefined'?KIND:'orion_v7_ind')||'[]');
   const sem=hist.find(s=>s.semanaISO===_cppManualSemanaAtiva);
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
-  const volume=sem?calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub,sem).volume:0;
+  const volume=sem?calcularMetricasSemana(sem.vendas,sem.cancelamentos,hub).volume:0;
 
   const fmtR=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'—';
   const fmtCpp=v=>volume>0?'R$ '+(v/volume).toFixed(2).replace('.',','):'—';
@@ -5144,171 +5148,48 @@ function recalcularCppManual(){
 }
 let _cppManualDirty=false, _cppManualDebounce=null;
 
-function _bmIndParaSemana(deISO, ateISO){
-  return BM_SCRIPT_IND.replace('__DE__', deISO).replace('__ATE__', ateISO);
-}
-
-async function coletarTodasSemanasPendentes(){
-  // Collect all pending weeks directly from Orion API (must be called from Orion tab)
-  // This function is injected into the Orion tab via bookmarklet
-  const script = `(async()=>{
-const p=v=>String(v).padStart(2,'0');
-const fmtBR=iso=>{const[y,m,d]=iso.split('-');return p(d)+'/'+p(m);};
-const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};
-const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[9]?.textContent.trim()),pronto:pDt(t[10]?.textContent.trim()),coleta:pDt(t[11]?.textContent.trim()),conclusao:pDt(t[13]?.textContent.trim())};}return{hub,motivo:t[4]?.textContent.trim()||''};}).filter(Boolean);};
-const media=arr=>arr.length?+(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2):null;
-const diffMin=(a,b)=>(!a||!b)?null:((b-a)/60000>=0&&(b-a)/60000<480)?+((b-a)/60000).toFixed(2):null;
-function calcM(vendas,cancelamentos){const tP=[],tC=[],tD=[];vendas.forEach(v=>{const tp=diffMin(v.cadastro,v.pronto);const tc=diffMin(v.pronto,v.coleta);const td=diffMin(v.cadastro,v.conclusao);if(tp!==null)tP.push(tp);if(tc!==null)tC.push(tc);if(td!==null)tD.push(td);});const hubVol={},hubCanc={};vendas.forEach(v=>{hubVol[v.hub]=(hubVol[v.hub]||0)+1;});cancelamentos.forEach(c=>{hubCanc[c.hub]=(hubCanc[c.hub]||0)+1;});return{volume:vendas.length,cancelamentos:cancelamentos.length,pctCancel:vendas.length>0?+(cancelamentos.length/(vendas.length+cancelamentos.length)*100).toFixed(3):0,tPreparoMed:media(tP),tColetaMed:media(tC),tDespachoMed:media(tD),amostras:{preparo:tP.length,coleta:tC.length,despacho:tD.length},hubVol,hubCanc};}
-const SEMANAS=__SEMANAS__;
-const resultados=[];
-for(const s of SEMANAS){
-  try{
-    const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+s.de+'&start_time=00:00&end_date='+s.ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+s.de+'&start_time=00:00&end_date='+s.ate+'&end_time=23:59&business=',{credentials:'include'})]);
-    const vendas=parse(await rv.text(),'v'),cancelamentos=parse(await rc.text(),'c');
-    const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();
-    const deBR=fmtBR(s.de),ateBR=fmtBR(s.ate);
-    const _metricas=calcM(vendas,cancelamentos);
-    const pl={de:s.de,ate:s.ate,deBR,ateBR,ts:Date.now(),hubs,semana:deBR+'\u2013'+ateBR,semanaISO:s.de+'/'+s.ate,vendas:[],cancelamentos:[],_metricas};
-    resultados.push(pl);
-  }catch(e){console.error('Erro semana '+s.de+':',e);}
-}
-const b64=btoa(unescape(encodeURIComponent(JSON.stringify(resultados))));
-window.open('https://orion-escala.netlify.app#ind_batch='+b64,'_blank');
-alert('Coleta concluída: '+resultados.length+' semanas. A plataforma foi aberta.');
-})()`;
-  return script;
-}
-
 function coletarIndicadores(){
-  // Gera lista de semanas disponíveis: semanas do histórico de escalas + semana anterior padrão
-  const he=JSON.parse(localStorage.getItem(KH)||'[]');
-  const segsEscala=[...new Set(he.map(e=>e.segISO).filter(Boolean))].sort().reverse();
+  // A coleta direta via fetch falha por CORS (plataforma ≠ Orion).
+  // Solução idêntica à da escala: bookmarklet roda no Orion (mesma origem),
+  // serializa os dados em base64 e reabre a plataforma com #ind_dados=BASE64.
+  // O receptor abaixo captura o hash e salva no localStorage.
   const {segAnt,domAnt}=semanaAnterior();
-  const fi=d=>{const p=v=>String(v).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());};
-  const semAntISO=fi(segAnt);
-  // Montar lista única: semana anterior padrão + semanas da escala
-  const todasSegs=[semAntISO,...segsEscala.filter(s=>s!==semAntISO)];
-  const jaColetadas=new Set(JSON.parse(localStorage.getItem(KIND)||'[]').map(s=>s.de));
-
-  function segParaDom(segISO){
-    const d=new Date(segISO+'T12:00:00'); d.setDate(d.getDate()+6);
-    const p=v=>String(v).padStart(2,'0');
-    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
-  }
-  function fmtLabel(segISO){
-    const dom=segParaDom(segISO);
-    const fb=s=>{const x=new Date(s+'T12:00:00');const p=v=>String(v).padStart(2,'0');return p(x.getDate())+'/'+p(x.getMonth()+1);};
-    const ok=jaColetadas.has(segISO)?'✓ ':'';
-    return ok+fb(segISO)+' – '+fb(dom);
-  }
-
-  const opcoesHtml=todasSegs.map((seg,i)=>`
-    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;cursor:pointer;background:${i===0?'#eff6ff':'rgba(255,255,255,.5)'};border:1px solid ${i===0?'#bfdbfe':'var(--brd)'}">
-      <input type="radio" name="semInd" value="${seg}" ${i===0?'checked':''} style="accent-color:#2563eb">
-      <span style="font-size:12px;font-weight:${i===0?'700':'500'};color:${jaColetadas.has(seg)?'#16a34a':'var(--tx)'}">
-        ${fmtLabel(seg)}${i===0?' <span style="font-size:10px;color:#2563eb;font-weight:400">(padrão)</span>':''}
-        ${jaColetadas.has(seg)?'<span style="font-size:10px;color:#16a34a;font-weight:400;margin-left:4px">já coletada</span>':''}
-      </span>
-    </label>`).join('');
+  const deBR=fmtBR(segAnt), ateBR=fmtBR(domAnt);
+  const per=`${deBR} (Seg) → ${ateBR} (Dom)`;
+  const bm='javascript:'+encodeURIComponent(BM_SCRIPT_IND);
 
   const banner=document.getElementById('indBanner');
   banner.className='banner b-warn';
   banner.innerHTML=`
-    <div class="b-title">📊 Coletar indicadores — selecione a semana</div>
-    <div id="_indSemOpts" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:220px;overflow-y:auto;padding-right:4px">${opcoesHtml}</div>
-    <div style="margin-bottom:12px;background:rgba(255,255,255,.7);border-radius:8px;padding:12px;border:1px solid #bfdbfe">
-      <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:#1d4ed8">⚡ Coletar todas as semanas pendentes (recomendado)</div>
-      <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Abre o Órion e coleta automaticamente todas as semanas sem dados de uma vez.</p>
-      <button onclick="_coletarTodasClick()" class="btn bs sm" style="width:100%;background:#1d4ed8;color:#fff;font-weight:700;padding:9px">🚀 Coletar todas as semanas pendentes</button>
-    </div>
-    <div id="_indMetodos" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="b-title">📊 Para coletar os indicadores, use um dos métodos abaixo</div>
+    <div style="font-size:11px;color:var(--mu);margin-bottom:10px">Período necessário: <strong>${per}</strong></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
-        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Semana específica — Console (F12)</div>
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Método 1 — Console do Chrome (F12)</div>
         <ol class="b-steps">
           <li>Abra o Órion <button onclick="window.open('https://admin.orioncloudkitchens.com.br','_blank')" class="btn bs sm" style="margin-left:4px">↗</button></li>
           <li>Pressione <code>F12</code> → aba <strong>Console</strong></li>
+          <li>Se aparecer "allow pasting" → digite <code>allow pasting</code> e Enter</li>
           <li>Cole o script e pressione Enter</li>
         </ol>
-        <button onclick="copiarScriptInd()" id="copyBtnInd" class="btn bs sm" style="width:100%">📋 Copiar script da semana selecionada</button>
+        <button onclick="copiarScriptInd()" id="copyBtnInd" class="btn bs sm" style="width:100%">📋 Copiar script de indicadores</button>
       </div>
       <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
-        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Semana específica — Bookmarklet</div>
-        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Clique no link abaixo estando na aba do Órion.</p>
-        <a id="_bmIndLink" href="javascript:void(0)" onclick="_bmIndClick(event)" style="display:block;background:#2563eb;color:#fff;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer">📈 Executar coleta da semana selecionada</a>
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px">Método 2 — Favorito no Chrome</div>
+        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Arraste para a barra de favoritos. Basta clicar toda semana estando no Órion.</p>
+        <a href="${bm}" style="display:block;background:#2563eb;color:#fff;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-size:12px;font-weight:600;cursor:grab" draggable="true">📈 Coletar Indicadores Órion</a>
       </div>
     </div>
-    <div style="margin-top:10px;font-size:11px;color:var(--mu)">Após coletar, a plataforma abre automaticamente com todos os dados preenchidos.</div>`;
+    <div style="margin-top:10px;font-size:11px;color:var(--mu)">Após clicar no bookmarklet ou rodar o script, esta página será aberta automaticamente com os dados preenchidos.</div>`;
   document.getElementById('indEmp').style.display='none';
 }
 
-async function _coletarTodasClick(){
-  // Build list of weeks without operational data
-  const histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
-  const histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
-  const coletadas=new Set(histInd.filter(s=>s._metricas||((s.vendas||[]).length>0)).map(s=>s.de));
-  // Normalize escala segISOs to Monday
-  const segsNorm=[...new Set(histEsc.map(e=>e.segISO).filter(Boolean).map(_segNorm))];
-  const pendentes=segsNorm.filter(seg=>!coletadas.has(seg)).map(seg=>{
-    const d=new Date(seg+'T12:00:00'); d.setDate(d.getDate()+6);
-    const p=v=>String(v).padStart(2,'0');
-    return{de:seg, ate:d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())};
-  });
-  if(!pendentes.length){
-    alert('Todas as semanas já foram coletadas!');
-    return;
-  }
-  // Build the batch collection script
-  const semanasJSON=JSON.stringify(pendentes);
-  const script=(await coletarTodasSemanasPendentes()).replace('__SEMANAS__',semanasJSON);
-  // Copy to clipboard and open Orion
-  try{ await navigator.clipboard.writeText(script); }
-  catch(e){
-    const ta=document.createElement('textarea');ta.value=script;ta.style.cssText='position:fixed;opacity:0';
-    document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
-  }
-  const semDesc=pendentes.map(s=>s.de).join(', ');
-  const msg='Script copiado! Serão coletadas '+pendentes.length+' semana(s): '+semDesc+'\n\nPassos:\n1. Clique OK para abrir o Órion\n2. Pressione F12 → Console\n3. Se aparecer "allow pasting", digite allow pasting e Enter\n4. Cole o script (Ctrl+V) e pressione Enter\n5. A plataforma abrirá automaticamente com todos os dados';
-  if(confirm(msg)){
-    window.open('https://admin.orioncloudkitchens.com.br/admin/reports/orders','_blank');
-  }
-}
-
-function _getSemIndSelecionada(){
-  const r=document.querySelector('input[name="semInd"]:checked');
-  if(!r) return null;
-  const seg=r.value;
-  const d=new Date(seg+'T12:00:00'); d.setDate(d.getDate()+6);
-  const p=v=>String(v).padStart(2,'0');
-  const dom=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
-  return{seg,dom};
-}
-
-function _bmIndClick(e){
-  e.preventDefault();
-  const sel=_getSemIndSelecionada();
-  if(!sel){alert('Selecione uma semana.');return;}
-  const script=_bmIndParaSemana(sel.seg,sel.dom);
-  // Tenta executar via bookmarklet no contexto da página atual (só funciona se estiver no Órion)
-  // Caso contrário, copia para a área de transferência com instrução
-  try{
-    // Abre o Orion com o script embutido — usuário precisa estar nessa aba
-    const bm='javascript:'+encodeURIComponent(script);
-    const link=document.getElementById('_bmIndLink');
-    if(link){ link.href=bm; link.onclick=null; link.click(); }
-  }catch(err){
-    copiarScriptInd();
-    alert('Script copiado! Cole no console do Órion (F12 → Console).');
-  }
-}
-
 function copiarScriptInd(){
-  const sel=_getSemIndSelecionada&&_getSemIndSelecionada();
-  const script=sel?_bmIndParaSemana(sel.seg,sel.dom):BM_SCRIPT_IND;
-  navigator.clipboard.writeText(script).catch(()=>{
-    const ta=document.createElement('textarea');ta.value=script;ta.style.cssText='position:fixed;opacity:0';
+  navigator.clipboard.writeText(BM_SCRIPT_IND).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=BM_SCRIPT_IND;ta.style.cssText='position:fixed;opacity:0';
     document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
   });
-  const b=document.getElementById('copyBtnInd');if(b){b.textContent='✓ Copiado!';setTimeout(()=>{b.textContent='📋 Copiar script';},2500);}
+  const b=document.getElementById('copyBtnInd');if(b){b.textContent='✓ Copiado!';setTimeout(()=>{b.textContent='📋 Copiar script de indicadores';},2500);}
 }
 
 function receberDadosIndicadores(payload){
@@ -5382,10 +5263,11 @@ function toggleHubDropdown(e){
 function _popularListaHub(){
   const lista=document.getElementById('indHubLista');
   if(!lista)return;
-  const HUBS_FIXOS_IND=['Varanda Sion'];
+  const HUBS_FIXOS_IND = ['Varanda Sion'];
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
   const hubsDosDados=[...new Set(hist.flatMap(h=>h.hubs||[]))].filter(hubVisivel).sort();
-  const todosHubs=[...new Set([...hubsDosDados,...HUBS_FIXOS_IND])].filter(hubVisivel).sort();
+  // Adicionar hubs fixos que não estejam nos dados
+  const todosHubs=[...new Set([...hubsDosDados, ...HUBS_FIXOS_IND])].filter(hubVisivel).sort();
   // Item "Todos"
   const todosMarcado=_hubsTemp.has('todos');
   lista.innerHTML=`<label style="display:flex;align-items:center;gap:10px;padding:7px 14px;cursor:pointer;font-size:12px;color:#f3f4f6;border-bottom:1px solid rgba(255,255,255,.06)"
@@ -5455,32 +5337,7 @@ function atualizarSelectHubs(hubs){
 }
 
 function renderIndicadores(){
-  // ── Mesclar coleta real com semanas do histórico de escalas sem coleta
-  const _histColeta=JSON.parse(localStorage.getItem(KIND)||'[]');
-  const _histEsc=JSON.parse(localStorage.getItem(KH)||'[]');
-  const _segsColetados=new Set(_histColeta.map(s=>s.de));
-  // Normaliza qualquer data para a segunda-feira da semana (Seg=1, Dom=0)
-  function _normalizarParaSeg(isoDate){
-    const d=new Date(isoDate+'T12:00:00');
-    const dw=d.getDay(); // 0=Dom,1=Seg,...,6=Sab
-    const diff=dw===0?-6:1-dw; // voltar para segunda
-    d.setDate(d.getDate()+diff);
-    const p=v=>String(v).padStart(2,'0');
-    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
-  }
-  // Coletar segISOs únicos, normalizados para segunda da semana
-  const _segsEscalaRaw=[...new Set(_histEsc.map(e=>e.segISO).filter(Boolean))];
-  const _segsNorm=[...new Set(_segsEscalaRaw.map(_normalizarParaSeg))].filter(s=>!_segsColetados.has(s));
-  const _sinteticos=_segsNorm.map(seg=>{
-    const dom=new Date(seg+'T12:00:00'); dom.setDate(dom.getDate()+6);
-    const p=v=>String(v).padStart(2,'0');
-    const domISO=dom.getFullYear()+'-'+p(dom.getMonth()+1)+'-'+p(dom.getDate());
-    const fb=d=>{const x=new Date(d+'T12:00:00');return p(x.getDate())+'/'+p(x.getMonth()+1);};
-    return{de:seg,ate:domISO,deBR:fb(seg),ateBR:fb(domISO),ts:0,vendas:[],cancelamentos:[],hubs:[],semana:fb(seg)+'–'+fb(domISO),semanaISO:seg+'/'+domISO,_sintetico:true};
-  });
-  // Mesclar e ordenar do mais recente para o mais antigo
-  const hist=[..._histColeta,..._sinteticos].sort((a,b)=>b.de.localeCompare(a.de));
-  const nColetadas=_histColeta.length;
+  const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
   if(!hist.length){
     document.getElementById('indEmp').style.display='block';
     document.getElementById('indKpis').innerHTML='';
@@ -5501,11 +5358,13 @@ function renderIndicadores(){
 
   let semanasPerido;
   if(periodo==='semanal'){
-    // Semana selecionada no banner CPP (sincronizado)
-    if(typeof _cppManualSemanaAtiva!=='undefined'&&_cppManualSemanaAtiva){
-      const _semAtiva=hist.find(s=>s.semanaISO===_cppManualSemanaAtiva);
-      semanasPerido=_semAtiva?[_semAtiva]:hist.slice(0,1);
-    } else { semanasPerido=hist.slice(0,1); }
+    // Semana selecionada no banner CPP (ou mais recente se não definida)
+    if(_cppManualSemanaAtiva){
+      const semAtiva=hist.find(s=>s.semanaISO===_cppManualSemanaAtiva);
+      semanasPerido=semAtiva?[semAtiva]:hist.slice(0,1);
+    } else {
+      semanasPerido=hist.slice(0,1);
+    }
   } else if(periodo==='mensal'){
     // Todas as semanas do mês atual
     semanasPerido=hist.filter(s=>{
@@ -5552,79 +5411,17 @@ function renderIndicadores(){
   // ── Métricas do período selecionado (para KPIs)
   const todasVendas=semanasPerido.flatMap(s=>s.vendas||[]);
   const todosCancels=semanasPerido.flatMap(s=>s.cancelamentos||[]);
-  // Para KPIs do período: agregar métricas de todas as semanas
-  // Combina semanas com vendas brutas + semanas com _metricas pré-calculadas
-  const mReal=calcularMetricasSemana(todasVendas,todosCancels,hub);
-
-  // Agregar métricas de semanas sem vendas brutas mas com _metricas
-  const _mMetricasSems=semanasPerido
-    .filter(s=>(!s.vendas||s.vendas.length===0)&&s._metricas)
-    .map(s=>calcularMetricasSemana([],[],hub,s));
-
-  // Volume total
-  const _volMetricas=_mMetricasSems.reduce((t,m)=>t+(m.volume||0),0);
-  const _volEscala=semanasPerido.reduce((t,s)=>{
-    if(s._sintetico&&(!s.vendas||s.vendas.length===0)&&!s._metricas){
-      return t+(getVolumeSemana(s.semanaISO)||0);
-    }
-    return t;
-  },0);
-  const volTotal=mReal.volume+_volMetricas||_volEscala||0;
-
-  // Cancelamentos totais
-  const cancTotal=mReal.cancelamentos+_mMetricasSems.reduce((t,m)=>t+(m.cancelamentos||0),0);
-
-  // Tempos médios ponderados por volume
-  function _mediapond(semanas_mt){
-    // semanas_mt: [{tPreparoMed,tColetaMed,tDespachoMed,amostras}]
-    let spP=0,spC=0,spD=0, nP=0,nC=0,nD=0;
-    semanas_mt.forEach(mt=>{
-      const ap=mt.amostras?.preparo||0, ac=mt.amostras?.coleta||0, ad=mt.amostras?.despacho||0;
-      if(mt.tPreparoMed!=null&&ap>0){spP+=mt.tPreparoMed*ap;nP+=ap;}
-      if(mt.tColetaMed!=null&&ac>0){spC+=mt.tColetaMed*ac;nC+=ac;}
-      if(mt.tDespachoMed!=null&&ad>0){spD+=mt.tDespachoMed*ad;nD+=ad;}
-    });
-    return{
-      tPreparoMed:nP>0?spP/nP:null,
-      tColetaMed:nC>0?spC/nC:null,
-      tDespachoMed:nD>0?spD/nD:null,
-    };
-  }
-  const _todasMt=[mReal,..._mMetricasSems];
-  // Build final merged metrics
-  const _tMed=(function(mts){
-    let spP=0,spC=0,spD=0, nP=0,nC=0,nD=0;
-    mts.forEach(mt=>{
-      const ap=mt.amostras?.preparo||0, ac=mt.amostras?.coleta||0, ad=mt.amostras?.despacho||0;
-      if(mt.tPreparoMed!=null&&ap>0){spP+=mt.tPreparoMed*ap;nP+=ap;}
-      if(mt.tColetaMed!=null&&ac>0){spC+=mt.tColetaMed*ac;nC+=ac;}
-      if(mt.tDespachoMed!=null&&ad>0){spD+=mt.tDespachoMed*ad;nD+=ad;}
-    });
-    return{tPreparoMed:nP>0?spP/nP:null, tColetaMed:nC>0?spC/nC:null, tDespachoMed:nD>0?spD/nD:null};
-  })(_todasMt);
-
-  const m={...mReal, volume:volTotal, cancelamentos:cancTotal,
-    pctCancel:volTotal>0?(cancTotal/(volTotal+cancTotal)*100):0,
-    tPreparoMed:_tMed.tPreparoMed??mReal.tPreparoMed,
-    tColetaMed:_tMed.tColetaMed??mReal.tColetaMed,
-    tDespachoMed:_tMed.tDespachoMed??mReal.tDespachoMed};
+  const m=calcularMetricasSemana(todasVendas,todosCancels,hub);
 
   // Período anterior (mesmo tamanho) para comparação
   const nSems=semanasPerido.length;
   const semanasAnt=hist.slice(nSems, nSems*2);
-  const _mAntReal=semanasAnt.length?calcularMetricasSemana(semanasAnt.flatMap(s=>s.vendas||[]),semanasAnt.flatMap(s=>s.cancelamentos||[]),hub):null;
-  const _mAntMetricas=semanasAnt.filter(s=>(!s.vendas||s.vendas.length===0)&&s._metricas).map(s=>calcularMetricasSemana([],[],hub,s));
-  const _volAnt=(_mAntReal?.volume||0)+_mAntMetricas.reduce((t,m)=>t+(m.volume||0),0);
-  const _cancAnt=(_mAntReal?.cancelamentos||0)+_mAntMetricas.reduce((t,m)=>t+(m.cancelamentos||0),0);
-  const _tMedAnt=_mAntReal?(function(mts){
-    let spP=0,spC=0,spD=0,nP=0,nC=0,nD=0;
-    mts.forEach(mt=>{const ap=mt.amostras?.preparo||0,ac=mt.amostras?.coleta||0,ad=mt.amostras?.despacho||0;if(mt.tPreparoMed!=null&&ap>0){spP+=mt.tPreparoMed*ap;nP+=ap;}if(mt.tColetaMed!=null&&ac>0){spC+=mt.tColetaMed*ac;nC+=ac;}if(mt.tDespachoMed!=null&&ad>0){spD+=mt.tDespachoMed*ad;nD+=ad;}});
-    return{tPreparoMed:nP>0?spP/nP:null,tColetaMed:nC>0?spC/nC:null,tDespachoMed:nD>0?spD/nD:null};
-  })([_mAntReal,..._mAntMetricas]):null;
-  const mAnt=_mAntReal?{..._mAntReal,volume:_volAnt,cancelamentos:_cancAnt,pctCancel:_volAnt>0?(_cancAnt/(_volAnt+_cancAnt)*100):0,...(_tMedAnt||{})}:null;
+  const mAnt=semanasAnt.length
+    ? calcularMetricasSemana(semanasAnt.flatMap(s=>s.vendas||[]),semanasAnt.flatMap(s=>s.cancelamentos||[]),hub)
+    : null;
 
-  // ── CPP do período
-  const semanaRef=semanasPerido[0]||hist[0]; // mais recente para CPP de escala
+  // ── CPP do período — getCustoEscalaSemana (histEscMap ainda não inicializado aqui)
+  const semanaRef=semanasPerido[0]||hist[0];
   const custoEscalaPer=semanasPerido.reduce((t,s)=>{
     const c=getCustoEscalaSemana(s.semanaISO);
     return t+(c||0);
@@ -5645,8 +5442,7 @@ function renderIndicadores(){
   }[periodo];
 
   // Aviso se mensal e trimestral mostram o mesmo dado (poucas semanas coletadas)
-  const _nColetadasNoPeriodo=semanasPerido.filter(s=>!s._sintetico).length;
-  const avisoSemanas = _nColetadasNoPeriodo<=1 && nColetadas<=1 && periodo!=='semanal'
+  const avisoSemanas = hist.length<=1 && periodo!=='semanal'
     ? '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:11px;color:#92400e;margin-bottom:12px">⚠️ Apenas 1 semana coletada — mensal e trimestral mostram os mesmos dados. Execute o bookmarklet a cada semana para enriquecer o histórico.</div>'
     : '';
   const _bannerEl=document.getElementById('indBanner');
@@ -5748,24 +5544,17 @@ function renderIndicadores(){
     he.forEach(e=>{
       const seg=e.segISO;
       if(!seg) return;
-      const segN=_segNorm(seg)||seg;
+      // Usar resumo.totalCusto diretamente — já é atualizado pelo renderHistorico ao editar
+      // Não recalcular do zero para não divergir do que está no histórico
       const custo=e.resumo?.totalCusto||0;
-      // Index por chave normalizada (segunda da semana) para agrupar escalas de hubs diferentes
-      if(!histEscMap[segN]) histEscMap[segN]=[];
-      histEscMap[segN].push({custo, hubFiltro: e.hubFiltro||null});
-      // Também indexar pela chave original para compatibilidade
-      if(seg!==segN){
-        if(!histEscMap[seg]) histEscMap[seg]=[];
-        histEscMap[seg].push({custo, hubFiltro: e.hubFiltro||null});
-      }
+      if(!histEscMap[seg]) histEscMap[seg]=[];
+      histEscMap[seg].push({custo, hubFiltro: e.hubFiltro||null});
     });
   }catch(e){}
 
   // Retorna custo filtrado pelo hub selecionado nos indicadores
   function getCustoFiltrado(seg){
-    const segN=_segNorm(seg)||seg;
-    // Try exact key first, then normalized
-    const entradas=histEscMap[seg]||histEscMap[segN];
+    const entradas=histEscMap[seg];
     if(!entradas||!entradas.length) return null;
     const hubTodos=hub instanceof Set?hub.has('todos'):hub==='todos';
     // Se filtro = todos os hubs → somar tudo
@@ -5839,17 +5628,11 @@ function renderIndicadores(){
 
     if(isTrimestral && grupo.semanas.length>1){
       // Linha de totais + linha de cada semana expandível
-      // Aggregate metrics for group (month/quarter header row)
-      const _gVendas=grupo.semanas.flatMap(s=>s.vendas||[]);
-      const _gCancels=grupo.semanas.flatMap(s=>s.cancelamentos||[]);
-      const _gVolMetricas=grupo.semanas.reduce((t,s)=>{
-        if((!s.vendas||s.vendas.length===0)&&s._metricas){
-          return t+calcularMetricasSemana([],[],hub,s).volume;
-        }
-        return t;
-      },0);
-      const _mtGrupoRaw=calcularMetricasSemana(_gVendas,_gCancels,hub);
-      const mtGrupo={..._mtGrupoRaw, volume:_mtGrupoRaw.volume+_gVolMetricas};
+      const mtGrupo = calcularMetricasSemana(
+        grupo.semanas.flatMap(s=>s.vendas||[]),
+        grupo.semanas.flatMap(s=>s.cancelamentos||[]),
+        hub
+      );
       const escDataGrupo=grupo.semanas.map(s=>getCustoFiltrado(s.de)).filter(v=>v!==null);
       const custoGrupo=escDataGrupo.reduce((t,v)=>t+v,0);
       const avgCpp=custoGrupo>0&&mtGrupo.volume>0?custoGrupo/mtGrupo.volume:null;
@@ -5871,10 +5654,7 @@ function renderIndicadores(){
     }
 
     const metricas=grupo.semanas.map(sem=>{
-      const mtReal=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub,sem);
-      // Para semanas sem coleta e sem _metricas, usar volume projetado da escala
-      const volEsc=(!mtReal.volume&&(sem._sintetico||sem._metricas))?getVolumeSemana(sem.semanaISO):0;
-      const mt={...mtReal, volume: mtReal.volume||volEsc||0, _volDaEscala: !mtReal.volume&&volEsc>0};
+      const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
       const custoSem=getCustoFiltrado(sem.de);
       const cppSem=custoSem!==null&&mt.volume>0?custoSem/mt.volume:null;
       const adicionalSem=getCppManualTotal(sem.semanaISO||'');
@@ -5899,26 +5679,36 @@ function renderIndicadores(){
       const rowBg=isTrimestral?'background:#fafafa':'';
       const rowPad=isTrimestral?'padding-left:20px':'';
       const cppAdicBg=adicionalSem>0?'background:#fff7ed':'';
-      const isSint=!!sem._sintetico;
-      const semLabel=isSint?`${sem.deBR}–${sem.ateBR} <span style="font-size:9px;color:#6b7280;font-weight:400;background:#f3f4f6;border-radius:3px;padding:1px 4px">só escala</span>`:`${sem.deBR}–${sem.ateBR}`;
-      tbody+=`<tr style="border-bottom:1px solid var(--brd);${rowBg}${isSint?'background:#fafafa':''}">
-        <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap;${rowPad}">${semLabel}</td>
-        ${isSint?`
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${mt.volume>0?mt.volume.toLocaleString('pt-BR')+' <span style="font-size:9px;color:#9ca3af">proj.</span>':'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:#9ca3af">—</td>`:`
+      tbody+=`<tr style="border-bottom:1px solid var(--brd);${rowBg}">
+        <td style="padding:6px 12px;font-size:11px;font-weight:600;white-space:nowrap;${rowPad}">${sem.deBR}–${sem.ateBR}</td>
         ${celVar(mt.volume,prevMt?.volume,true,v=>v.toLocaleString('pt-BR'))}
         ${celVar(mt.cancelamentos,prevMt?.cancelamentos,false,v=>v)}
         ${celVar(mt.pctCancel,prevMt?.pctCancel,false,v=>v.toFixed(2)+'%')}
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tPreparoMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tColetaMed)}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>`}
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(mt.tDespachoMed)}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:600">${custoSem!==null?'R$ '+custoSem.toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cppSem!==null?'R$ '+cppSem.toFixed(2).replace('.',','):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);${cppAdicBg}">${adicionalSem>0?'R$ '+adicionalSem.toFixed(2).replace('.',','):'—'}</td>
+        <td style="padding:4px 8px;font-size:12px;font-family:var(--mo);${cppAdicBg}">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:10px;color:var(--mu)">R$</span>
+            <input type="number" min="0" step="0.01"
+              value="${adicionalSem>0?adicionalSem.toFixed(2):''}"
+              placeholder="0,00"
+              title="Editar adicionais desta semana"
+              style="width:72px;padding:2px 4px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn);background:var(--card2);color:var(--tx)"
+              onchange="(function(el){
+                const semISO='${sem.semanaISO||''}';
+                if(!semISO)return;
+                const val=parseFloat(el.value)||0;
+                const d=getCppManualSemana(semISO)||{};
+                const cur=Object.values(d).reduce((t,v)=>t+(parseFloat(v)||0),0);
+                const diff=val-cur;
+                setCppManualSemana(semISO,{limpezaFixo:(parseFloat(d.limpezaFixo)||0),freela:(parseFloat(d.freela)||0),atendimento:(parseFloat(d.atendimento)||0),outros:Math.max(0,(parseFloat(d.outros)||0)+diff)});
+                renderIndicadores();
+              })(this)">
+          </div>
+        </td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700;${cppComAdicional!==null&&adicionalSem>0?'color:#dc2626':''}">${cppComAdicional!==null?'R$ '+cppComAdicional.toFixed(2).replace('.',','):'—'}</td>
       </tr>`;
     });
@@ -5970,14 +5760,9 @@ function renderIndicadores(){
 
   document.getElementById('indTabela').innerHTML=thead+tbody;
 
-  const _volTotalSub=m.volume>0?m.volume:todasVendas.length;
-  const _volSuffix=mReal.volume===0&&_volEscala>0?' (proj.)':'';
-  const subTxt=`${periodoLabel} · ${_volTotalSub.toLocaleString('pt-BR')} pedidos analisados${_volSuffix}`;
+  const subTxt=`${periodoLabel} · ${todasVendas.length.toLocaleString('pt-BR')} pedidos analisados`;
   document.getElementById('indSub').textContent=subTxt;
-  const _nTotal=hist.length, _nSint=hist.filter(s=>s._sintetico).length;
-  const _labelColet=nColetadas>0?`${nColetadas} semana${nColetadas!==1?'s':''} coletada${nColetadas!==1?'s':''}`:`sem coleta`;
-  const _labelEsc=_nSint>0?` · ${_nSint} só da escala`:'';
-  document.getElementById('indTabelaMeta').textContent=`${_labelColet}${_labelEsc} · tabela exibe todas`;
+  document.getElementById('indTabelaMeta').textContent=`${hist.length} semana${hist.length!==1?'s':''} coletada${hist.length!==1?'s':''} · tabela exibe todas`;
 
   // Atualiza select hubs
   atualizarSelectHubs([]);
@@ -6317,7 +6102,7 @@ function renderColHist(){
   if(!histEsc.length){
     const colabsAtuais = S.colabs.filter(c=>{
       if(hubFiltro==='todos') return true;
-      return (c.hub||'Sion')===hubFiltro;
+      return (c.hubs||[c.hub||'Sion']).includes(hubFiltro);
     });
     if(!colabsAtuais.length){
       con.innerHTML='<div class="empty"><div class="empty-ico">👤</div><h3>Nenhum colaborador cadastrado para este hub</h3></div>';
@@ -7481,7 +7266,7 @@ function msgEscalaColab(nome,segBR,domBR){
 
 function gerarLinkUnico(segISO,segBR,domBR){
   const hubColab=getHubColabAtual();
-  const colabs=hubColab?S.colabs.filter(c=>(c.hub||'Sion')===hubColab):S.colabs;
+  const colabs=hubColab?S.colabs.filter(c=>(c.hubs||[c.hub||'Sion']).includes(hubColab)):S.colabs;
   const nomes=colabs.map(c=>c.nome);
   const expira=Date.now()+60*60*1000;
   const dados={tipo:'grupo',seg:segISO,segBR,domBR,nomes,expira};
@@ -7495,7 +7280,7 @@ function enviarEscalaGrupo(){
   const fb=d=>p2(d.getDate())+'/'+p2(d.getMonth()+1);
   const segBR=fb(seg),domBR=fb(dom);
   const hubColab=getHubColabAtual();
-  const colabs=hubColab?S.colabs.filter(c=>(c.hub||'Sion')===hubColab):S.colabs;
+  const colabs=hubColab?S.colabs.filter(c=>(c.hubs||[c.hub||'Sion']).includes(hubColab)):S.colabs;
   const DN={Seg:'Seg',Ter:'Ter',Qua:'Qua',Qui:'Qui',Sex:'Sex',Sab:'Sab',Dom:'Dom'};
   const linhas=colabs.map(c=>{
     const t=getTurnosColab(c.nome);
@@ -7564,7 +7349,7 @@ function abrirEnvioWhatsApp(){
   const dispRecebidas=JSON.parse(localStorage.getItem(dispKey)||'{}');
   const nRecebidas=Object.keys(dispRecebidas).length;
   const hubColab=getHubColabAtual();
-  const colabsFilt=hubColab?colabs.filter(c=>(c.hub||'Sion')===hubColab):colabs;
+  const colabsFilt=hubColab?colabs.filter(c=>(c.hubs||[c.hub||'Sion']).includes(hubColab)):colabs;
   const temEscala=!!S.escala;
   // Guardar dados na closure para funções de envio
   window._wppCtx={segISO,segBR,domBR};
@@ -8341,7 +8126,7 @@ function exportarIndicadores(){
   const hub=typeof _hubsSel!=='undefined'?_hubsSel:new Set(['todos']);
   const linhas=[['Semana','Volume','Cancelamentos','% Cancel.','T.Preparo (min)','T.Coleta (min)','T.Despacho (min)','CPP']];
   hist.forEach(sem=>{
-    const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub,sem);
+    const mt=calcularMetricasSemana(sem.vendas||[],sem.cancelamentos||[],hub);
     let cppSem='';
     try{
       const he=JSON.parse(localStorage.getItem('orion_v7_hist')||'[]');
