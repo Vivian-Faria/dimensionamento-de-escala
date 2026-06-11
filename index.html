@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260611210616">
+<meta name="version" content="v20260611210901">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2881,7 +2881,23 @@ function aM(id){
   document.getElementById('fFixo').checked=!!(c&&c.fixo);
   // Preencher folga semanal
   const folgaGrade=document.getElementById('fFolgaDias');
-  if(folgaGrade){const _DIAS_F=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];folgaGrade.innerHTML=_DIAS_F.map(d=>`<span class="folga-dia${(_c?.folgaDias||[]).includes(d)?' on':''}" onclick="this.classList.toggle('on')" data-dia="${d}" style="cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid var(--brd);background:${(_c?.folgaDias||[]).includes(d)?'var(--ac)':'var(--card2)'};color:${(_c?.folgaDias||[]).includes(d)?'#fff':'var(--tx)'}" onmouseenter="" >${d==='Sab'?'Sáb':d}</span>`).join('');}
+  if(folgaGrade){
+    const _DIAS_F=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+    const _fAtivos = (_c && Array.isArray(_c.folgaDias)) ? _c.folgaDias : [];
+    folgaGrade.innerHTML = _DIAS_F.map(d => {
+      const ativo = _fAtivos.includes(d);
+      const lbl = d === 'Sab' ? 'Sáb' : d;
+      return '<span class="folga-dia' + (ativo ? ' on' : '') + '" data-dia="' + d + '" style="cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid var(--brd);background:' + (ativo ? 'var(--ac)' : 'var(--card2)') + ';color:' + (ativo ? '#fff' : 'var(--tx)') + ';margin:2px">' + lbl + '</span>';
+    }).join('');
+    folgaGrade.onclick = function(e) {
+      const sp = e.target.closest('.folga-dia');
+      if (!sp) return;
+      sp.classList.toggle('on');
+      const isOn = sp.classList.contains('on');
+      sp.style.background = isOn ? 'var(--ac)' : 'var(--card2)';
+      sp.style.color = isOn ? '#fff' : 'var(--tx)';
+    };
+  }
   if(document.getElementById('fFolgaFixa'))document.getElementById('fFolgaFixa').checked=!!_c?.folgaFixa;
   // Preencher almoço
   if(document.getElementById('fAlmocoIn'))document.getElementById('fAlmocoIn').value=_c?.almocoIn??'';
