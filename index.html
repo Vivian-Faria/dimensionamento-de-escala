@@ -465,7 +465,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div class="cfg"><label>Pedidos/pessoa/hora</label><input type="number" id="cPPH" value="30" min="1" max="200" oninput="atualizarSideRegras()"></div>
   <div class="cfg"><label>Mín. pessoas abertura (09h)</label><input type="number" id="cMin" value="2" min="1" max="10" oninput="atualizarSideRegras()"></div>
   <div class="cfg"><label>Meta CPP (R$/pedido)</label><input type="number" id="cCPPMeta" value="1.10" step="0.05" min="0.50" max="5.00" oninput="atualizarSideRegras()" title="Limite máximo de custo por pedido por slot. O preencher evita alocar além desse valor."></div>
-  <div class="cfg"><label>Hora abertura</label><input type="number" id="cHI" value="9" min="0" max="23" oninput="atualizarSideRegras()"></div>
+  <div class="cfg"><label>Hora abertura</label><input type="number" id="cHI" value="8" min="0" max="23" oninput="atualizarSideRegras()"></div>
   <div class="cfg"><label>Hora fechamento (25=01h)</label><input type="number" id="cHO" value="25" min="1" max="30" oninput="atualizarSideRegras()"></div>
 
   <div class="stit" style="margin-top:12px">☁️ API Backend</div>
@@ -1407,10 +1407,14 @@ function gerarEscala(dados, hubFiltro){
   // Persistir imediatamente para sobreviver a recarregamentos
   try{localStorage.setItem('orion_v7_hub',JSON.stringify({hubAtual:S.hubAtual,hubFiltro:S._hubFiltroAtual}));}catch(e){}
 
-  // Usar horário do hub se disponível, senão usa campos globais
-  const _hubColabGerarEscala = getHubColabAtual();
-  const _regraHubGerar = HUB_REGRAS[_hubColabGerarEscala] || null;
-  const hI = _regraHubGerar ? _regraHubGerar.horaMin : (+document.getElementById('cHI').value||9);
+  // Usar horário do hub selecionado — mapeia hubs de indicadores para hub de colaborador
+  const _hubColabGerar = (()=>{
+    if(!hubs.length) return null;
+    const mapped = [...new Set(hubs.map(h=>HUB_IND_PARA_COLAB[h]).filter(Boolean))];
+    return mapped.length === 1 ? mapped[0] : null;
+  })();
+  const _regraHubGerar = HUB_REGRAS[_hubColabGerar] || null;
+  const hI = _regraHubGerar ? _regraHubGerar.horaMin : (+document.getElementById('cHI').value||8);
   const hO = _regraHubGerar ? _regraHubGerar.horaMax : (+document.getElementById('cHO').value||25);
 
   const esc={};
@@ -2081,16 +2085,22 @@ function preencher(){
 
   const _hubColabAtual = getHubColabAtual();
   // Usar horário do hub se disponível, senão usa os campos globais
-  const _regraHub = HUB_REGRAS[_hubColabAtual] || null;
-  const hI = _regraHub ? _regraHub.horaMin : (+document.getElementById('cHI').value||9);
+  const _hubColabPreencher = _hubColabAtual || (()=>{
+    const hfs = S._hubFiltroAtual || [];
+    const mapped = [...new Set(hfs.map(h=>HUB_IND_PARA_COLAB[h]).filter(Boolean))];
+    return mapped.length === 1 ? mapped[0] : null;
+  })();
+  const _regraHub = HUB_REGRAS[_hubColabPreencher] || null;
+  const hI = _regraHub ? _regraHub.horaMin : (+document.getElementById('cHI').value||8);
   const hO = _regraHub ? _regraHub.horaMax : (+document.getElementById('cHO').value||25);
 
   DIAS.forEach(d=>{for(let h=hI;h<=hO;h++){if(S.escala[d]?.[h])S.escala[d][h].alocados=[];}});
   // Filtrar colaboradores pelo hub da escala atual usando função centralizada
-  const colabsAtivos = _hubColabAtual
+  const _hubParaFiltrar = _hubColabPreencher;
+  const colabsAtivos = _hubParaFiltrar
     ? S.colabs.filter(c=>{
         const hubsC = c.hubs && c.hubs.length > 0 ? c.hubs : [c.hub||'Sion'];
-        return hubsC.includes(_hubColabAtual);
+        return hubsC.includes(_hubParaFiltrar);
       })
     : S.colabs;
 
@@ -2315,7 +2325,7 @@ function calcularCustos(){
 
   // Distribui o custo de passagem: adiciona na PRIMEIRA hora alocada do colaborador no dia
   DIAS.forEach(dia=>{
-    const hI=+document.getElementById('cHI').value||9;
+    const hI=+document.getElementById('cHI').value||8;
     const hO=+document.getElementById('cHO').value||25;
     const jaAdicionado=new Set();
     for(let h=hI;h<=hO;h++){
@@ -2408,8 +2418,10 @@ async function testarApi(){
 function atualizarSideRegras(){
   const pph=+document.getElementById('cPPH').value||30;
   const minPes=+document.getElementById('cMin').value||2;
-  const hI=+document.getElementById('cHI').value||9;
+  const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
+  // Persistir configurações no localStorage
+  try{localStorage.setItem('orion_v7_cfg',JSON.stringify({pph,minPes,hI,hO,cppMeta:parseFloat(document.getElementById('cCPPMeta')?.value)||1.10}));}catch(e){}
   const hOlbl=hO>=24?`${String(hO-24).padStart(2,'0')}:00 (+1)`:`${String(hO).padStart(2,'0')}:00`;
   const hIlbl=`${String(hI).padStart(2,'0')}:00`;
 
@@ -2457,7 +2469,7 @@ function limpar(){
 // ══════════════════════════════════════════════════════
 function renderEscala(){
   if(!S.escala)return;
-  const hI=+document.getElementById('cHI').value||9;
+  const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
 
@@ -2600,7 +2612,7 @@ function renderEscala(){
 // ══════════════════════════════════════════════════════
 function renderHM(){
   if(!S.matrix)return;
-  const hI=+document.getElementById('cHI').value||9;
+  const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   document.getElementById('hmEmp').style.display='none';
@@ -3010,7 +3022,7 @@ function filtrarDiaEscala(dia){
 
 function renderEscalaFiltrada(dia){
   if(!S.escala)return;
-  const hI=+document.getElementById('cHI').value||9;
+  const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   // No modo dia único exibe só aquele dia; no modo semana exibe todos
@@ -3121,7 +3133,7 @@ function renderEscalaFiltrada(dia){
 
 function abrirPainelTurnos(){
   if(!S.escala){toast('Gere e preencha a escala primeiro.','ter');return;}
-  const hI=+document.getElementById('cHI').value||9;
+  const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const {seg} = proximaSemana();
@@ -3439,7 +3451,7 @@ function ptRemoverSlot(nome, dia, ini, fim){
 function copiarTurnoPorNome(nome){ copiarTurno(nome); }
 function copiarTurno(nome){
   if(!S.escala)return;
-  const hI=+document.getElementById('cHI').value||9;
+  const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const {seg}=proximaSemana();
@@ -3503,7 +3515,7 @@ function publicarEscala(){
   const p2=v=>String(v).padStart(2,'0');
   const fmt=d=>p2(d.getDate())+'/'+p2(d.getMonth()+1)+'/'+d.getFullYear();
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const hI=+document.getElementById('cHI').value||9;
+  const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
 
   // Monta resumo numérico
@@ -3540,7 +3552,7 @@ function publicarEscala(){
 
   // Monta mapa de confirmações detalhadas: por colaborador, por dia, por turno
   // Estrutura: confirmacoes[nome] = { status, turnos: [{dia, ini, fim, horas, faltou, horasAbatidas}] }
-  const hIp=+document.getElementById('cHI').value||9;
+  const hIp=+document.getElementById('cHI').value||8;
   const hOp=+document.getElementById('cHO').value||25;
   // ── Fix 2: Preservar confirmações existentes se republicando a mesma semana
   const histExist=JSON.parse(localStorage.getItem(KH)||'[]');
@@ -3613,7 +3625,7 @@ function publicarEscala(){
     // ── Adicionar slots SEM COBERTURA ou INSUFICIENTES ao leilão automaticamente
     const leilaoKey='orion_v7_leilao_'+entrada.id;
     const leilaoAtual=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
-    const hIl=+document.getElementById('cHI').value||9;
+    const hIl=+document.getElementById('cHI').value||8;
     const hOl=+document.getElementById('cHO').value||25;
     let slotsAdicionados=0;
 
@@ -3764,7 +3776,7 @@ function renderHistorico(filtro){
     // Painel de confirmações com faltas por turno individual
     // Auto-corrigir confirmacoes inconsistentes com a escala (fix para entradas antigas)
     const diasO2=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-    const hIp2=+document.getElementById('cHI').value||9;
+    const hIp2=+document.getElementById('cHI').value||8;
     const hOp2=+document.getElementById('cHO').value||25;
     Object.keys(confs).forEach(nome=>{
       const turnosNaEscala=[];
@@ -8398,7 +8410,17 @@ function exportarIndicadores(){
 }
 
 // ── Indicadores: inicialização
-load();renderCo();atualizarSideRegras();
+load();renderCo();
+// Restaurar configurações salvas
+try{
+  const _cfg=JSON.parse(localStorage.getItem('orion_v7_cfg')||'{}');
+  if(_cfg.pph)document.getElementById('cPPH').value=_cfg.pph;
+  if(_cfg.minPes)document.getElementById('cMin').value=_cfg.minPes;
+  if(_cfg.hI!=null)document.getElementById('cHI').value=_cfg.hI;
+  if(_cfg.hO!=null)document.getElementById('cHO').value=_cfg.hO;
+  if(_cfg.cppMeta)document.getElementById('cCPPMeta').value=_cfg.cppMeta;
+}catch(e){}
+atualizarSideRegras();
 _initApiConfig();
 setTimeout(()=>{ verificarDisponibilidadesExistentes(); atualizarPainelPassos(); _atualizarBtnDesfazer(); }, 150);
 
