@@ -2078,7 +2078,10 @@ function preencher(){
   // Mapear hubs de indicadores → hub de colaborador
   const _hubColabAtual = getHubColabAtual();
   const colabsAtivos = _hubColabAtual
-    ? S.colabs.filter(c=>(c.hub||'Sion')===_hubColabAtual)
+    ? S.colabs.filter(c=>{
+        const hubsC = c.hubs && c.hubs.length > 0 ? c.hubs : [c.hub||'Sion'];
+        return hubsC.includes(_hubColabAtual);
+      })
     : S.colabs;
 
   // Meta de CPP por slot — limita alocação extra quando custo/pedido ultrapassa a meta
