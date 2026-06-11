@@ -2130,7 +2130,7 @@ function preencher(){
     const parColab = (idx + parBase) % 2;
     diasTrabalho12x36[c.nome] = new Set(
       diasOrdem.filter((d, i) => {
-        if(!c.dias.includes(d)) return false;
+        if(!(c.dias||[]).includes(d)) return false;
         return i % 2 === parColab;
       })
     );
@@ -2197,7 +2197,7 @@ function preencher(){
       }
 
       const disp=colabsAtivos.filter(c=>{
-        if(!c.dias.includes(dia))return false;
+        if(!(c.dias||[]).includes(dia))return false;
         // 12x36: só trabalha nos dias calculados para esta semana
         if(c.tipoContrato==='12x36'&&diasTrabalho12x36[c.nome]&&!diasTrabalho12x36[c.nome].has(dia))return false;
         // Disponibilidade declarada pelo colaborador
@@ -2842,7 +2842,7 @@ function aM(id){
     document.getElementById('fMinH').value=c.minH||3;
     document.getElementById('fMaxH').value=c.maxH||8;
     document.getElementById('fNo').value=c.nota||'';
-    const disp=c.dispDia||Object.fromEntries(c.dias.map(d=>[d,{horaIn:c.horaIn,horaOut:c.horaOut}]));
+    const disp=c.dispDia||Object.fromEntries((c.dias||[]).map(d=>[d,{horaIn:c.horaIn,horaOut:c.horaOut}]));
     renderDispGrade(disp);
   }else{
     ['fN','fF','fNo'].forEach(i=>document.getElementById(i).value='');
