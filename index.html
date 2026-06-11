@@ -1456,6 +1456,7 @@ function gerarEscala(dados, hubFiltro){
   document.getElementById('esBanner').className='';
   hideLd();
   renderEscala();renderHM();atualizarSideRegras();
+  preencher();
   goT('es');
   toast(`✓ Escala gerada! ${totalExibido.toLocaleString()} pedidos (${per}).`,'tok');
 }
