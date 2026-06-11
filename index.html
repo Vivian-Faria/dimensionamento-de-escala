@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260611232220">
+<meta name="version" content="v20260611233556">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -8481,11 +8481,15 @@ if(window._SHORT_CODE){
           renderDispMode();
         }
       } else {
-        document.body.innerHTML='<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;font-family:sans-serif"><div style="text-align:center;color:#fff;padding:20px"><div style="font-size:48px;margin-bottom:16px">⚠️</div><h2 style="font-size:18px;margin-bottom:8px">Link não encontrado</h2><p style="color:#9ca3af;font-size:13px">Este link pode ter expirado. Peça um novo ao gestor.</p></div></div>';
+        // Link expirado ou não encontrado — carregar app normalmente em vez de tela preta
+        console.warn('[ShortLink] Link não encontrado, carregando app normalmente');
+        history.replaceState(null,'',location.pathname);
+        toast('Link expirado ou não encontrado. Solicite um novo.','ter');
       }
     }catch(e){
       console.warn('[ShortLink] Erro ao resolver:',e.message);
-      document.body.innerHTML='<div style="min-height:100vh;background:#0d0d10;display:flex;align-items:center;justify-content:center;font-family:sans-serif"><div style="text-align:center;color:#fff;padding:20px"><div style="font-size:48px;margin-bottom:16px">❌</div><h2 style="font-size:18px;margin-bottom:8px">Erro ao carregar</h2><p style="color:#9ca3af;font-size:13px">Verifique sua conexão e tente novamente.</p></div></div>';
+      history.replaceState(null,'',location.pathname);
+      toast('Erro ao carregar link. Tente novamente.','ter');
     }
   })();
 }
