@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260611215650">
+<meta name="version" content="v20260611221517">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3483,7 +3483,14 @@ function copiarTurno(nome){
     return grupos.map(gr=>({ini:gr[0],fim:gr[gr.length-1]+1,horas:gr.length}));
   }
 
+  const c=S.colabs.find(x=>x.nome===nome);
   const linhas=[`📅 Escala da semana — ${nome}`,''];
+  if(c&&c.folgaDias&&c.folgaDias.length){
+    const DIAS_NOME={Seg:'segunda',Ter:'terça',Qua:'quarta',Qui:'quinta',Sex:'sexta',Sab:'sábado',Dom:'domingo'};
+    const diasNome=c.folgaDias.map(d=>DIAS_NOME[d]||d).join(', ');
+    linhas.push(`${c.folgaFixa?'🔒 Folga fixa':'🏖 Folga'}: ${diasNome}`);
+    linhas.push('');
+  }
   let totalH=0;
   diasO.forEach((dia,di)=>{
     const cell_horas=[];
