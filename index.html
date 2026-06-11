@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260611212131">
+<meta name="version" content="v20260611215650">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3227,6 +3227,7 @@ function abrirPainelTurnos(){
       <div class="pt-header">
         <span class="pt-nome">${nome}</span>
         <span class="pt-func">${c?.funcao||'Colaborador'}</span>
+        ${(c&&c.folgaDias&&c.folgaDias.length)?`<span style="font-size:10px;background:#dbeafe;color:#1d4ed8;border-radius:5px;padding:2px 7px;font-weight:600">${c.folgaFixa?'🔒':'🏖'} Folga: ${c.folgaDias.map(d=>d==='Sab'?'Sáb':d).join(', ')}</span>`:''}
         <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end">
           <span class="pt-info">${totalH}h · ${custoInfo}</span>
           <button class="btn bs sm" onclick="copiarTurnoPorNome('${nome.replace(/'/g,"\\'")}')">📋 Copiar</button>
