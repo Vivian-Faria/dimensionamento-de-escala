@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260611210331">
+<meta name="version" content="v20260611210616">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2881,7 +2881,7 @@ function aM(id){
   document.getElementById('fFixo').checked=!!(c&&c.fixo);
   // Preencher folga semanal
   const folgaGrade=document.getElementById('fFolgaDias');
-  if(folgaGrade){const _DIAS_F=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];folgaGrade.innerHTML=_DIAS_F.map(d=>`<span class="dt${(_c?.folgaDias||[]).includes(d)?' on':''}" onclick="this.classList.toggle('on')" data-dia="${d}">${d==='Sab'?'Sáb':d}</span>`).join('');}
+  if(folgaGrade){const _DIAS_F=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];folgaGrade.innerHTML=_DIAS_F.map(d=>`<span class="folga-dia${(_c?.folgaDias||[]).includes(d)?' on':''}" onclick="this.classList.toggle('on')" data-dia="${d}" style="cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid var(--brd);background:${(_c?.folgaDias||[]).includes(d)?'var(--ac)':'var(--card2)'};color:${(_c?.folgaDias||[]).includes(d)?'#fff':'var(--tx)'}" onmouseenter="" >${d==='Sab'?'Sáb':d}</span>`).join('');}
   if(document.getElementById('fFolgaFixa'))document.getElementById('fFolgaFixa').checked=!!_c?.folgaFixa;
   // Preencher almoço
   if(document.getElementById('fAlmocoIn'))document.getElementById('fAlmocoIn').value=_c?.almocoIn??'';
@@ -2952,7 +2952,7 @@ function salvarC(){
   const hub=hubsSelected[0]||'Sion'; // primary hub (backward compat)
   const hubs=hubsSelected.length>0?hubsSelected:[hub];
   const tipoContrato=document.getElementById('fTipo')?.value||'hora';
-  const folgaDias=[...document.querySelectorAll('#fFolgaDias .dt.on')].map(el=>el.dataset.dia);
+  const folgaDias=[...document.querySelectorAll('#fFolgaDias .folga-dia.on')].map(el=>el.dataset.dia);
   const folgaFixa=document.getElementById('fFolgaFixa')?.checked||false;
   const almocoIn=document.getElementById('fAlmocoIn')?.value!==''?parseInt(document.getElementById('fAlmocoIn').value):null;
   const almocoOut=document.getElementById('fAlmocoOut')?.value!==''?parseInt(document.getElementById('fAlmocoOut').value):null;
