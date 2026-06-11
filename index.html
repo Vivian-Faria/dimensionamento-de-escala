@@ -395,6 +395,36 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     </div>
   </div>
 
+  <!-- FOLGA -->
+  <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div>
+        <div style="font-size:12px;font-weight:600">🏖 Folga semanal</div>
+        <div style="font-size:10px;color:var(--mu);margin-top:2px;line-height:1.5">Dias em que o colaborador não trabalha.<br>Folga fixa = bloqueado toda semana automaticamente.</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0;margin-left:12px">
+        <input type="checkbox" id="fFolgaFixa" style="width:15px;height:15px;cursor:pointer;accent-color:var(--ac)"> Fixa
+      </label>
+    </div>
+    <div class="dtr" id="fFolgaDias"></div>
+  </div>
+
+  <!-- ALMOÇO -->
+  <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div>
+        <div style="font-size:12px;font-weight:600">🍽 Intervalo de almoço</div>
+        <div style="font-size:10px;color:var(--mu);margin-top:2px;line-height:1.5">Slot bloqueado na escala — colaborador não é alocado nesse horário.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-end">
+      <div class="fg" style="flex:1"><label>Início</label><input id="fAlmocoIn" type="number" min="0" max="23" placeholder="Ex: 12"></div>
+      <div style="font-size:16px;color:var(--mu);padding-bottom:9px">→</div>
+      <div class="fg" style="flex:1"><label>Fim</label><input id="fAlmocoOut" type="number" min="0" max="23" placeholder="Ex: 13"></div>
+      <button class="btn bd sm" style="margin-bottom:1px" onclick="document.getElementById('fAlmocoIn').value='';document.getElementById('fAlmocoOut').value=''">Limpar</button>
+    </div>
+  </div>
+
   <div class="mf">
     <button class="btn bd" onclick="fM()">Cancelar</button>
     <button class="btn ba" onclick="salvarC()">Salvar colaborador</button>
@@ -2753,6 +2783,8 @@ ${DIAS.map(d=>`<span class="dc ${(c.dias||[]).includes(d)?'dc-on':'dc-off'}">${d
         ).join(' · ')}</div>`;
       })():''}
       ${c.adicionalNoturno?`<div class="badge-fixo" style="background:rgba(124,58,237,.1);color:#7c3aed;border-color:rgba(124,58,237,.3)">🌙 ADIC. NOTURNO +20% (≥22h)</div>`:''}
+      ${(c.folgaDias&&c.folgaDias.length)?`<div class="badge-fixo" style="background:rgba(37,99,235,.08);color:#1d4ed8;border:1px solid rgba(37,99,235,.2)">${c.folgaFixa?'🏖 FOLGA FIXA':'🏖 FOLGA'} · ${c.folgaDias.map(d=>d==='Sab'?'Sáb':d).join(' / ')}</div>`:''}
+      ${(c.almocoIn!=null&&c.almocoOut!=null)?`<div class="badge-fixo" style="background:rgba(217,119,6,.08);color:#92400e;border:1px solid rgba(217,119,6,.2)">🍽 ALMOÇO ${String(c.almocoIn).padStart(2,'0')}h–${String(c.almocoOut).padStart(2,'0')}h</div>`:''}
       <div class="c-custo">
         <span>R$/h:</span>
         <input type="number" step="0.01" value="${c.custo||''}" placeholder="0,00" onchange="atualizarCusto('${c.id}',this.value)" title="Custo por hora">
@@ -2824,6 +2856,13 @@ function aM(id){
   document.getElementById('fAdicNoturno').checked=!!(_c?.adicionalNoturno);
   // Preencher checkbox de turno fixo
   document.getElementById('fFixo').checked=!!(c&&c.fixo);
+  // Preencher folga semanal
+  const folgaGrade=document.getElementById('fFolgaDias');
+  if(folgaGrade){folgaGrade.innerHTML=DIAS.map(d=>`<span class="dt${(_c?.folgaDias||[]).includes(d)?' on':''}" onclick="this.classList.toggle('on')" data-dia="${d}">${d==='Sab'?'Sáb':d}</span>`).join('');}
+  if(document.getElementById('fFolgaFixa'))document.getElementById('fFolgaFixa').checked=!!_c?.folgaFixa;
+  // Preencher almoço
+  if(document.getElementById('fAlmocoIn'))document.getElementById('fAlmocoIn').value=_c?.almocoIn??'';
+  if(document.getElementById('fAlmocoOut'))document.getElementById('fAlmocoOut').value=_c?.almocoOut??'';
   setTimeout(()=>document.getElementById('fN').focus(),80);
 }
 function fM(){document.getElementById('mCo').style.display='none';}
@@ -2890,7 +2929,11 @@ function salvarC(){
   const hub=hubsSelected[0]||'Sion'; // primary hub (backward compat)
   const hubs=hubsSelected.length>0?hubsSelected:[hub];
   const tipoContrato=document.getElementById('fTipo')?.value||'hora';
-  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,hubs,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota,adicionalNoturno:document.getElementById('fAdicNoturno')?.checked||false};
+  const folgaDias=[...document.querySelectorAll('#fFolgaDias .dt.on')].map(el=>el.dataset.dia);
+  const folgaFixa=document.getElementById('fFolgaFixa')?.checked||false;
+  const almocoIn=document.getElementById('fAlmocoIn')?.value!==''?parseInt(document.getElementById('fAlmocoIn').value):null;
+  const almocoOut=document.getElementById('fAlmocoOut')?.value!==''?parseInt(document.getElementById('fAlmocoOut').value):null;
+  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,hubs,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota,adicionalNoturno:document.getElementById('fAdicNoturno')?.checked||false,folgaDias,folgaFixa,almocoIn,almocoOut};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
   save();renderCo();fM();atualizarSideRegras();
