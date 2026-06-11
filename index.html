@@ -2742,8 +2742,7 @@ function renderCo(){
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">
-        ${DIAS.map(d=>`<span class="dc ${c.dias.includes(d)?'dc-on':'dc-off'}">${d}</span>`).join('')}
-      </div>
+${DIAS.map(d=>`<span class="dc ${(c.dias||[]).includes(d)?'dc-on':'dc-off'}">${d}</span>`).join('')}      </div>
       <div class="ct">${c.dispDia
         ?Object.entries(c.dispDia).map(([d,v])=>`${d==='Sab'?'Sáb':d} ${fH(v.horaIn)}–${fH(v.horaOut)}`).join(' · ')
         :`${fH(c.horaIn)} → ${fH(c.horaOut)}`} · mín ${c.minH||3}h · máx ${c.maxH||8}h/dia</div>
