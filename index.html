@@ -1337,7 +1337,12 @@ function getHubColabAtual(){
   if(S._hubFiltroAtual&&S._hubFiltroAtual.length>0){
     const hubs=new Set(S._hubFiltroAtual.map(h=>HUB_IND_PARA_COLAB[h]).filter(Boolean));
     if(hubs.size===1)return [...hubs][0];
-    if(hubs.size>1)return null; // múltiplos hubs → sem filtro
+    if(hubs.size>1){
+      // Se todos os hubs de indicadores mapeiam para o mesmo hub de colaborador, retorna ele
+      const hubsUnicos=[...hubs];
+      if(hubsUnicos.length===1)return hubsUnicos[0];
+      return null; // hubs realmente diferentes → sem filtro
+    }
   }
   // 2. Fallback: localStorage
   try{
@@ -1352,8 +1357,9 @@ function getHubColabAtual(){
 
 // Regras de funcionamento por hub
 const HUB_REGRAS = {
-  'Sion': { horaMin: 9, horaMax: 24 },
-  'Cidade Nova': { horaMin: 11, horaMax: 23, intervalo: [{ini:16,fim:17}] },
+  'Sion':         { horaMin: 9,  horaMax: 25 }, // 09h–01h (25=01h)
+  'Cidade Nova':  { horaMin: 11, horaMax: 23 }, // 11h–23h
+  'Varanda Sion': { horaMin: 8,  horaMax: 25 }, // 08h–01h (25=01h)
 };
 
 function horaPermitidaHub(hub, hora){
@@ -1401,8 +1407,11 @@ function gerarEscala(dados, hubFiltro){
   // Persistir imediatamente para sobreviver a recarregamentos
   try{localStorage.setItem('orion_v7_hub',JSON.stringify({hubAtual:S.hubAtual,hubFiltro:S._hubFiltroAtual}));}catch(e){}
 
-  const hI=+document.getElementById('cHI').value||9;
-  const hO=+document.getElementById('cHO').value||25;
+  // Usar horário do hub se disponível, senão usa campos globais
+  const _hubColabGerarEscala = getHubColabAtual();
+  const _regraHubGerar = HUB_REGRAS[_hubColabGerarEscala] || null;
+  const hI = _regraHubGerar ? _regraHubGerar.horaMin : (+document.getElementById('cHI').value||9);
+  const hO = _regraHubGerar ? _regraHubGerar.horaMax : (+document.getElementById('cHO').value||25);
 
   const esc={};
   DIAS.forEach(dia=>{
@@ -2070,13 +2079,14 @@ function preencher(){
   if(!S.escala){toast('Gere a escala primeiro.','ter');return;}
   if(!S.colabs.length){toast('Cadastre colaboradores!','ter');goT('co');return;}
 
-  const hI=+document.getElementById('cHI').value||9;
-  const hO=+document.getElementById('cHO').value||25;
+  const _hubColabAtual = getHubColabAtual();
+  // Usar horário do hub se disponível, senão usa os campos globais
+  const _regraHub = HUB_REGRAS[_hubColabAtual] || null;
+  const hI = _regraHub ? _regraHub.horaMin : (+document.getElementById('cHI').value||9);
+  const hO = _regraHub ? _regraHub.horaMax : (+document.getElementById('cHO').value||25);
 
   DIAS.forEach(d=>{for(let h=hI;h<=hO;h++){if(S.escala[d]?.[h])S.escala[d][h].alocados=[];}});
   // Filtrar colaboradores pelo hub da escala atual usando função centralizada
-  // Mapear hubs de indicadores → hub de colaborador
-  const _hubColabAtual = getHubColabAtual();
   const colabsAtivos = _hubColabAtual
     ? S.colabs.filter(c=>{
         const hubsC = c.hubs && c.hubs.length > 0 ? c.hubs : [c.hub||'Sion'];
