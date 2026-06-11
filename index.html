@@ -478,15 +478,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <button onclick="testarApi()" style="font-size:10px;padding:5px 8px;border-radius:6px;border:1px solid var(--brd);background:var(--card2);cursor:pointer;font-family:var(--fn);white-space:nowrap">Testar</button>
   </div>
 
-  <div class="stit">Regras ativas</div>
-  <div id="sideRegras">
-    <div class="rule-badge"><span class="rb-dot" style="background:#16a34a"></span>Período: Seg–Dom anterior</div>
-    <div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>Mínimo 3h por colaborador</div>
-    <div class="rule-badge"><span class="rb-dot" style="background:#7c3aed"></span>Máx. 8h/dia por pessoa</div>
-    <div class="rule-badge"><span class="rb-dot" style="background:#d97706"></span>Kayky: fechamento Seg–Qui fixo</div>
-    <div class="rule-badge"><span class="rb-dot" style="background:#dc2626"></span>Sem gaps 09h→01:20</div>
-  </div>
-  <div class="stit" style="margin-top:14px;display:none">Folgas da semana</div>
+  <div class="stit">Folgas da semana</div>
+  <div id="sideRegras" style="display:none"></div>
   <div id="sideFolgas"></div>
 
   <div class="stit" style="margin-top:16px">Dados</div>
@@ -2440,25 +2433,7 @@ function atualizarSideRegras(){
   const comPassagem=S.colabs.filter(c=>(c.passagem||0)>0);
 
   const regras=document.getElementById('sideRegras');
-  if(!regras)return;
-  let html='';
-  html+=`<div class="rule-badge"><span class="rb-dot" style="background:#16a34a"></span>Abertura: ${hIlbl} · Fechamento: ${hOlbl}</div>`;
-  html+=`<div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>Limite: ${pph} pedidos/pessoa/hora</div>`;
-  html+=`<div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>Mín. ${minPes} pessoa${minPes!==1?'s':''} na abertura</div>`;
-  if(S.colabs.length){
-    html+=`<div class="rule-badge"><span class="rb-dot" style="background:#7c3aed"></span>Turnos: mín ${minHLbl} · máx ${maxHLbl}/dia</div>`;
-  }
-  if(fixos.length){
-    fixos.forEach(c=>{
-      const blocos=(c.turnosFixos&&c.turnosFixos.length)?c.turnosFixos:[{dias:c.dias,horaIn:c.horaIn,horaOut:c.horaOut}];
-      const desc=blocos.map(tf=>tf.dias.join('/')+' '+String(tf.horaIn).padStart(2,'0')+'h–'+String(tf.horaOut<24?tf.horaOut:tf.horaOut-24).padStart(2,'0')+'h').join(', ');
-      html+=`<div class="rule-badge"><span class="rb-dot" style="background:#d97706"></span>📌 ${c.nome.split(' ')[0]}: ${desc}</div>`;
-    });
-  }
-  if(comPassagem.length){
-    html+=`<div class="rule-badge"><span class="rb-dot" style="background:#7c3aed"></span>🚌 Passagem: ${comPassagem.length} colaborador${comPassagem.length!==1?'es':''}</div>`;
-  }
-  regras.innerHTML=html||'<div class="rule-badge"><span class="rb-dot" style="background:#9ca3af"></span>Sem regras especiais</div>';
+  if(regras) regras.innerHTML='';
 
   // Bloco de folgas
   const folgasEl=document.getElementById('sideFolgas');
@@ -2470,12 +2445,12 @@ function atualizarSideRegras(){
       colabsComFolga.forEach(c=>{
         const diasNome=c.folgaDias.map(d=>DIAS_NOME[d]||d).join(', ');
         const icone=c.folgaFixa?'🔒':'🏖';
-        fhtml+=`<div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>${icone} ${c.nome.split(' ')[0]} folga na ${diasNome}</div>`;
+        fhtml+=`<div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>${icone} <strong>${c.nome.split(' ')[0]}</strong> folga na ${diasNome}</div>`;
       });
       folgasEl.innerHTML=fhtml;
       folgasEl.previousElementSibling.style.display='block';
     } else {
-      folgasEl.innerHTML='<div class="rule-badge" style="color:var(--mu);font-style:italic"><span class="rb-dot" style="background:#9ca3af"></span>Nenhuma folga cadastrada</div>';
+      folgasEl.innerHTML='<div class="rule-badge" style="font-style:italic"><span class="rb-dot" style="background:#9ca3af"></span>Nenhuma folga cadastrada</div>';
       folgasEl.previousElementSibling.style.display='block';
     }
   }
@@ -2905,7 +2880,7 @@ function aM(id){
   document.getElementById('fFixo').checked=!!(c&&c.fixo);
   // Preencher folga semanal
   const folgaGrade=document.getElementById('fFolgaDias');
-  if(folgaGrade){folgaGrade.innerHTML=DIAS.map(d=>`<span class="dt${(_c?.folgaDias||[]).includes(d)?' on':''}" onclick="this.classList.toggle('on')" data-dia="${d}">${d==='Sab'?'Sáb':d}</span>`).join('');}
+  if(folgaGrade){const _DIAS_F=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];folgaGrade.innerHTML=_DIAS_F.map(d=>`<span class="dt${(_c?.folgaDias||[]).includes(d)?' on':''}" onclick="this.classList.toggle('on')" data-dia="${d}">${d==='Sab'?'Sáb':d}</span>`).join('');}
   if(document.getElementById('fFolgaFixa'))document.getElementById('fFolgaFixa').checked=!!_c?.folgaFixa;
   // Preencher almoço
   if(document.getElementById('fAlmocoIn'))document.getElementById('fAlmocoIn').value=_c?.almocoIn??'';
