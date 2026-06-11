@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260611210901">
+<meta name="version" content="v20260611212131">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2878,7 +2878,7 @@ function aM(id){
   // Preencher adicional noturno
   document.getElementById('fAdicNoturno').checked=!!(_c?.adicionalNoturno);
   // Preencher checkbox de turno fixo
-  document.getElementById('fFixo').checked=!!(c&&c.fixo);
+  document.getElementById('fFixo').checked=!!(_c&&_c.fixo);
   // Preencher folga semanal
   const folgaGrade=document.getElementById('fFolgaDias');
   if(folgaGrade){
