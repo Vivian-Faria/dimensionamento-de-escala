@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260611221517">
+<meta name="version" content="v20260611232220">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3762,7 +3762,7 @@ function renderHistorico(filtro){
   const cards=hist.map(h=>{
     const custoLiq=h.resumo.totalCusto||0;
     const cpp=custoLiq>0&&h.resumo.totalPed>0?(custoLiq/h.resumo.totalPed).toFixed(2).replace('.',','):null;
-    const hubLabel=h.hub&&h.hub!=='Todos os hubs'?h.hub:null;
+    const hubLabel=h.hub&&h.hub!=='Todos os hubs'?h.hub:'Todos os hubs';
     const confs=h.confirmacoes||{};
     const totalColab=Object.keys(confs).length;
     const confirmados=Object.values(confs).filter(c=>c.status==='confirmado').length;
