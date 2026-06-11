@@ -486,6 +486,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div class="rule-badge"><span class="rb-dot" style="background:#d97706"></span>Kayky: fechamento Seg–Qui fixo</div>
     <div class="rule-badge"><span class="rb-dot" style="background:#dc2626"></span>Sem gaps 09h→01:20</div>
   </div>
+  <div class="stit" style="margin-top:14px;display:none">Folgas da semana</div>
+  <div id="sideFolgas"></div>
 
   <div class="stit" style="margin-top:16px">Dados</div>
   <div style="font-size:11px;color:var(--mu);line-height:1.9">
@@ -2457,6 +2459,26 @@ function atualizarSideRegras(){
     html+=`<div class="rule-badge"><span class="rb-dot" style="background:#7c3aed"></span>🚌 Passagem: ${comPassagem.length} colaborador${comPassagem.length!==1?'es':''}</div>`;
   }
   regras.innerHTML=html||'<div class="rule-badge"><span class="rb-dot" style="background:#9ca3af"></span>Sem regras especiais</div>';
+
+  // Bloco de folgas
+  const folgasEl=document.getElementById('sideFolgas');
+  if(folgasEl){
+    const DIAS_NOME={'Seg':'segunda','Ter':'terça','Qua':'quarta','Qui':'quinta','Sex':'sexta','Sab':'sábado','Dom':'domingo'};
+    const colabsComFolga=S.colabs.filter(c=>c.folgaDias&&c.folgaDias.length>0);
+    if(colabsComFolga.length){
+      let fhtml='';
+      colabsComFolga.forEach(c=>{
+        const diasNome=c.folgaDias.map(d=>DIAS_NOME[d]||d).join(', ');
+        const icone=c.folgaFixa?'🔒':'🏖';
+        fhtml+=`<div class="rule-badge"><span class="rb-dot" style="background:#2563eb"></span>${icone} ${c.nome.split(' ')[0]} folga na ${diasNome}</div>`;
+      });
+      folgasEl.innerHTML=fhtml;
+      folgasEl.previousElementSibling.style.display='block';
+    } else {
+      folgasEl.innerHTML='<div class="rule-badge" style="color:var(--mu);font-style:italic"><span class="rb-dot" style="background:#9ca3af"></span>Nenhuma folga cadastrada</div>';
+      folgasEl.previousElementSibling.style.display='block';
+    }
+  }
 }
 
 function limpar(){
