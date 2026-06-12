@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260612020357">
+<meta name="version" content="v20260612024214">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4802,14 +4802,30 @@ function recalcularCustoHist(h){
     const custoH=colab.custo||0;
     const passagem=colab.passagem||0;
     const turnos=conf.turnos||[];
-    const horasEfetivas=turnos.reduce((s,t)=>{
+
+    // Horas efetivas COM adicional noturno (+20% nas horas a partir das 22h)
+    let custoHoras=0;
+    turnos.forEach(t=>{
       const hh=t.horas!=null?t.horas:(t.fim-t.ini)||0;
       const abat=t.horasAbatidas||0;
-      return s+(hh-abat);
-    },0);
+      const horasEf=Math.max(0,hh-abat);
+      if(horasEf<=0)return;
+      if(colab.adicionalNoturno){
+        // Contar quantas horas do turno (ini..fim) caem a partir das 22h
+        let horasNoturnas=0;
+        for(let hr=t.ini;hr<t.fim;hr++){ if(hr>=22) horasNoturnas++; }
+        // Limitar pelas horas efetivas (caso haja abatimento)
+        horasNoturnas=Math.min(horasNoturnas,horasEf);
+        const horasNormais=horasEf-horasNoturnas;
+        custoHoras+=horasNormais*custoH + horasNoturnas*custoH*1.2;
+      } else {
+        custoHoras+=horasEf*custoH;
+      }
+    });
+
     const diasFaltou=new Set(turnos.filter(t=>t.faltou&&(t.horasAbatidas||0)>=(t.horas||1)).map(t=>t.dia));
     const diasComPresenca=new Set(turnos.filter(t=>!diasFaltou.has(t.dia)).map(t=>t.dia));
-    totalCusto+=custoH*horasEfetivas;
+    totalCusto+=custoHoras;
     totalCusto+=passagem*diasComPresenca.size;
   });
   // Só atualiza se calculou algo positivo (nunca zera custo que já existe)
