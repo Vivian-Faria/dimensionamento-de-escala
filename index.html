@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260612014202">
+<meta name="version" content="v20260612020357">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -589,6 +589,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
           <div class="card-hdr">
             <h3>Quadro de escala · Demanda × Força × Custo</h3>
             <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn bs sm" onclick="abrirLancarTurno()">🕐 Lançar turno</button>
               <div class="leg">
                 <span class="leg-item"><span class="leg-s" style="background:#d1fae5"></span>VPF ≤30 (bom)</span>
                 <span class="leg-item"><span class="leg-s" style="background:#fef3c7"></span>VPF 31–50 (médio)</span>
@@ -2994,6 +2995,110 @@ function rmA(dia,h,nome){
     calcularCustos();save();renderEscala();
   }
 }
+// ── Lançar turno completo (preenche múltiplos slots de uma vez)
+function abrirLancarTurno(){
+  if(!S.escala){toast('Gere a escala primeiro.','ter');return;}
+  if(!S.colabs.length){toast('Cadastre colaboradores!','ter');goT('co');return;}
+
+  const _hca=getHubColabAtual();
+  const _filtrado=_hca?S.colabs.filter(c=>{
+    const hubsC=c.hubs&&c.hubs.length>0?c.hubs:[c.hub||'Sion'];
+    return hubsC.includes(_hca);
+  }):S.colabs;
+  const colabsDisp=(_filtrado.length>0?_filtrado:S.colabs).slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+
+  const _regraHub=HUB_REGRAS[_hca]||null;
+  const hMin=_regraHub?_regraHub.horaMin:(+document.getElementById('cHI').value||8);
+  const hMax=_regraHub?_regraHub.horaMax:(+document.getElementById('cHO').value||25);
+
+  const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const opcoesHora=[];
+  for(let h=hMin;h<=hMax;h++) opcoesHora.push(`<option value="${h}">${fH(h)}</option>`);
+
+  let overlay=document.getElementById('lancarTurnoModal');
+  if(overlay) overlay.remove();
+  overlay=document.createElement('div');
+  overlay.id='lancarTurnoModal';
+  overlay.className='mbg';
+  overlay.innerHTML=`
+  <div style="background:var(--card);border-radius:12px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow2)">
+    <div style="padding:16px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:16px;font-weight:700">🕐 Lançar turno completo</div>
+      <button class="btn bs sm" onclick="document.getElementById('lancarTurnoModal').remove()">✕</button>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div class="fg">
+        <label>Colaborador</label>
+        <select id="ltColab" style="width:100%">
+          ${colabsDisp.map(c=>`<option value="${c.nome.replace(/"/g,'&quot;')}">${c.nome}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;gap:10px">
+        <div class="fg" style="flex:1">
+          <label>Início</label>
+          <select id="ltIni" style="width:100%">${opcoesHora}</select>
+        </div>
+        <div class="fg" style="flex:1">
+          <label>Fim</label>
+          <select id="ltFim" style="width:100%">${opcoesHora}</select>
+        </div>
+      </div>
+      <div class="fg">
+        <label>Dias da semana</label>
+        <div class="dtr" id="ltDias">
+          ${diasO.map(d=>`<span class="folga-dia on" data-dia="${d}" style="cursor:pointer;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid var(--brd);background:var(--ac);color:#fff;margin:2px">${d==='Sab'?'Sáb':d}</span>`).join('')}
+        </div>
+        <div style="font-size:10px;color:var(--mu);margin-top:4px">Clique para selecionar/desselecionar os dias.</div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">
+        <button class="btn bd" onclick="document.getElementById('lancarTurnoModal').remove()">Cancelar</button>
+        <button class="btn ba" onclick="confirmarLancarTurno()">✓ Lançar turno</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  // Toggle de dias
+  document.getElementById('ltDias').onclick=function(e){
+    const sp=e.target.closest('.folga-dia');
+    if(!sp)return;
+    sp.classList.toggle('on');
+    const isOn=sp.classList.contains('on');
+    sp.style.background=isOn?'var(--ac)':'var(--card2)';
+    sp.style.color=isOn?'#fff':'var(--tx)';
+  };
+
+  // Default: fim = início + 8h (ou hMax se exceder)
+  const fimSel=document.getElementById('ltFim');
+  fimSel.value=Math.min(hMin+8,hMax);
+}
+
+function confirmarLancarTurno(){
+  const nome=document.getElementById('ltColab').value;
+  const ini=+document.getElementById('ltIni').value;
+  const fim=+document.getElementById('ltFim').value;
+  const dias=[...document.querySelectorAll('#ltDias .folga-dia.on')].map(el=>el.dataset.dia);
+
+  if(!nome){toast('Selecione um colaborador.','ter');return;}
+  if(fim<=ini){toast('O horário de fim deve ser maior que o início.','ter');return;}
+  if(!dias.length){toast('Selecione ao menos um dia.','ter');return;}
+
+  let totalSlots=0;
+  dias.forEach(dia=>{
+    for(let h=ini;h<fim;h++){
+      const cell=S.escala[dia]?.[h];
+      if(cell&&!cell.alocados.includes(nome)){
+        cell.alocados.push(nome);
+        totalSlots++;
+      }
+    }
+  });
+
+  calcularCustos();save();renderEscala();
+  document.getElementById('lancarTurnoModal').remove();
+  toast(`✓ ${nome}: ${fH(ini)}–${fH(fim)} lançado em ${dias.length} dia(s) (${totalSlots} slots).`,'tok');
+}
+
 function addM(dia,h){
   if(!S.colabs.length){toast('Cadastre colaboradores!','ter');return;}
   // Filtrar colaboradores pelo hub da escala atual
