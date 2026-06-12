@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260611233556">
+<meta name="version" content="v20260612014202">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4170,7 +4170,10 @@ function verEscalaHistorico(id){
   if(!entrada)return;
 
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const hI=9, hO=25;
+  // Usar horário do hub da entrada, ou fallback para o range global da escala salva
+  const _regraHubHist = HUB_REGRAS[entrada.hub] || null;
+  const hI = _regraHubHist ? _regraHubHist.horaMin : 8;
+  const hO = _regraHubHist ? _regraHubHist.horaMax : 25;
 
   // Cores por colaborador
   const colabsUnicos=[...new Set(diasO.flatMap(d=>
