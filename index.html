@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260613175738">
+<meta name="version" content="v20260613181138">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -337,27 +337,51 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <span id="fCalcArrow" style="font-size:12px;color:var(--mu)">▸</span>
     </div>
     <div id="fCalcBody" style="display:none;flex-direction:column;gap:10px;margin-top:12px">
-      <div style="font-size:10px;color:var(--mu);line-height:1.5">Informe o salário mensal e a carga horária. Os encargos abaixo são sugestões editáveis (% sobre o salário). O resultado preenche o campo "Custo/hora" acima.</div>
+      <div style="font-size:10px;color:var(--mu);line-height:1.5">Informe o salário mensal e a carga horária. Os encargos abaixo são sugestões editáveis (% sobre o salário) e variam conforme o regime tributário. O resultado preenche o campo "Custo/hora" acima.</div>
+
       <div class="fr">
         <div class="fg"><label>Salário mensal (R$)</label><input id="calcSalario" type="number" step="0.01" min="0" placeholder="Ex: 1518.00" oninput="calcularCustoHoraEncargos()"></div>
         <div class="fg"><label>Horas/mês</label><input id="calcHorasMes" type="number" step="1" min="1" value="220" oninput="calcularCustoHoraEncargos()"></div>
       </div>
+
+      <div class="fg">
+        <label>Regime tributário</label>
+        <select id="calcRegime" onchange="aplicarPresetRegime()">
+          <option value="simples">Simples Nacional</option>
+          <option value="presumido">Lucro Presumido</option>
+          <option value="real">Lucro Real</option>
+        </select>
+      </div>
+
       <div style="font-size:11px;font-weight:600;color:var(--mu);margin-top:2px">Encargos (% sobre o salário)</div>
       <div class="fr">
         <div class="fg"><label>FGTS</label><input id="calcFgts" type="number" step="0.01" min="0" value="8" oninput="calcularCustoHoraEncargos()"></div>
-        <div class="fg"><label>INSS patronal</label><input id="calcInss" type="number" step="0.01" min="0" value="20" oninput="calcularCustoHoraEncargos()"></div>
+        <div class="fg"><label>INSS patronal</label><input id="calcInss" type="number" step="0.01" min="0" value="0" oninput="calcularCustoHoraEncargos()"></div>
       </div>
       <div class="fr">
         <div class="fg"><label>Férias + 1/3</label><input id="calcFerias" type="number" step="0.01" min="0" value="11.11" oninput="calcularCustoHoraEncargos()"></div>
         <div class="fg"><label>13º salário</label><input id="calcDecimo" type="number" step="0.01" min="0" value="8.33" oninput="calcularCustoHoraEncargos()"></div>
       </div>
       <div class="fr">
+        <div class="fg"><label>DSR (descanso semanal)</label><input id="calcDsr" type="number" step="0.01" min="0" value="16.67" oninput="calcularCustoHoraEncargos()"></div>
         <div class="fg"><label>Outros encargos</label><input id="calcOutros" type="number" step="0.01" min="0" value="0" oninput="calcularCustoHoraEncargos()"></div>
+      </div>
+      <div class="fr">
         <div class="fg"><label>VT — desconto colab. (%)</label><input id="calcVtDesc" type="number" step="0.01" min="0" value="6" oninput="calcularCustoHoraEncargos()"></div>
       </div>
+
+      <div style="font-size:11px;font-weight:600;color:var(--mu);margin-top:6px;border-top:1px solid var(--brd);padding-top:8px">Benefícios extras (R$/mês — sem encargos)</div>
+      <div style="font-size:10px;color:var(--mu);margin-top:-4px">Valores fixos somados direto ao custo mensal, sem incidência de encargos.</div>
+      <div class="fr">
+        <div class="fg"><label>Alimentação</label><input id="calcAlimentacao" type="number" step="0.01" min="0" value="0" oninput="calcularCustoHoraEncargos()"></div>
+        <div class="fg"><label>Bônus por meta</label><input id="calcBonus" type="number" step="0.01" min="0" value="0" oninput="calcularCustoHoraEncargos()"></div>
+      </div>
+
       <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--brd);border-radius:6px;padding:10px;margin-top:4px">
         <div style="font-size:11px;color:var(--mu)">
           <div>Total encargos: <strong id="calcTotalPct" style="color:var(--tx)">0%</strong></div>
+          <div>Salário + encargos: <strong id="calcSubtotalEncargos" style="color:var(--tx)">R$ 0,00</strong></div>
+          <div>Benefícios extras: <strong id="calcBeneficios" style="color:var(--tx)">R$ 0,00</strong></div>
           <div>Custo mensal total: <strong id="calcCustoMensal" style="color:var(--tx)">R$ 0,00</strong></div>
         </div>
         <div style="text-align:right">
@@ -3138,6 +3162,26 @@ function confirmarLancarTurno(){
   toast(`✓ ${nome}: ${fH(ini)}–${fH(fim)} lançado em ${dias.length} dia(s) (${totalSlots} slots).`,'tok');
 }
 
+// ── Presets de regime tributário
+const REGIME_PRESETS = {
+  simples:    { fgts:8,    inss:0,    ferias:11.11, decimo:8.33, dsr:16.67, outros:0 },
+  presumido:  { fgts:8,    inss:20,   ferias:11.11, decimo:8.33, dsr:16.67, outros:5.8 }, // +5,8% terceiros (Sistema S)
+  real:       { fgts:8,    inss:20,   ferias:11.11, decimo:8.33, dsr:16.67, outros:5.8 },
+};
+
+function aplicarPresetRegime(){
+  const regime=document.getElementById('calcRegime')?.value||'simples';
+  const p=REGIME_PRESETS[regime];
+  if(!p)return;
+  document.getElementById('calcFgts').value=p.fgts;
+  document.getElementById('calcInss').value=p.inss;
+  document.getElementById('calcFerias').value=p.ferias;
+  document.getElementById('calcDecimo').value=p.decimo;
+  document.getElementById('calcDsr').value=p.dsr;
+  document.getElementById('calcOutros').value=p.outros;
+  calcularCustoHoraEncargos();
+}
+
 // ── Calculadora de custo/hora com encargos
 function calcularCustoHoraEncargos(){
   const salario=parseFloat(document.getElementById('calcSalario')?.value)||0;
@@ -3146,13 +3190,20 @@ function calcularCustoHoraEncargos(){
   const inss=parseFloat(document.getElementById('calcInss')?.value)||0;
   const ferias=parseFloat(document.getElementById('calcFerias')?.value)||0;
   const decimo=parseFloat(document.getElementById('calcDecimo')?.value)||0;
+  const dsr=parseFloat(document.getElementById('calcDsr')?.value)||0;
   const outros=parseFloat(document.getElementById('calcOutros')?.value)||0;
+  const alimentacao=parseFloat(document.getElementById('calcAlimentacao')?.value)||0;
+  const bonus=parseFloat(document.getElementById('calcBonus')?.value)||0;
 
-  const totalPct=fgts+inss+ferias+decimo+outros;
-  const custoMensal=salario*(1+totalPct/100);
+  const totalPct=fgts+inss+ferias+decimo+dsr+outros;
+  const subtotalEncargos=salario*(1+totalPct/100);
+  const beneficios=alimentacao+bonus;
+  const custoMensal=subtotalEncargos+beneficios;
   const custoHora=horasMes>0?custoMensal/horasMes:0;
 
   document.getElementById('calcTotalPct').textContent=totalPct.toFixed(2).replace('.',',')+'%';
+  document.getElementById('calcSubtotalEncargos').textContent='R$ '+subtotalEncargos.toFixed(2).replace('.',',');
+  document.getElementById('calcBeneficios').textContent='R$ '+beneficios.toFixed(2).replace('.',',');
   document.getElementById('calcCustoMensal').textContent='R$ '+custoMensal.toFixed(2).replace('.',',');
   document.getElementById('calcCustoHora').textContent='R$ '+custoHora.toFixed(2).replace('.',',');
 
