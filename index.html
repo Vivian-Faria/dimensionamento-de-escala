@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260613181138">
+<meta name="version" content="v20260613181906">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -339,9 +339,21 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div id="fCalcBody" style="display:none;flex-direction:column;gap:10px;margin-top:12px">
       <div style="font-size:10px;color:var(--mu);line-height:1.5">Informe o salário mensal e a carga horária. Os encargos abaixo são sugestões editáveis (% sobre o salário) e variam conforme o regime tributário. O resultado preenche o campo "Custo/hora" acima.</div>
 
-      <div class="fr">
+      <div class="fg">
+        <label>Tipo de contrato</label>
+        <select id="calcTipoContrato" onchange="toggleTipoCalculo()">
+          <option value="mensal">Mensal (CLT / 6x1)</option>
+          <option value="intermitente">Intermitente (por hora)</option>
+        </select>
+      </div>
+
+      <div id="calcBlocoMensal" class="fr">
         <div class="fg"><label>Salário mensal (R$)</label><input id="calcSalario" type="number" step="0.01" min="0" placeholder="Ex: 1518.00" oninput="calcularCustoHoraEncargos()"></div>
         <div class="fg"><label>Horas/mês</label><input id="calcHorasMes" type="number" step="1" min="1" value="220" oninput="calcularCustoHoraEncargos()"></div>
+      </div>
+
+      <div id="calcBlocoIntermitente" class="fr" style="display:none">
+        <div class="fg"><label>Valor da hora trabalhada (R$)</label><input id="calcValorHora" type="number" step="0.01" min="0" placeholder="Ex: 9,00" oninput="calcularCustoHoraEncargos()"></div>
       </div>
 
       <div class="fg">
@@ -373,8 +385,8 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <div style="font-size:11px;font-weight:600;color:var(--mu);margin-top:6px;border-top:1px solid var(--brd);padding-top:8px">Benefícios extras (R$/mês — sem encargos)</div>
       <div style="font-size:10px;color:var(--mu);margin-top:-4px">Valores fixos somados direto ao custo mensal, sem incidência de encargos.</div>
       <div class="fr">
-        <div class="fg"><label>Alimentação</label><input id="calcAlimentacao" type="number" step="0.01" min="0" value="0" oninput="calcularCustoHoraEncargos()"></div>
-        <div class="fg"><label>Bônus por meta</label><input id="calcBonus" type="number" step="0.01" min="0" value="0" oninput="calcularCustoHoraEncargos()"></div>
+        <div class="fg"><label id="lblBenefAlim">Alimentação</label><input id="calcAlimentacao" type="number" step="0.01" min="0" value="0" oninput="calcularCustoHoraEncargos()"></div>
+        <div class="fg"><label id="lblBenefBonus">Bônus por meta</label><input id="calcBonus" type="number" step="0.01" min="0" value="0" oninput="calcularCustoHoraEncargos()"></div>
       </div>
 
       <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--brd);border-radius:6px;padding:10px;margin-top:4px">
@@ -3182,10 +3194,23 @@ function aplicarPresetRegime(){
   calcularCustoHoraEncargos();
 }
 
+// ── Alternar entre modo Mensal (CLT/6x1) e Intermitente (por hora)
+function toggleTipoCalculo(){
+  const tipo=document.getElementById('calcTipoContrato')?.value||'mensal';
+  const isInterm=tipo==='intermitente';
+  document.getElementById('calcBlocoMensal').style.display=isInterm?'none':'flex';
+  document.getElementById('calcBlocoIntermitente').style.display=isInterm?'flex':'none';
+  // Rótulo do bloco de benefícios muda de R$/mês para R$/hora-equivalente quando intermitente
+  const labA=document.getElementById('lblBenefAlim');
+  const labB=document.getElementById('lblBenefBonus');
+  if(labA)labA.textContent=isInterm?'Alimentação (R$/mês)':'Alimentação';
+  if(labB)labB.textContent=isInterm?'Bônus por meta (R$/mês)':'Bônus por meta';
+  calcularCustoHoraEncargos();
+}
+
 // ── Calculadora de custo/hora com encargos
 function calcularCustoHoraEncargos(){
-  const salario=parseFloat(document.getElementById('calcSalario')?.value)||0;
-  const horasMes=parseFloat(document.getElementById('calcHorasMes')?.value)||220;
+  const tipo=document.getElementById('calcTipoContrato')?.value||'mensal';
   const fgts=parseFloat(document.getElementById('calcFgts')?.value)||0;
   const inss=parseFloat(document.getElementById('calcInss')?.value)||0;
   const ferias=parseFloat(document.getElementById('calcFerias')?.value)||0;
@@ -3194,17 +3219,34 @@ function calcularCustoHoraEncargos(){
   const outros=parseFloat(document.getElementById('calcOutros')?.value)||0;
   const alimentacao=parseFloat(document.getElementById('calcAlimentacao')?.value)||0;
   const bonus=parseFloat(document.getElementById('calcBonus')?.value)||0;
-
   const totalPct=fgts+inss+ferias+decimo+dsr+outros;
-  const subtotalEncargos=salario*(1+totalPct/100);
-  const beneficios=alimentacao+bonus;
-  const custoMensal=subtotalEncargos+beneficios;
-  const custoHora=horasMes>0?custoMensal/horasMes:0;
+
+  let custoHora, custoMensal, subtotalEncargos, beneficios, horasMes;
+
+  if(tipo==='intermitente'){
+    // Base = valor/hora trabalhada. Mesmos % de encargos incidem sobre o valor/hora
+    // (DSR, férias prop., 13º prop., FGTS sobre essa base — conforme holerite de intermitente)
+    const valorHora=parseFloat(document.getElementById('calcValorHora')?.value)||0;
+    custoHora=valorHora*(1+totalPct/100);
+    subtotalEncargos=custoHora; // por hora, não há "mensal" — exibido como valor/hora com encargos
+    // Benefícios fixos mensais: precisam de uma referência de horas/mês para diluir no custo/hora
+    horasMes=220; // referência padrão só para diluir benefícios fixos no custo/hora
+    beneficios=alimentacao+bonus;
+    custoHora=custoHora+(horasMes>0?beneficios/horasMes:0);
+    custoMensal=custoHora*horasMes; // referencial, para exibição
+  } else {
+    const salario=parseFloat(document.getElementById('calcSalario')?.value)||0;
+    horasMes=parseFloat(document.getElementById('calcHorasMes')?.value)||220;
+    subtotalEncargos=salario*(1+totalPct/100);
+    beneficios=alimentacao+bonus;
+    custoMensal=subtotalEncargos+beneficios;
+    custoHora=horasMes>0?custoMensal/horasMes:0;
+  }
 
   document.getElementById('calcTotalPct').textContent=totalPct.toFixed(2).replace('.',',')+'%';
-  document.getElementById('calcSubtotalEncargos').textContent='R$ '+subtotalEncargos.toFixed(2).replace('.',',');
+  document.getElementById('calcSubtotalEncargos').textContent='R$ '+subtotalEncargos.toFixed(2).replace('.',',')+(tipo==='intermitente'?'/h':'');
   document.getElementById('calcBeneficios').textContent='R$ '+beneficios.toFixed(2).replace('.',',');
-  document.getElementById('calcCustoMensal').textContent='R$ '+custoMensal.toFixed(2).replace('.',',');
+  document.getElementById('calcCustoMensal').textContent='R$ '+custoMensal.toFixed(2).replace('.',',')+(tipo==='intermitente'?' (ref. 220h)':'');
   document.getElementById('calcCustoHora').textContent='R$ '+custoHora.toFixed(2).replace('.',',');
 
   return custoHora;
