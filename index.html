@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260613181906">
+<meta name="version" content="v20260613182357">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -461,11 +461,11 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-size:12px;font-weight:600">🌙 Adicional noturno</div>
-        <div style="font-size:10px;color:var(--mu);margin-top:2px;line-height:1.5">Quando ativo, horas trabalhadas a partir das 22h<br>recebem acréscimo de 20% sobre o custo/hora.</div>
+        <div style="font-size:10px;color:var(--mu);margin-top:2px;line-height:1.5">Padrão para todos os colaboradores: horas trabalhadas a partir das 22h<br>recebem acréscimo de 20% sobre o custo/hora automaticamente.</div>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0;margin-left:12px">
-        <input type="checkbox" id="fAdicNoturno" style="width:16px;height:16px;cursor:pointer;accent-color:#7c3aed">
-        Ativar
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;flex-shrink:0;margin-left:12px;color:var(--mu)">
+        <input type="checkbox" id="fAdicNoturno" checked disabled style="width:16px;height:16px;cursor:not-allowed;accent-color:#7c3aed;opacity:.6">
+        Sempre ativo
       </label>
     </div>
   </div>
@@ -2387,7 +2387,7 @@ function calcularCustos(){
         const c=S.colabs.find(x=>x.nome===nome);
         if(!c||c.custo<=0) return;
         // Adicional noturno: +20% para horas a partir das 22h
-        const adicNoturno=(c.adicionalNoturno&&h>=22)?c.custo*0.2:0;
+        const adicNoturno=(h>=22)?c.custo*0.2:0;
         custoHora+=c.custo+adicNoturno;
       });
       cell.custo=custoHora;
@@ -2881,7 +2881,7 @@ ${DIAS.map(d=>`<span class="dc ${(c.dias||[]).includes(d)?'dc-on':'dc-off'}">${d
           tf.dias.join('/')+' '+String(tf.horaIn).padStart(2,'0')+'h–'+String(tf.horaOut).padStart(2,'0')+'h'
         ).join(' · ')}</div>`;
       })():''}
-      ${c.adicionalNoturno?`<div class="badge-fixo" style="background:rgba(124,58,237,.1);color:#7c3aed;border-color:rgba(124,58,237,.3)">🌙 ADIC. NOTURNO +20% (≥22h)</div>`:''}
+      <div class="badge-fixo" style="background:rgba(124,58,237,.1);color:#7c3aed;border-color:rgba(124,58,237,.3)">🌙 ADIC. NOTURNO +20% (≥22h) — padrão para todos</div>
       ${(c.folgaDias&&c.folgaDias.length)?`<div class="badge-fixo" style="background:rgba(37,99,235,.08);color:#1d4ed8;border:1px solid rgba(37,99,235,.2)">${c.folgaFixa?'🏖 FOLGA FIXA':'🏖 FOLGA'} · ${c.folgaDias.map(d=>d==='Sab'?'Sáb':d).join(' / ')}</div>`:''}
       ${(c.almocoIn!=null&&c.almocoOut!=null)?`<div class="badge-fixo" style="background:rgba(217,119,6,.08);color:#92400e;border:1px solid rgba(217,119,6,.2)">🍽 ALMOÇO ${String(c.almocoIn).padStart(2,'0')}h–${String(c.almocoOut).padStart(2,'0')}h</div>`:''}
       <div class="c-custo">
@@ -2952,7 +2952,7 @@ function aM(id){
   }
   document.getElementById('mCo').style.display='flex';
   // Preencher adicional noturno
-  document.getElementById('fAdicNoturno').checked=!!(_c?.adicionalNoturno);
+  // Adicional noturno é padrão para todos (sempre ativo)
   // Preencher checkbox de turno fixo
   document.getElementById('fFixo').checked=!!(_c&&_c.fixo);
   // Preencher folga semanal
@@ -3048,7 +3048,7 @@ function salvarC(){
   const folgaFixa=document.getElementById('fFolgaFixa')?.checked||false;
   const almocoIn=document.getElementById('fAlmocoIn')?.value!==''?parseInt(document.getElementById('fAlmocoIn').value):null;
   const almocoOut=document.getElementById('fAlmocoOut')?.value!==''?parseInt(document.getElementById('fAlmocoOut').value):null;
-  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,hubs,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota,adicionalNoturno:document.getElementById('fAdicNoturno')?.checked||false,folgaDias,folgaFixa,almocoIn,almocoOut};
+  const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,hubs,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota,adicionalNoturno:true,folgaDias,folgaFixa,almocoIn,almocoOut};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
   save();renderCo();fM();atualizarSideRegras();
@@ -4980,7 +4980,7 @@ function recalcularCustoHist(h){
       const abat=t.horasAbatidas||0;
       const horasEf=Math.max(0,hh-abat);
       if(horasEf<=0)return;
-      if(colab.adicionalNoturno){
+      if(true){ // adicional noturno é padrão para todos
         // Contar quantas horas do turno (ini..fim) caem a partir das 22h
         let horasNoturnas=0;
         for(let hr=t.ini;hr<t.fim;hr++){ if(hr>=22) horasNoturnas++; }
