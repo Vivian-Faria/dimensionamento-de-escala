@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260613182707">
+<meta name="version" content="v20260614014720">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -880,6 +880,174 @@ const DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 const DIASF={Dom:'Domingo',Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado'};
 const KC='orion_v7_c',KM='orion_v7_m',KE='orion_v7_e',KCOL='orion_coleta',KH='orion_v7_hist';
 
+// ══════════════════════════════════════════════════════
+// SUPABASE — Integração principal
+// ══════════════════════════════════════════════════════
+const SUPA_URL='https://eenxmevamapugxsaifdk.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVlbnhtZXZhbWFwdWd4c2FpZmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzODcyNzAsImV4cCI6MjA5Njk2MzI3MH0.i_8dSdlO55qb0RdkSFFU6oMsIFITf-6OCkponPGfPu0';
+const SUPA_HDR=()=>({'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=representation'});
+
+// Fetch helpers
+async function supaGet(tabela,params=''){
+  try{
+    const r=await fetch(`${SUPA_URL}/rest/v1/${tabela}?${params}`,{headers:SUPA_HDR()});
+    if(!r.ok)throw new Error(await r.text());
+    return await r.json();
+  }catch(e){console.warn('[Supa GET]',tabela,e.message);return null;}
+}
+async function supaUpsert(tabela,dados){
+  try{
+    const body=Array.isArray(dados)?dados:[dados];
+    const r=await fetch(`${SUPA_URL}/rest/v1/${tabela}`,{
+      method:'POST',
+      headers:{...SUPA_HDR(),'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify(body)
+    });
+    if(!r.ok)throw new Error(await r.text());
+    return true;
+  }catch(e){console.warn('[Supa UPSERT]',tabela,e.message);return false;}
+}
+async function supaDelete(tabela,coluna,valor){
+  try{
+    const r=await fetch(`${SUPA_URL}/rest/v1/${tabela}?${coluna}=eq.${encodeURIComponent(valor)}`,{
+      method:'DELETE',headers:SUPA_HDR()
+    });
+    if(!r.ok)throw new Error(await r.text());
+    return true;
+  }catch(e){console.warn('[Supa DELETE]',tabela,e.message);return false;}
+}
+
+// ── Converter colaborador JS → row Supabase
+function colabToRow(c){
+  return {
+    id:c.id,nome:c.nome,funcao:c.funcao||null,hub:c.hub||'Sion',
+    hubs:c.hubs||[c.hub||'Sion'],custo:c.custo||0,passagem:c.passagem||0,
+    hora_in:c.horaIn||9,hora_out:c.horaOut||25,dias:c.dias||[],
+    min_h:c.minH||3,max_h:c.maxH||8,fixo:!!c.fixo,
+    turnos_fixos:c.turnosFixos||[],disp_dia:c.dispDia||null,
+    tipo_contrato:c.tipoContrato||'hora',folga_dias:c.folgaDias||[],
+    folga_fixa:!!c.folgaFixa,almoco_in:c.almocoIn||null,
+    almoco_out:c.almocoOut||null,nota:c.nota||null,ativo:true,
+    updated_at:new Date().toISOString()
+  };
+}
+
+// ── Converter row Supabase → colaborador JS
+function rowToColab(r){
+  return {
+    id:r.id,nome:r.nome,funcao:r.funcao,hub:r.hub,hubs:r.hubs||[r.hub||'Sion'],
+    custo:r.custo,passagem:r.passagem,horaIn:r.hora_in,horaOut:r.hora_out,
+    dias:r.dias||[],minH:r.min_h,maxH:r.max_h,fixo:r.fixo,
+    turnosFixos:r.turnos_fixos||[],dispDia:r.disp_dia,
+    tipoContrato:r.tipo_contrato,folgaDias:r.folga_dias||[],
+    folgaFixa:r.folga_fixa,almocoIn:r.almoco_in,almocoOut:r.almoco_out,
+    nota:r.nota,adicionalNoturno:true
+  };
+}
+
+// ── API pública para o app usar
+const DB={
+  // Colaboradores
+  async getColabs(){
+    const rows=await supaGet('colaboradores','ativo=eq.true&order=nome.asc');
+    if(rows===null)return null; // offline — usar localStorage
+    return rows.map(rowToColab);
+  },
+  async saveColab(c){
+    const ok=await supaUpsert('colaboradores',colabToRow(c));
+    if(ok){
+      // Sincronizar localStorage como cache
+      try{
+        const local=JSON.parse(localStorage.getItem(KC)||'[]');
+        const idx=local.findIndex(x=>x.id===c.id);
+        if(idx>=0)local[idx]=c; else local.push(c);
+        localStorage.setItem(KC,JSON.stringify(local));
+      }catch(e){}
+    }
+    return ok;
+  },
+  async deleteColab(id){
+    const ok=await supaDelete('colaboradores','id',id);
+    if(ok){
+      try{
+        const local=JSON.parse(localStorage.getItem(KC)||'[]').filter(x=>x.id!==id);
+        localStorage.setItem(KC,JSON.stringify(local));
+      }catch(e){}
+    }
+    return ok;
+  },
+  // Histórico de escalas
+  async getHist(){
+    const rows=await supaGet('escalas_historico','order=publicado_em.desc');
+    if(rows===null)return null;
+    return rows.map(r=>({
+      id:r.id,semana:r.semana,semanaISO:r.semana_iso,hub:r.hub,
+      hubFiltro:r.hub_filtro,escala:r.escala,resumo:r.resumo,
+      confirmacoes:r.confirmacoes||{},colabs:r.colabs||[]
+    }));
+  },
+  async saveHist(entrada){
+    return await supaUpsert('escalas_historico',{
+      id:entrada.id,semana:entrada.semana,semana_iso:entrada.semanaISO||entrada.id,
+      hub:entrada.hub||null,hub_filtro:entrada.hubFiltro||null,
+      escala:entrada.escala||{},resumo:entrada.resumo||{},
+      confirmacoes:entrada.confirmacoes||{},colabs:entrada.colabs||[],
+      publicado_em:entrada.publicadoEm||new Date().toISOString()
+    });
+  },
+  // Configurações
+  async getCfg(){
+    const rows=await supaGet('configuracoes');
+    if(rows===null)return null;
+    const cfg={};
+    rows.forEach(r=>{cfg[r.chave]=r.valor;});
+    return cfg;
+  },
+  async saveCfg(chave,valor){
+    return await supaUpsert('configuracoes',{chave,valor,updated_at:new Date().toISOString()});
+  },
+  // Disponibilidades
+  async getDisp(semanaISO){
+    const rows=await supaGet('disponibilidades',`semana_iso=eq.${encodeURIComponent(semanaISO)}`);
+    if(rows===null)return null;
+    return rows.length>0?rows[0].dados:{};
+  },
+  async saveDisp(semanaISO,dados){
+    const id='disp_'+semanaISO;
+    return await supaUpsert('disponibilidades',{
+      id,semana_iso:semanaISO,dados,updated_at:new Date().toISOString()
+    });
+  }
+};
+
+// ── Migração: envia dados do localStorage → Supabase (executa uma vez)
+async function migrarLocalStorageParaSupa(){
+  const jaFez=localStorage.getItem('orion_supa_migrated');
+  if(jaFez)return;
+  console.log('[Supa] Iniciando migração do localStorage...');
+  try{
+    // Colaboradores
+    const colabs=JSON.parse(localStorage.getItem(KC)||'[]');
+    if(colabs.length){
+      const rows=colabs.map(c=>colabToRow({...c,id:c.id||Date.now().toString()}));
+      await supaUpsert('colaboradores',rows);
+      console.log('[Supa] Colaboradores migrados:',colabs.length);
+    }
+    // Histórico
+    const hist=JSON.parse(localStorage.getItem(KH)||'[]');
+    for(const h of hist){ await DB.saveHist(h); }
+    console.log('[Supa] Histórico migrado:',hist.length);
+    // Configs
+    const cfg=JSON.parse(localStorage.getItem('orion_v7_cfg')||'{}');
+    if(Object.keys(cfg).length) await DB.saveCfg('app_config',cfg);
+    localStorage.setItem('orion_supa_migrated','1');
+    console.log('[Supa] Migração concluída!');
+    toast('✅ Dados sincronizados com o banco!','tok');
+  }catch(e){
+    console.warn('[Supa] Erro na migração:',e.message);
+  }
+}
+
 // ── API Backend (Cloudflare Worker)
 // Após o deploy, substitua pela URL do seu worker
 const ORION_API = localStorage.getItem('orion_api_url') || 'https://orion-escala-api.SEU_USUARIO.workers.dev';
@@ -1060,10 +1228,23 @@ function save(){
     localStorage.setItem(KC,JSON.stringify(S.colabs));
     if(S.matrix)localStorage.setItem(KM,JSON.stringify(S.matrix));
     if(S.escala)localStorage.setItem(KE,JSON.stringify(S.escala));
-    // Persistir hub ativo para sobreviver a recarregamentos
     if(S.hubAtual!==undefined)localStorage.setItem('orion_v7_hub',JSON.stringify({hubAtual:S.hubAtual,hubFiltro:S._hubFiltroAtual||null}));
   }catch(e){}
 }
+
+// Salvar colaborador individual no Supabase + localStorage
+async function saveColab(c){
+  save(); // localStorage sempre
+  await DB.saveColab(c);
+}
+
+// Deletar colaborador no Supabase + localStorage
+async function deleteColab(id){
+  S.colabs=S.colabs.filter(x=>x.id!==id);
+  save();
+  await DB.deleteColab(id);
+}
+
 function load(){
   try{
     const c=localStorage.getItem(KC);
@@ -1072,12 +1253,26 @@ function load(){
     S.colabs=c?JSON.parse(c):JSON.parse(JSON.stringify(COLAB_DEF));
     if(m)S.matrix=JSON.parse(m);
     if(e)S.escala=JSON.parse(e);
-    // Restaurar hub ativo
     const hubSalvo=localStorage.getItem('orion_v7_hub');
     if(hubSalvo){try{const hd=JSON.parse(hubSalvo);S.hubAtual=hd.hubAtual;S._hubFiltroAtual=hd.hubFiltro;}catch(e){}}
-    // Restaurar offset de inversão 12x36
     try{ _inv12x36=parseInt(localStorage.getItem('orion_v7_inv12x36')||'0')||0; }catch(e){}
   }catch(err){S.colabs=JSON.parse(JSON.stringify(COLAB_DEF));}
+}
+
+// Carregar colaboradores do Supabase (substitui localStorage)
+async function loadColabsFromSupa(){
+  const rows=await DB.getColabs();
+  if(rows===null){
+    console.log('[Supa] Offline — usando localStorage');
+    return false;
+  }
+  if(rows.length>0){
+    S.colabs=rows;
+    localStorage.setItem(KC,JSON.stringify(rows)); // atualizar cache
+    console.log('[Supa] Colaboradores carregados:',rows.length);
+    return true;
+  }
+  return false;
 }
 
 // ══════════════════════════════════════════════════════
@@ -3039,7 +3234,7 @@ function salvarC(){
   const obj={id:S.editId||Date.now().toString(),nome,funcao,hub,hubs,tipoContrato,custo,passagem,horaIn:hI,horaOut:hO,dias,minH,maxH,fixo:isFixo,turnosFixos,dispDia,nota,adicionalNoturno:true,folgaDias,folgaFixa,almocoIn,almocoOut};
   if(S.editId){const i=S.colabs.findIndex(c=>c.id===S.editId);if(i!==-1)S.colabs[i]=obj;}
   else S.colabs.push(obj);
-  save();renderCo();fM();atualizarSideRegras();
+  save();DB.saveColab(obj);renderCo();fM();atualizarSideRegras();
   if(S.escala){calcularCustos();renderEscala();}
   toast(S.editId?'✓ Atualizado!':'✓ Colaborador adicionado!','tok');
 }
@@ -3047,7 +3242,7 @@ function editC(id){aM(id);}
 function delC(id){
   if(!confirm('Remover?'))return;
   S.colabs=S.colabs.filter(c=>c.id!==id);
-  save();renderCo();toast('Removido.','tok');
+  save();DB.deleteColab(id);renderCo();toast('Removido.','tok');
 }
 // grade de disponibilidade: toggleDispDia() cuida dos cliques
 
@@ -4814,6 +5009,11 @@ function _atualizarBtnDesfazer(){
 function saveKH(hist, label){
   _khSnapshot(label||'alteração');
   localStorage.setItem(KH,JSON.stringify(hist));
+  // Sincronizar entrada alterada no Supabase
+  if(label&&hist.length>0){
+    const ultima=hist[0];
+    if(ultima&&ultima.id) DB.saveHist(ultima);
+  }
 }
 
 function toggleEditarTurnos(histId, nome){
@@ -8714,7 +8914,16 @@ function exportarIndicadores(){
 }
 
 // ── Indicadores: inicialização
-load();renderCo();
+load();
+// Carregar colaboradores do Supabase (fonte principal)
+(async()=>{
+  const loaded=await loadColabsFromSupa();
+  if(!loaded){
+    // Primeira vez ou offline — tentar migração
+    await migrarLocalStorageParaSupa();
+  }
+  renderCo();atualizarSideRegras();
+})();
 // Restaurar configurações salvas
 try{
   const _cfg=JSON.parse(localStorage.getItem('orion_v7_cfg')||'{}');
