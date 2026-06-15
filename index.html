@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615124731">
+<meta name="version" content="v20260615135032">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -8976,6 +8976,20 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();
+// Corrigir dados antigos: remover DS Delivery Mall do total
+try{
+  const _raw=localStorage.getItem('orion_coleta');
+  if(_raw){
+    const _d=JSON.parse(_raw);
+    if(_d&&_d.totalPorHub&&_d.totalPorHub['DS Delivery Mall']){
+      const _totalReal=Object.entries(_d.totalPorHub).filter(([k])=>k!=='DS Delivery Mall').reduce((s,[,v])=>s+v,0);
+      _d.total=_totalReal;
+      delete _d.mxPorHub['DS Delivery Mall'];
+      delete _d.totalPorHub['DS Delivery Mall'];
+      localStorage.setItem('orion_coleta',JSON.stringify(_d));
+    }
+  }
+}catch(e){}
 // Inicializar bloco Dados com cache local
 try{
   const _dc=lerColetaLocal();
