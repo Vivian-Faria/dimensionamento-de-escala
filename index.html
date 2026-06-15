@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615123211">
+<meta name="version" content="v20260615123618">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -525,7 +525,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div class="stit">Resumo</div>
   <div class="sc"><div class="sc-l">Hub ativo</div><div class="sc-v" id="sHubAtivo" style="font-size:13px;color:var(--ac)">—</div></div>
   <div class="sc"><div class="sc-l">Semana projetada</div><div class="sc-v" id="sPi" style="font-size:13px">—</div><div class="sc-s" id="sPiS">próxima semana projetada</div></div>
-  <div class="sc"><div class="sc-l">Equipe</div><div class="sc-v" id="sCo">—</div><div class="sc-s" id="sCoSub">colaboradores no hub</div></div>
+  <div class="sc"><div class="sc-l">Pedidos coletados</div><div class="sc-v" id="sCo" style="color:var(--ac)">—</div><div class="sc-s" id="sCoSub">sem dados coletados</div></div>
   <div class="sc"><div class="sc-l">Custo total semana</div><div class="sc-v" id="sCusto" style="font-size:14px;color:#d97706">—</div><div class="sc-s" id="sCustoSub">custo estimado na semana</div></div>
   <div class="sc"><div class="sc-l">Custo médio / pedido</div><div class="sc-v" id="sCpp" style="font-size:14px;color:#2563eb">—</div><div class="sc-s">R$/pedido na semana</div></div>
 
@@ -1736,13 +1736,16 @@ function gerarEscala(dados, hubFiltro){
   const{seg,dom}=proximaSemana();
   document.getElementById('sPi').textContent=`${fmtBR(seg)}–${fmtBR(dom)}`;
   document.getElementById('sPiS').textContent='próxima semana projetada';
-  { const _el=document.getElementById('sCo'); if(_el) _el.textContent=S.colabs.length; }
+  // sCo agora mostra pedidos coletados — não colaboradores
 
   // Status dot
   const min=Math.round((Date.now()-dados.ts)/60000);
   document.getElementById('dDot').style.cssText='background:var(--ac)';
   document.getElementById('dLbl').textContent=`${(dados.total||0).toLocaleString('pt-BR')} pedidos coletados`;
   document.getElementById('dSub').textContent=`${dados.deBR||per}→${dados.ateBR||per} · há ${min}min`;
+  // Atualizar bloco de pedidos coletados na sidebar
+  { const _el=document.getElementById('sCo'); if(_el) _el.textContent=(dados.total||0).toLocaleString('pt-BR'); }
+  { const _el=document.getElementById('sCoSub'); if(_el) _el.textContent=`${dados.deBR||''}→${dados.ateBR||''}`;  }
 
   save();
   document.getElementById('esBanner').innerHTML='';
@@ -3058,8 +3061,7 @@ function renderCo(){
   const todos=S.colabs;
   const lista=todos.filter(c=>(c.hubs||[c.hub||'Sion']).includes(_coHubFiltro));
   // Contagem correta: só colaboradores do hub filtrado
-  document.getElementById('sCo').textContent=lista.length;
-  document.getElementById('sCoSub').textContent=lista.length===1?'colaborador no hub':'colaboradores no hub';
+  // sCo mostra pedidos coletados — atualizado em gerarEscala/inicialização
   // Hub ativo na sidebar
   const _sHubAtivo=document.getElementById('sHubAtivo');
   if(_sHubAtivo)_sHubAtivo.textContent=_coHubFiltro==='Cidade Nova'?'DS Cidade Nova':_coHubFiltro;
@@ -8972,6 +8974,8 @@ try{
     document.getElementById('dLbl').textContent=`${_dc.total.toLocaleString('pt-BR')} pedidos coletados`;
     const _min=Math.round((Date.now()-(_dc.ts||0))/60000);
     document.getElementById('dSub').textContent=`${_dc.deBR||''}→${_dc.ateBR||''} · há ${_min}min`;
+    const _sc=document.getElementById('sCo');if(_sc)_sc.textContent=_dc.total.toLocaleString('pt-BR');
+    const _ss=document.getElementById('sCoSub');if(_ss)_ss.textContent=`${_dc.deBR||''}→${_dc.ateBR||''}`;
   }
 }catch(e){}
 // Carregar colaboradores do Supabase (fonte principal)
