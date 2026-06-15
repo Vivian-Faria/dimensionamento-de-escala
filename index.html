@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615170053">
+<meta name="version" content="v20260615171410">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1617,12 +1617,17 @@ const HUB_IND_PARA_COLAB = {
 // Usa HUB_IND_PARA_COLAB de forma reversa — funciona com qualquer coleta (antiga ou nova)
 function getChavesMxHub(hubColab, mxPorHub){
   if(!mxPorHub) return [];
-  const chaves = Object.keys(mxPorHub).filter(chave => {
+  return Object.keys(mxPorHub).filter(chave => {
     const mapped = HUB_IND_PARA_COLAB[chave] || HUB_IND_PARA_COLAB[chave.trim()] || null;
     return mapped === hubColab;
   });
-  // Sion inclui pedidos da Varanda (hub '-' operacionalmente pertence às cozinhas)
-  if(hubColab === 'Sion' && mxPorHub['Varanda Sion'] && !chaves.includes('Varanda Sion')){
+}
+
+// Versão para demanda: Sion inclui pedidos da Varanda (mesma operação logística)
+// mas SEM incluir os colaboradores da Varanda
+function getChavesMxHubDemanda(hubColab, mxPorHub){
+  const chaves = getChavesMxHub(hubColab, mxPorHub);
+  if(hubColab === 'Sion' && mxPorHub?.['Varanda Sion'] && !chaves.includes('Varanda Sion')){
     chaves.push('Varanda Sion');
   }
   return chaves;
@@ -1691,7 +1696,8 @@ function gerarEscala(dados, hubFiltro){
       // Converter para nome de colaborador se necessário
       const hubColab = HUB_IND_PARA_COLAB[hubInput] || hubInput;
       // Obter as chaves reais do Órion para este hub de colaborador
-      const chavesOrion = getChavesMxHub(hubColab, dados.mxPorHub);
+      // Para demanda: Sion inclui Varanda; para colaboradores: apenas o hub exato
+      const chavesOrion = getChavesMxHubDemanda(hubColab, dados.mxPorHub);
       if(chavesOrion.length === 0) chavesOrion.push(hubColab); // fallback
       chavesOrion.forEach(chave=>{
         if(!dados.mxPorHub[chave]) return;
@@ -1737,7 +1743,7 @@ function gerarEscala(dados, hubFiltro){
   const totalExibido = (hubs.length > 0 && dados.totalPorHub)
     ? hubs.reduce((acc, hubInput) => {
         const hubColab = HUB_IND_PARA_COLAB[hubInput] || hubInput;
-        const chavesOrion = getChavesMxHub(hubColab, dados.mxPorHub);
+        const chavesOrion = getChavesMxHubDemanda(hubColab, dados.mxPorHub);
         if(chavesOrion.length === 0) return acc + (dados.totalPorHub?.[hubColab] || 0);
         return acc + chavesOrion.reduce((s, chave) => s + (dados.totalPorHub?.[chave] || 0), 0);
       }, 0)
