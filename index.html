@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615010543">
+<meta name="version" content="v20260615011934">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -411,15 +411,17 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     </div>
   </div>
   <div class="fr">
-    <div class="fg" style="flex:2">
+    <div class="fg">
       <label>Hub</label>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1;min-width:0"><input type="checkbox" class="fHubChk" value="Sion" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Sion</label>
-        <label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1;min-width:0"><input type="checkbox" class="fHubChk" value="Cidade Nova" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Cidade Nova</label>
-        <label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1;min-width:0"><input type="checkbox" class="fHubChk" value="Varanda Sion" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Varanda</label>
+      <div style="display:flex;gap:6px;flex-wrap:nowrap">
+        <label style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1"><input type="checkbox" class="fHubChk" value="Sion" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Sion</label>
+        <label style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1"><input type="checkbox" class="fHubChk" value="Cidade Nova" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Cidade Nova</label>
+        <label style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1"><input type="checkbox" class="fHubChk" value="Varanda Sion" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Varanda</label>
         <input type="hidden" id="fHub" value="Sion">
       </div>
     </div>
+  </div>
+  <div class="fr">
     <div class="fg">
       <label>Tipo de contrato</label>
       <select id="fTipo">
