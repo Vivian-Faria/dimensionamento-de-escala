@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615121821">
+<meta name="version" content="v20260615123211">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1474,8 +1474,8 @@ function abrirSeletorHub(){
 
   lista.innerHTML = hubs.map(h=>{
     const nome = nomeHub(h);
-    const chavesHub = Object.keys(totais).filter(k => (HUB_IND_PARA_COLAB[k]||k) === (HUB_IND_PARA_COLAB[h]||h));
-    const total = chavesHub.reduce((s,k) => s+(totais[k]||0), 0);
+    // Mostrar só os pedidos da chave exata deste hub nos dados coletados
+    const total = totais[h] || 0;
     const sel = _hubsSelecionados.has(h);
     return '<label style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;font-size:12px;color:var(--tx);border-bottom:1px solid var(--brd);background:'+(sel?'#f0fdf4':'')+'">'
       +'<input type="checkbox" '+(sel?'checked':'')+' data-hub="'+h.replace(/"/g,'&quot;')+'"'
