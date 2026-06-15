@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615011934">
+<meta name="version" content="v20260615013803">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3033,57 +3033,42 @@ function renderCo(){
     g.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-ico">👤</div><h3>Nenhum colaborador em ${_coHubFiltro==='Cidade Nova'?'DS Cidade Nova':_coHubFiltro}</h3><p style="margin-top:8px"><button class="btn ba sm" onclick="aM()">+ Adicionar</button></p></div>`;
     return;
   }
-  g.innerHTML=lista.map((c,i)=>`
+  g.innerHTML=lista.map((c,i)=>{
+    const hubLabel=(c.hubs||[c.hub||'Sion']).join(' + ');
+    const tipoLabel=c.tipoContrato&&c.tipoContrato!=='hora'?`<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700">${c.tipoContrato==='12x36'?'12×36':c.tipoContrato==='6x1'?'6×1':'Folguista'}</span>`:'';
+    const badges=[];
+    if(c.fixo) badges.push(`<span class="badge-fixo">📌 Fixo</span>`);
+    if(c.folgaDias&&c.folgaDias.length) badges.push(`<span class="badge-fixo" style="background:rgba(37,99,235,.08);color:#1d4ed8;border-color:rgba(37,99,235,.2)">${c.folgaFixa?'🔒':'🏖'} Folga · ${c.folgaDias.map(d=>d==='Sab'?'Sáb':d).join(', ')}</span>`);
+    if(c.almocoIn!=null&&c.almocoOut!=null) badges.push(`<span class="badge-fixo" style="background:rgba(217,119,6,.08);color:#92400e;border-color:rgba(217,119,6,.2)">🍽 Almoço ${String(c.almocoIn).padStart(2,'0')}h–${String(c.almocoOut).padStart(2,'0')}h</span>`);
+    return `
     <div class="cc">
       <div class="cc-h">
         <div class="av" style="background:${avColor(i)};color:#fff">${c.nome.substring(0,2).toUpperCase()}</div>
-        <div>
-          <div class="cn" style="display:flex;align-items:center;gap:6px">
-            ${c.nome}
-            ${(()=>{
-              try{
-                const {seg}=proximaSemana();
-                const p2=v=>String(v).padStart(2,'0');
-                const segISO=seg.getFullYear()+'-'+p2(seg.getMonth()+1)+'-'+p2(seg.getDate());
-                const disp=JSON.parse(localStorage.getItem('orion_v7_disp_'+segISO)||'{}');
-                if(disp[c.nome]) return '<span title="Disponibilidade recebida" style="font-size:10px;background:#dcfce7;color:#166534;border-radius:6px;padding:1px 5px;font-weight:600">✓ dispon.</span>';
-              }catch(e){}
-              return '';
-            })()}
-          </div>
-          <div class="cf">${c.funcao||'Colaborador'} ${c.tipoContrato&&c.tipoContrato!=='hora'?`<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:3px">${c.tipoContrato==='12x36'?'12×36':c.tipoContrato==='6x1'?'6×1':'Folguista'}</span>`:''} <span style="font-size:9px;color:var(--mu);margin-left:2px">${(c.hubs||[c.hub||'Sion']).join(' + ')}</span></div>
+        <div style="flex:1;min-width:0">
+          <div class="cn">${c.nome} ${tipoLabel}</div>
+          <div class="cf">${c.funcao||'Colaborador'} <span style="color:var(--mu);font-size:9px">· ${hubLabel}</span></div>
         </div>
         <div class="ca">
           <button class="btn bs sm" onclick="editC('${c.id}')">✏</button>
           <button class="btn bd sm" onclick="delC('${c.id}')">✕</button>
         </div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">
-${DIAS.map(d=>`<span class="dc ${(c.dias||[]).includes(d)?'dc-on':'dc-off'}">${d}</span>`).join('')}      </div>
-      <div class="ct">${c.dispDia
-        ?Object.entries(c.dispDia).map(([d,v])=>`${d==='Sab'?'Sáb':d} ${fH(v.horaIn)}–${fH(v.horaOut)}`).join(' · ')
-        :`${fH(c.horaIn)} → ${fH(c.horaOut)}`} · mín ${c.minH||3}h · máx ${c.maxH||8}h/dia</div>
-      ${c.fixo?(()=>{
-        const blocos=(c.turnosFixos&&c.turnosFixos.length)?c.turnosFixos:[{dias:c.dias,horaIn:c.horaIn,horaOut:c.horaOut}];
-        return `<div class="badge-fixo">📌 FIXO · ${blocos.map(tf=>
-          tf.dias.join('/')+' '+String(tf.horaIn).padStart(2,'0')+'h–'+String(tf.horaOut).padStart(2,'0')+'h'
-        ).join(' · ')}</div>`;
-      })():''}
-      
-      ${(c.folgaDias&&c.folgaDias.length)?`<div class="badge-fixo" style="background:rgba(37,99,235,.08);color:#1d4ed8;border:1px solid rgba(37,99,235,.2)">${c.folgaFixa?'🏖 FOLGA FIXA':'🏖 FOLGA'} · ${c.folgaDias.map(d=>d==='Sab'?'Sáb':d).join(' / ')}</div>`:''}
-      ${(c.almocoIn!=null&&c.almocoOut!=null)?`<div class="badge-fixo" style="background:rgba(217,119,6,.08);color:#92400e;border:1px solid rgba(217,119,6,.2)">🍽 ALMOÇO ${String(c.almocoIn).padStart(2,'0')}h–${String(c.almocoOut).padStart(2,'0')}h</div>`:''}
-      <div class="c-custo">
-        <span>R$/h:</span>
-        <input type="number" step="0.01" value="${c.custo||''}" placeholder="0,00" onchange="atualizarCusto('${c.id}',this.value)" title="Custo por hora">
-        ${c.custo>0?`<span style="color:var(--or);font-weight:600">R$ ${c.custo.toFixed(2).replace('.',',')}/h</span>`:'<span style="color:var(--m2);font-size:10px">não cadastrado</span>'}
+      ${badges.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 4px">${badges.join('')}</div>`:''}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:10px;color:var(--mu)">R$/h</span>
+          <input type="number" step="0.01" value="${c.custo||''}" placeholder="0,00" onchange="atualizarCusto('${c.id}',this.value)" style="width:70px;background:var(--card2);border:1px solid var(--brd);border-radius:5px;padding:4px 6px;font-size:12px;color:var(--tx)">
+          ${c.custo>0?`<span style="color:var(--or);font-weight:600;font-size:12px">R$ ${c.custo.toFixed(2).replace('.',',')}/h</span>`:'<span style="color:var(--mu);font-size:10px">—</span>'}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:10px;color:var(--mu)">🚌</span>
+          <input type="number" step="0.01" value="${(c.passagem||0)||''}" placeholder="0,00" onchange="atualizarPassagem('${c.id}',this.value)" style="width:60px;background:var(--card2);border:1px solid var(--brd);border-radius:5px;padding:4px 6px;font-size:12px;color:var(--tx)">
+          ${(c.passagem||0)>0?`<span style="color:#7c3aed;font-weight:600;font-size:12px">R$ ${c.passagem.toFixed(2).replace('.',',')}/dia</span>`:'<span style="color:var(--mu);font-size:10px">—</span>'}
+        </div>
       </div>
-      <div class="c-custo" style="margin-top:4px">
-        <span>🚌 Pass.:</span>
-        <input type="number" step="0.01" value="${(c.passagem||0)||''}" placeholder="0,00" onchange="atualizarPassagem('${c.id}',this.value)" title="Passagem por dia trabalhado">
-        ${(c.passagem||0)>0?`<span style="color:#7c3aed;font-weight:600">R$ ${c.passagem.toFixed(2).replace('.',',')}/dia</span>`:'<span style="color:var(--m2);font-size:10px">sem passagem</span>'}
-      </div>
-      ${c.nota?`<div class="cno">${c.nota}</div>`:''}
-    </div>`).join('');
+      ${c.nota?`<div class="cno" style="margin-top:6px">${c.nota}</div>`:''}
+    </div>`;
+  }).join('');
 }
 
 function atualizarCusto(id,val){
