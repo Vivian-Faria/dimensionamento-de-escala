@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260614014720">
+<meta name="version" content="v20260615005919">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -353,8 +353,14 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
         <div class="fg"><label>Horas/mês</label><input id="calcHorasMes" type="number" step="1" min="1" value="220" oninput="calcularCustoHoraEncargos()"></div>
       </div>
 
-      <div id="calcBlocoIntermitente" class="fr" style="display:none">
-        <div class="fg"><label>Valor da hora trabalhada (R$)</label><input id="calcValorHora" type="number" step="0.01" min="0" placeholder="Ex: 9,00" oninput="calcularCustoHoraEncargos()"></div>
+      <div id="calcBlocoIntermitente" style="display:none;flex-direction:column;gap:10px">
+        <div class="fr">
+          <div class="fg"><label>Valor da hora trabalhada (R$)</label><input id="calcValorHora" type="number" step="0.01" min="0" placeholder="Ex: 9,00" oninput="calcularCustoHoraEncargos()"></div>
+          <div class="fg"><label>Passagem por dia (R$)</label><input id="calcPassagemInterm" type="number" step="0.01" min="0" placeholder="Ex: 16,00" oninput="calcularCustoHoraEncargos()"></div>
+        </div>
+        <div style="font-size:10px;background:rgba(37,99,235,.06);color:#1d4ed8;border:1px solid rgba(37,99,235,.15);border-radius:6px;padding:8px;line-height:1.6">
+          💡 <strong>Passagem no intermitente:</strong> o valor da passagem é fixo por dia independente das horas trabalhadas. Como o mínimo garantido por chamada é <strong>3h</strong>, dividimos a passagem por 3h para obter o custo/hora no pior caso. Se o colaborador trabalhar mais horas, o custo real será menor.
+        </div>
       </div>
 
       <div class="fg">
@@ -394,6 +400,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
         <div style="font-size:11px;color:var(--mu)">
           <div>Total encargos: <strong id="calcTotalPct" style="color:var(--tx)">0%</strong></div>
           <div>Salário + encargos: <strong id="calcSubtotalEncargos" style="color:var(--tx)">R$ 0,00</strong></div>
+          <div class="calc-pass-row" style="display:none">Passagem/hora: <strong id="calcPassagemHora" style="color:var(--tx)">—</strong></div>
           <div>Benefícios extras: <strong id="calcBeneficios" style="color:var(--tx)">R$ 0,00</strong></div>
           <div>Custo mensal total: <strong id="calcCustoMensal" style="color:var(--tx)">R$ 0,00</strong></div>
         </div>
@@ -3407,16 +3414,24 @@ function calcularCustoHoraEncargos(){
   let custoHora, custoMensal, subtotalEncargos, beneficios, horasMes;
 
   if(tipo==='intermitente'){
-    // Base = valor/hora trabalhada. Mesmos % de encargos incidem sobre o valor/hora
-    // (DSR, férias prop., 13º prop., FGTS sobre essa base — conforme holerite de intermitente)
     const valorHora=parseFloat(document.getElementById('calcValorHora')?.value)||0;
-    custoHora=valorHora*(1+totalPct/100);
-    subtotalEncargos=custoHora; // por hora, não há "mensal" — exibido como valor/hora com encargos
-    // Benefícios fixos mensais: precisam de uma referência de horas/mês para diluir no custo/hora
-    horasMes=220; // referência padrão só para diluir benefícios fixos no custo/hora
+    const passagemDia=parseFloat(document.getElementById('calcPassagemInterm')?.value)||0;
+    const MIN_HORAS_CHAMADA=3; // mínimo garantido por chamada intermitente
+
+    // Encargos incidem sobre o valor/hora
+    const valorHoraComEncargos=valorHora*(1+totalPct/100);
+    subtotalEncargos=valorHoraComEncargos;
+
+    // Passagem: custo fixo por dia ÷ mínimo de horas = custo/hora no pior caso
+    const passagemPorHora=passagemDia>0?passagemDia/MIN_HORAS_CHAMADA:0;
+
+    // Benefícios mensais fixos diluídos em 220h de referência
+    horasMes=220;
     beneficios=alimentacao+bonus;
-    custoHora=custoHora+(horasMes>0?beneficios/horasMes:0);
-    custoMensal=custoHora*horasMes; // referencial, para exibição
+    const beneficiosPorHora=horasMes>0?beneficios/horasMes:0;
+
+    custoHora=valorHoraComEncargos+passagemPorHora+beneficiosPorHora;
+    custoMensal=custoHora*horasMes; // referencial para exibição
   } else {
     const salario=parseFloat(document.getElementById('calcSalario')?.value)||0;
     horasMes=parseFloat(document.getElementById('calcHorasMes')?.value)||220;
@@ -3427,9 +3442,16 @@ function calcularCustoHoraEncargos(){
   }
 
   document.getElementById('calcTotalPct').textContent=totalPct.toFixed(2).replace('.',',')+'%';
-  document.getElementById('calcSubtotalEncargos').textContent='R$ '+subtotalEncargos.toFixed(2).replace('.',',')+(tipo==='intermitente'?'/h':'');
+  document.getElementById('calcSubtotalEncargos').textContent='R$ '+subtotalEncargos.toFixed(2).replace('.',',')+(tipo==='intermitente'?'/h (valor hora + encargos)':'');
   document.getElementById('calcBeneficios').textContent='R$ '+beneficios.toFixed(2).replace('.',',');
   document.getElementById('calcCustoMensal').textContent='R$ '+custoMensal.toFixed(2).replace('.',',')+(tipo==='intermitente'?' (ref. 220h)':'');
+  // Para intermitente, mostrar breakdown da passagem
+  const elPass=document.getElementById('calcPassagemHora');
+  if(elPass){
+    const passagemDiaVal=parseFloat(document.getElementById('calcPassagemInterm')?.value)||0;
+    elPass.textContent=passagemDiaVal>0?'R$ '+(passagemDiaVal/3).toFixed(2).replace('.',',')+'/ h (R$ '+passagemDiaVal.toFixed(2).replace('.',',')+' ÷ 3h mín.)':'—';
+    elPass.closest('.calc-pass-row').style.display=tipo==='intermitente'&&passagemDiaVal>0?'flex':'none';
+  }
   document.getElementById('calcCustoHora').textContent='R$ '+custoHora.toFixed(2).replace('.',',');
 
   return custoHora;
