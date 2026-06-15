@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615015914">
+<meta name="version" content="v20260615111605">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1698,16 +1698,17 @@ function gerarEscala(dados, hubFiltro){
     const el = document.createElement('div');
     el.id = 'sHub'; el.className = 'sc';
     el.innerHTML = '<div class="sc-l">Hub</div><div class="sc-v" id="sHubV" style="font-size:13px">—</div>';
-    document.getElementById('sT').closest('.sc').after(el);
+    const _stEl = document.getElementById('sT') || document.getElementById('sPi'); if(_stEl) _stEl.closest('.sc')?.after(el);
     return el;
   })();
-  document.getElementById('sHubV').textContent = hubLabel;
+  { const _hv=document.getElementById('sHubV'); if(_hv) _hv.textContent = hubLabel; }
+  { const _ha=document.getElementById('sHubAtivo'); if(_ha) _ha.textContent = hubLabel; }
   const per=dados.deBR?`${dados.deBR}→${dados.ateBR}`:dados.de;
   { const _el=document.getElementById('sPe'); if(_el) _el.textContent=`Semana: ${per}`; }
   const{seg,dom}=proximaSemana();
   document.getElementById('sPi').textContent=`${fmtBR(seg)}–${fmtBR(dom)}`;
   document.getElementById('sPiS').textContent='próxima semana projetada';
-  document.getElementById('sCo').textContent=S.colabs.length;
+  { const _el=document.getElementById('sCo'); if(_el) _el.textContent=S.colabs.length; }
 
   // Status dot
   const min=Math.round((Date.now()-dados.ts)/60000);
