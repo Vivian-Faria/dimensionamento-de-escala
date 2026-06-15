@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615005919">
+<meta name="version" content="v20260615010543">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -340,12 +340,10 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       <div style="font-size:10px;color:var(--mu);line-height:1.5">Informe o salário mensal e a carga horária. Os encargos abaixo são sugestões editáveis (% sobre o salário) e variam conforme o regime tributário. O resultado preenche o campo "Custo/hora" acima.</div>
       <div style="font-size:10px;background:rgba(124,58,237,.08);color:#7c3aed;border:1px solid rgba(124,58,237,.2);border-radius:6px;padding:8px;line-height:1.5">🌙 <strong>Adicional noturno:</strong> aplicado automaticamente na escala — horas trabalhadas a partir das 22h recebem +20% sobre este custo/hora. Não precisa configurar aqui.</div>
 
-      <div class="fg">
-        <label>Tipo de contrato</label>
-        <select id="calcTipoContrato" onchange="toggleTipoCalculo()">
-          <option value="mensal">Mensal (CLT / 6x1)</option>
-          <option value="intermitente">Intermitente (por hora)</option>
-        </select>
+      <div style="display:flex;gap:8px;margin-bottom:2px">
+        <button class="btn bs sm" onclick="document.getElementById('calcTipoContrato').value='mensal';toggleTipoCalculo()" id="calcBtnMensal" style="flex:1;font-weight:700;background:var(--ac);color:#fff">Mensal / 6x1</button>
+        <button class="btn bs sm" onclick="document.getElementById('calcTipoContrato').value='intermitente';toggleTipoCalculo()" id="calcBtnInterm" style="flex:1">Intermitente</button>
+        <input type="hidden" id="calcTipoContrato" value="mensal">
       </div>
 
       <div id="calcBlocoMensal" class="fr">
@@ -413,14 +411,12 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
     </div>
   </div>
   <div class="fr">
-    <div class="fg">
+    <div class="fg" style="flex:2">
       <label>Hub</label>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <div style="display:flex;flex-direction:column;gap:5px">
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500"><input type="checkbox" class="fHubChk" value="Sion" style="accent-color:var(--ac);width:15px;height:15px"> Sion</label>
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500"><input type="checkbox" class="fHubChk" value="Cidade Nova" style="accent-color:var(--ac);width:15px;height:15px"> DS Cidade Nova</label>
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500"><input type="checkbox" class="fHubChk" value="Varanda Sion" style="accent-color:var(--ac);width:15px;height:15px"> Varanda Sion</label>
-        </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1;min-width:0"><input type="checkbox" class="fHubChk" value="Sion" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Sion</label>
+        <label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1;min-width:0"><input type="checkbox" class="fHubChk" value="Cidade Nova" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Cidade Nova</label>
+        <label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:6px;border:1px solid var(--brd);cursor:pointer;background:var(--card2);font-size:12px;font-weight:500;flex:1;min-width:0"><input type="checkbox" class="fHubChk" value="Varanda Sion" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0"> Varanda</label>
         <input type="hidden" id="fHub" value="Sion">
       </div>
     </div>
@@ -3390,7 +3386,11 @@ function toggleTipoCalculo(){
   const isInterm=tipo==='intermitente';
   document.getElementById('calcBlocoMensal').style.display=isInterm?'none':'flex';
   document.getElementById('calcBlocoIntermitente').style.display=isInterm?'flex':'none';
-  // Rótulo do bloco de benefícios muda de R$/mês para R$/hora-equivalente quando intermitente
+  // Estilo dos botões toggle
+  const btnM=document.getElementById('calcBtnMensal');
+  const btnI=document.getElementById('calcBtnInterm');
+  if(btnM){btnM.style.background=isInterm?'':'var(--ac)';btnM.style.color=isInterm?'':'#fff';btnM.style.fontWeight=isInterm?'':'700';}
+  if(btnI){btnI.style.background=isInterm?'var(--ac)':'';btnI.style.color=isInterm?'#fff':'';btnI.style.fontWeight=isInterm?'700':'';}
   const labA=document.getElementById('lblBenefAlim');
   const labB=document.getElementById('lblBenefBonus');
   if(labA)labA.textContent=isInterm?'Alimentação (R$/mês)':'Alimentação';
