@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615135032">
+<meta name="version" content="v20260615151521">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1103,6 +1103,15 @@ function p2(v){return String(v).padStart(2,'0');}
 function fmtISOlocal(d){return`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
 function diaDaSemanaLocal(dd,mm,yyyy){return DIAS[new Date(Number(yyyy),Number(mm)-1,Number(dd)).getDay()];}
 function salvarColetaLocal(dados){localStorage.setItem(KCOL,JSON.stringify(dados));return dados;}
+function totalColetaReal(d){
+  if(!d) return 0;
+  if(d.totalPorHub && Object.keys(d.totalPorHub).length){
+    return Object.entries(d.totalPorHub)
+      .filter(([k]) => k !== 'DS Delivery Mall')
+      .reduce((s,[,v]) => s+v, 0);
+  }
+  return d.total || 0;
+}
 function lerColetaLocal(){
   try{
     const s=localStorage.getItem(KCOL);
@@ -1374,7 +1383,7 @@ function mostrarBanner(){
 
   if(cache.ok){
     banner.className='banner b-ok';
-    banner.innerHTML=`<div class="b-title">✅ Dados prontos — ${cache.p.total?.toLocaleString('pt-BR')} pedidos coletados</div>
+    banner.innerHTML=`<div class="b-title">✅ Dados prontos — ${totalColetaReal(cache.p).toLocaleString('pt-BR')} pedidos coletados</div>
     <div>Período: <strong>${cache.p.deBR||per} a ${cache.p.ateBR||''}</strong> · há ${cache.min} minuto${cache.min!==1?'s':''}. Clique em Montar escala.</div>
     <div style="margin-top:8px"><button class="btn ba sm" onclick="montarEscala()">⚡ Montar escala</button></div>`;
     return;
@@ -1751,10 +1760,10 @@ function gerarEscala(dados, hubFiltro){
   // Status dot
   const min=Math.round((Date.now()-dados.ts)/60000);
   document.getElementById('dDot').style.cssText='background:var(--ac)';
-  document.getElementById('dLbl').textContent=`${(dados.total||0).toLocaleString('pt-BR')} pedidos coletados`;
+  document.getElementById('dLbl').textContent=`${totalColetaReal(dados).toLocaleString('pt-BR')} pedidos coletados`;
   document.getElementById('dSub').textContent=`${dados.deBR||per}→${dados.ateBR||per} · há ${min}min`;
   // Atualizar bloco de pedidos coletados na sidebar
-  { const _el=document.getElementById('sCo'); if(_el) _el.textContent=(dados.total||0).toLocaleString('pt-BR'); }
+  { const _el=document.getElementById('sCo'); if(_el) _el.textContent=totalColetaReal(dados).toLocaleString('pt-BR'); }
   { const _el=document.getElementById('sCoSub'); if(_el) _el.textContent=`${dados.deBR||''}→${dados.ateBR||''}`;  }
 
   save();
@@ -5532,7 +5541,7 @@ try {
       const _dbc=e.data.payload;
       if(_dbc&&document.getElementById('dLbl')){
         document.getElementById('dDot').style.cssText='background:var(--ac)';
-        document.getElementById('dLbl').textContent=`${(_dbc.total||0).toLocaleString('pt-BR')} pedidos coletados`;
+        document.getElementById('dLbl').textContent=`${totalColetaReal(_dbc).toLocaleString('pt-BR')} pedidos coletados`;
         document.getElementById('dSub').textContent=`${_dbc.deBR||''}→${_dbc.ateBR||''} · agora`;
       }
     }
@@ -8995,8 +9004,7 @@ try{
   const _dc=lerColetaLocal();
   if(_dc&&_dc.total&&document.getElementById('dLbl')){
     // Excluir DS Delivery Mall do total (dados antigos podem incluí-lo)
-    const _totalReal=Object.entries(_dc.totalPorHub||{}).filter(([k])=>k!=='DS Delivery Mall').reduce((s,[,v])=>s+v,_dc.mxPorHub?0:_dc.total);
-    const _tot=(_dc.mxPorHub&&Object.keys(_dc.totalPorHub||{}).length)?_totalReal:_dc.total;
+    const _tot=totalColetaReal(_dc);
     document.getElementById('dDot').style.cssText='background:var(--ac)';
     document.getElementById('dLbl').textContent=`${_tot.toLocaleString('pt-BR')} pedidos coletados`;
     const _min=Math.round((Date.now()-(_dc.ts||0))/60000);
