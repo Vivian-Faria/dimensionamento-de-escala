@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615114002">
+<meta name="version" content="v20260615114512">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1669,9 +1669,12 @@ function gerarEscala(dados, hubFiltro){
     const mxMesclado={};
     DIAS_.forEach(d=>{ mxMesclado[d]={}; for(let h=0;h<30;h++) mxMesclado[d][p2_(h)]=0; });
     let totalMesclado=0;
-    hubs.forEach(hubColab=>{
+    hubs.forEach(hubInput=>{
+      // hubInput pode ser nome do Órion ('DS Sion') ou nome de colaborador ('Sion')
+      // Converter para nome de colaborador se necessário
+      const hubColab = HUB_IND_PARA_COLAB[hubInput] || hubInput;
       // Obter as chaves reais do Órion para este hub de colaborador
-      const chavesOrion = HUB_COLAB_PARA_IND[hubColab] || [hubColab];
+      const chavesOrion = HUB_COLAB_PARA_IND[hubColab] || [hubInput];
       chavesOrion.forEach(chave=>{
         if(!dados.mxPorHub[chave]) return;
         DIAS_.forEach(d=>{ Object.keys(mxMesclado[d]).forEach(hk=>{ mxMesclado[d][hk]+=(dados.mxPorHub[chave][d]?.[hk]||0); }); });
@@ -1714,7 +1717,11 @@ function gerarEscala(dados, hubFiltro){
 
   // Sidebar — total filtrado pelo hub selecionado
   const totalExibido = (hubs.length > 0 && dados.totalPorHub)
-    ? hubs.reduce((acc, h) => acc + (dados.totalPorHub[h] || 0), 0)
+    ? hubs.reduce((acc, hubInput) => {
+        const hubColab = HUB_IND_PARA_COLAB[hubInput] || hubInput;
+        const chavesOrion = HUB_COLAB_PARA_IND[hubColab] || [hubInput];
+        return acc + chavesOrion.reduce((s, chave) => s + (dados.totalPorHub?.[chave] || 0), 0);
+      }, 0)
     : dados.total;
   { const _el=document.getElementById('sT'); if(_el) _el.textContent = totalExibido.toLocaleString('pt-BR'); }
   // Mostrar hub no resumo
