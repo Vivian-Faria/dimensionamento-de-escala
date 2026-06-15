@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615160631">
+<meta name="version" content="v20260615161404">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1764,7 +1764,8 @@ function gerarEscala(dados, hubFiltro){
   document.getElementById('dSub').textContent=`${dados.deBR||per}→${dados.ateBR||per} · há ${min}min`;
   // Atualizar bloco de pedidos coletados na sidebar
   // Mostrar total do hub filtrado, não o total geral
-  const _totalHub = (hubs.length > 0 && dados.mxPorHub) ? totalMesclado : totalColetaReal(dados);
+  // Total filtrado pelo hub: usa dados.total que foi atualizado no bloco acima
+  const _totalHub = (hubs.length > 0 && dados.mxPorHub) ? (dados.total||0) : totalColetaReal(dados);
   { const _el=document.getElementById('sCo'); if(_el) _el.textContent=_totalHub.toLocaleString('pt-BR'); }
   { const _el=document.getElementById('sCoSub'); if(_el) _el.textContent=`${dados.deBR||''}→${dados.ateBR||''}`;  }
 
