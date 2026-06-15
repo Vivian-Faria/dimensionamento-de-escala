@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615121339">
+<meta name="version" content="v20260615121821">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -550,10 +550,10 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div id="sideRegras" style="display:none"></div>
   <div id="sideFolgas"></div>
 
-  <div class="stit" style="margin-top:16px">Dados</div>
-  <div style="font-size:11px;color:var(--mu);line-height:1.9">
-    <div><span class="sb-dot" id="dDot" style="background:var(--or)"></span><span id="dLbl">Sem dados</span></div>
-    <div id="dSub" style="font-size:10px;color:var(--m2)">—</div>
+  <div class="stit" style="margin-top:16px">Dados coletados</div>
+  <div style="font-size:11px;color:var(--mu);line-height:1.8">
+    <div><span class="sb-dot" id="dDot" style="background:var(--or)"></span><span id="dLbl" style="font-weight:600;color:var(--tx)">Sem dados</span></div>
+    <div id="dSub" style="font-size:10px;color:var(--mu);margin-top:1px">—</div>
   </div>
 </div>
 
@@ -1741,8 +1741,8 @@ function gerarEscala(dados, hubFiltro){
   // Status dot
   const min=Math.round((Date.now()-dados.ts)/60000);
   document.getElementById('dDot').style.cssText='background:var(--ac)';
-  document.getElementById('dLbl').textContent=`${totalExibido.toLocaleString()} pedidos`;
-  document.getElementById('dSub').textContent=`${per} · há ${min}min`;
+  document.getElementById('dLbl').textContent=`${(dados.total||0).toLocaleString('pt-BR')} pedidos coletados`;
+  document.getElementById('dSub').textContent=`${dados.deBR||per}→${dados.ateBR||per} · há ${min}min`;
 
   save();
   document.getElementById('esBanner').innerHTML='';
@@ -5517,6 +5517,12 @@ try {
       // Se o sistema ja estiver com escala aberta, atualiza automaticamente
       toast('✓ Dados recebidos do Órion! Clique em ⚡ Montar escala.', 'tok');
       document.getElementById('btnCol') && (document.getElementById('btnCol').textContent = '↻ Dados prontos!');
+      const _dbc=e.data.payload;
+      if(_dbc&&document.getElementById('dLbl')){
+        document.getElementById('dDot').style.cssText='background:var(--ac)';
+        document.getElementById('dLbl').textContent=`${(_dbc.total||0).toLocaleString('pt-BR')} pedidos coletados`;
+        document.getElementById('dSub').textContent=`${_dbc.deBR||''}→${_dbc.ateBR||''} · agora`;
+      }
     }
     if (e.data?.tipo === 'pedir_dados') {
       // Responder com dados do cache se tiver
@@ -8958,6 +8964,16 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();
+// Inicializar bloco Dados com cache local
+try{
+  const _dc=lerColetaLocal();
+  if(_dc&&_dc.total&&document.getElementById('dLbl')){
+    document.getElementById('dDot').style.cssText='background:var(--ac)';
+    document.getElementById('dLbl').textContent=`${_dc.total.toLocaleString('pt-BR')} pedidos coletados`;
+    const _min=Math.round((Date.now()-(_dc.ts||0))/60000);
+    document.getElementById('dSub').textContent=`${_dc.deBR||''}→${_dc.ateBR||''} · há ${_min}min`;
+  }
+}catch(e){}
 // Carregar colaboradores do Supabase (fonte principal)
 (async()=>{
   const loaded=await loadColabsFromSupa();
