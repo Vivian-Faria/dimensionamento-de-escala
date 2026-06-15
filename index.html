@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615014149">
+<meta name="version" content="v20260615015528">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -523,18 +523,18 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 <!-- SIDEBAR -->
 <div class="side">
   <div class="stit">Resumo</div>
-  <div class="sc"><div class="sc-l">Pedidos analisados</div><div class="sc-v" id="sT">—</div><div class="sc-s" id="sPe">Clique "Montar escala"</div></div>
-  <div class="sc"><div class="sc-l">Semana projetada</div><div class="sc-v" id="sPi" style="font-size:14px">—</div><div class="sc-s" id="sPiS">—</div></div>
-  <div class="sc"><div class="sc-l">Equipe</div><div class="sc-v" id="sCo">0</div><div class="sc-s">colaboradores cadastrados</div></div>
-  <div class="sc"><div class="sc-l">Custo total semana</div><div class="sc-v" id="sCusto" style="font-size:14px;color:#d97706">—</div><div class="sc-s" id="sCustoSub">estimado</div></div>
-  <div class="sc"><div class="sc-l">Custo médio / pedido</div><div class="sc-v" id="sCpp" style="font-size:14px;color:#2563eb">—</div><div class="sc-s" id="sCppSub">R$ por pedido na semana</div></div>
+  <div class="sc"><div class="sc-l">Hub ativo</div><div class="sc-v" id="sHubAtivo" style="font-size:13px;color:var(--ac)">—</div></div>
+  <div class="sc"><div class="sc-l">Semana projetada</div><div class="sc-v" id="sPi" style="font-size:13px">—</div><div class="sc-s" id="sPiS">próxima semana projetada</div></div>
+  <div class="sc"><div class="sc-l">Equipe</div><div class="sc-v" id="sCo">—</div><div class="sc-s" id="sCoSub">colaboradores no hub</div></div>
+  <div class="sc"><div class="sc-l">Custo total semana</div><div class="sc-v" id="sCusto" style="font-size:14px;color:#d97706">—</div><div class="sc-s" id="sCustoSub">custo estimado na semana</div></div>
+  <div class="sc"><div class="sc-l">Custo médio / pedido</div><div class="sc-v" id="sCpp" style="font-size:14px;color:#2563eb">—</div><div class="sc-s">R$/pedido na semana</div></div>
 
-  <div class="stit">Configurações</div>
-  <div class="cfg"><label>Pedidos/pessoa/hora</label><input type="number" id="cPPH" value="30" min="1" max="200" oninput="atualizarSideRegras()"></div>
-  <div class="cfg"><label>Mín. pessoas abertura (09h)</label><input type="number" id="cMin" value="2" min="1" max="10" oninput="atualizarSideRegras()"></div>
-  <div class="cfg"><label>Meta CPP (R$/pedido)</label><input type="number" id="cCPPMeta" value="1.10" step="0.05" min="0.50" max="5.00" oninput="atualizarSideRegras()" title="Limite máximo de custo por pedido por slot. O preencher evita alocar além desse valor."></div>
+  <div class="stit">Configurações da escala</div>
+  <div class="cfg"><label>Pedidos / pessoa / hora</label><input type="number" id="cPPH" value="30" min="1" max="200" oninput="atualizarSideRegras()" title="Capacidade máxima de pedidos por colaborador por hora"></div>
+  <div class="cfg"><label>Mín. pessoas na abertura</label><input type="number" id="cMin" value="2" min="1" max="10" oninput="atualizarSideRegras()" title="Número mínimo de colaboradores ao abrir o hub"></div>
   <div class="cfg"><label>Hora abertura</label><input type="number" id="cHI" value="8" min="0" max="23" oninput="atualizarSideRegras()"></div>
-  <div class="cfg"><label>Hora fechamento (25=01h)</label><input type="number" id="cHO" value="25" min="1" max="30" oninput="atualizarSideRegras()"></div>
+  <div class="cfg"><label>Hora fechamento (25 = 01h)</label><input type="number" id="cHO" value="25" min="1" max="30" oninput="atualizarSideRegras()"></div>
+  <input type="hidden" id="cCPPMeta" value="1.10">
 
   <div class="stit" style="margin-top:12px">☁️ API Backend</div>
   <div style="font-size:10px;color:var(--mu);margin-bottom:6px;line-height:1.5">URL do Cloudflare Worker para coleta de disponibilidade entre dispositivos.</div>
@@ -1691,7 +1691,7 @@ function gerarEscala(dados, hubFiltro){
   const totalExibido = (hubs.length > 0 && dados.totalPorHub)
     ? hubs.reduce((acc, h) => acc + (dados.totalPorHub[h] || 0), 0)
     : dados.total;
-  document.getElementById('sT').textContent = totalExibido.toLocaleString('pt-BR');
+  document.getElementById('sT')?.textContent = totalExibido.toLocaleString('pt-BR');
   // Mostrar hub no resumo
   const hubLabel = S.hubAtual || 'Todos os hubs';
   const elHub = document.getElementById('sHub') || (() => {
@@ -1703,7 +1703,7 @@ function gerarEscala(dados, hubFiltro){
   })();
   document.getElementById('sHubV').textContent = hubLabel;
   const per=dados.deBR?`${dados.deBR}→${dados.ateBR}`:dados.de;
-  document.getElementById('sPe').textContent=`Semana: ${per}`;
+  document.getElementById('sPe')?.textContent=`Semana: ${per}`;
   const{seg,dom}=proximaSemana();
   document.getElementById('sPi').textContent=`${fmtBR(seg)}–${fmtBR(dom)}`;
   document.getElementById('sPiS').textContent='próxima semana projetada';
@@ -2613,7 +2613,7 @@ function atualizarCustoTotal(){
   document.getElementById('sCustoSub').textContent=total>0?'custo estimado na semana':'sem custos cadastrados';
   const cpp = total>0&&totalPed>0 ? total/totalPed : 0;
   document.getElementById('sCpp').textContent = cpp>0 ? `R$ ${cpp.toFixed(2).replace('.',',')}` : '—';
-  document.getElementById('sCppSub').textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe';
+  document.getElementById('sCppSub')?.textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe';
 }
 
 function _initApiConfig(){
@@ -3028,7 +3028,12 @@ function renderCo(){
   const g=document.getElementById('cG');
   const todos=S.colabs;
   const lista=todos.filter(c=>(c.hubs||[c.hub||'Sion']).includes(_coHubFiltro));
-  document.getElementById('sCo').textContent=todos.length;
+  // Contagem correta: só colaboradores do hub filtrado
+  document.getElementById('sCo').textContent=lista.length;
+  document.getElementById('sCoSub').textContent=lista.length===1?'colaborador no hub':'colaboradores no hub';
+  // Hub ativo na sidebar
+  const _sHubAtivo=document.getElementById('sHubAtivo');
+  if(_sHubAtivo)_sHubAtivo.textContent=_coHubFiltro==='Cidade Nova'?'DS Cidade Nova':_coHubFiltro;
   if(!lista.length){
     g.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-ico">👤</div><h3>Nenhum colaborador em ${_coHubFiltro==='Cidade Nova'?'DS Cidade Nova':_coHubFiltro}</h3><p style="margin-top:8px"><button class="btn ba sm" onclick="aM()">+ Adicionar</button></p></div>`;
     return;
