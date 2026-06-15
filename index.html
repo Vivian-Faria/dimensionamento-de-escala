@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615124239">
+<meta name="version" content="v20260615124731">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1491,9 +1491,18 @@ function abrirSeletorHub(){
 
   const isOpen = drop.style.display !== 'none';
   drop.style.display = isOpen ? 'none' : 'block';
-  if(!isOpen) setTimeout(()=>document.addEventListener('click', function f(e){
-    if(!drop.contains(e.target)){ drop.style.display='none'; document.removeEventListener('click',f); }
-  }), 10);
+  if(!isOpen){
+    // Fechar ao clicar fora — usar um único listener com cleanup garantido
+    if(window._hubDropListener) document.removeEventListener('click', window._hubDropListener);
+    window._hubDropListener = function(e){
+      if(!drop.contains(e.target) && e.target.id !== 'hubBtnConfirmar'){
+        drop.style.display='none';
+        document.removeEventListener('click', window._hubDropListener);
+        window._hubDropListener = null;
+      }
+    };
+    setTimeout(()=>document.addEventListener('click', window._hubDropListener), 10);
+  }
 }
 
 function toggleHubSeletor(chk){
@@ -1504,6 +1513,7 @@ function toggleHubSeletor(chk){
 
 function confirmarHubsSelecionados(){
   document.getElementById('hubSeletorDrop').style.display='none';
+  if(window._hubDropListener){ document.removeEventListener('click', window._hubDropListener); window._hubDropListener=null; }
   if(_hubsSelecionados.size === 0){ montarEscala('todos'); return; }
   montarEscala([..._hubsSelecionados]);
 }
@@ -8970,11 +8980,14 @@ load();
 try{
   const _dc=lerColetaLocal();
   if(_dc&&_dc.total&&document.getElementById('dLbl')){
+    // Excluir DS Delivery Mall do total (dados antigos podem incluí-lo)
+    const _totalReal=Object.entries(_dc.totalPorHub||{}).filter(([k])=>k!=='DS Delivery Mall').reduce((s,[,v])=>s+v,_dc.mxPorHub?0:_dc.total);
+    const _tot=(_dc.mxPorHub&&Object.keys(_dc.totalPorHub||{}).length)?_totalReal:_dc.total;
     document.getElementById('dDot').style.cssText='background:var(--ac)';
-    document.getElementById('dLbl').textContent=`${_dc.total.toLocaleString('pt-BR')} pedidos coletados`;
+    document.getElementById('dLbl').textContent=`${_tot.toLocaleString('pt-BR')} pedidos coletados`;
     const _min=Math.round((Date.now()-(_dc.ts||0))/60000);
     document.getElementById('dSub').textContent=`${_dc.deBR||''}→${_dc.ateBR||''} · há ${_min}min`;
-    const _sc=document.getElementById('sCo');if(_sc)_sc.textContent=_dc.total.toLocaleString('pt-BR');
+    const _sc=document.getElementById('sCo');if(_sc)_sc.textContent=_tot.toLocaleString('pt-BR');
     const _ss=document.getElementById('sCoSub');if(_ss)_ss.textContent=`${_dc.deBR||''}→${_dc.ateBR||''}`;
   }
 }catch(e){}
