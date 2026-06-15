@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615112910">
+<meta name="version" content="v20260615114002">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1197,7 +1197,7 @@ function getFeriadoBH(data){
 }
 
 // ── Bookmarklet com período seg-dom correto
-const BM_SCRIPT=`(async()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const rs=await fetch('/admin/reports/orders?start_date='+fi(ds)+'&start_time=00:00&end_date='+fi(da)+'&end_time=23:59&business=',{credentials:'include'});const ht=await rs.text();const dc=new DOMParser().parseFromString(ht,'text/html');const rw=dc.querySelectorAll('table tbody tr');const mkMx=()=>{const m={};D.forEach(d=>{m[d]={};for(let h=0;h<30;h++)m[d][p(h)]=0;});return m;};const mx=mkMx();const mxPorHub={'Cozinhas Sion + DS Sion':mkMx(),'Cidade Nova':mkMx(),'Varanda Sion':mkMx()};const totalPorHub={'Cozinhas Sion + DS Sion':0,'Cidade Nova':0,'Varanda Sion':0};let tt=0;rw.forEach(r=>{const cs=r.querySelectorAll('td');if(cs.length<10)return;const c=cs[9]?.textContent?.trim();if(!c||!c.includes('/')||!c.includes(' '))return;const[dp,tp]=c.split(' ');const[d2,mm,yy]=dp.split('/');const h=parseInt(tp.split(':')[0],10);const di=D[new Date(+yy,+mm-1,+d2).getDay()];const hk=p(h);if(!mx[di]||mx[di][hk]===undefined)return;mx[di][hk]++;tt++;const hubCol=(cs[1]?.textContent?.trim()||'').toLowerCase();const estab=(cs[2]?.textContent?.trim()||'').toLowerCase();let hubKey=null;if(estab.includes('varanda')||estab.includes('1389')){hubKey='Varanda Sion';}else if(hubCol.includes('cidade nova')){hubKey='Cidade Nova';}else if(hubCol.includes('sion')||hubCol==='-'||hubCol===''){hubKey='Cozinhas Sion + DS Sion';}if(hubKey&&mxPorHub[hubKey]&&mxPorHub[hubKey][di]&&mxPorHub[hubKey][di][hk]!==undefined){mxPorHub[hubKey][di][hk]++;totalPorHub[hubKey]++;}});const pl={mx,total:tt,mxPorHub,totalPorHub,de:fi(ds),ate:fi(da),deBR:fb(ds),ateBR:fb(da),ts:Date.now()};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#dados='+b64,'_blank');})()`;
+const BM_SCRIPT=`(async()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const rs=await fetch('/admin/reports/orders?start_date='+fi(ds)+'&start_time=00:00&end_date='+fi(da)+'&end_time=23:59&business=',{credentials:'include'});const ht=await rs.text();const dc=new DOMParser().parseFromString(ht,'text/html');const rw=dc.querySelectorAll('table tbody tr');const mkMx=()=>{const m={};D.forEach(d=>{m[d]={};for(let h=0;h<30;h++)m[d][p(h)]=0;});return m;};const mx=mkMx();const mxPorHub={};const totalPorHub={};let tt=0;rw.forEach(r=>{const cs=r.querySelectorAll('td');if(cs.length<10)return;const c=cs[9]?.textContent?.trim();if(!c||!c.includes('/')||!c.includes(' '))return;const[dp,tp]=c.split(' ');const[d2,mm,yy]=dp.split('/');const h=parseInt(tp.split(':')[0],10);const di=D[new Date(+yy,+mm-1,+d2).getDay()];const hk=p(h);if(!mx[di]||mx[di][hk]===undefined)return;mx[di][hk]++;tt++;const hubRaw=(cs[1]?.textContent?.trim()||'').replace(/\s+/g,' ');const estab=(cs[2]?.textContent?.trim()||'');let hubKey=null;if(estab.toLowerCase().includes('varanda')||estab.includes('1389')){hubKey='Varanda Sion';}else if(hubRaw){hubKey=hubRaw;}if(hubKey){if(!mxPorHub[hubKey]){mxPorHub[hubKey]={};D.forEach(d=>{mxPorHub[hubKey][d]={};for(let hh=0;hh<30;hh++)mxPorHub[hubKey][d][p(hh)]=0;});totalPorHub[hubKey]=0;}if(mxPorHub[hubKey][di]&&mxPorHub[hubKey][di][hk]!==undefined){mxPorHub[hubKey][di][hk]++;totalPorHub[hubKey]++;}}});const pl={mx,total:tt,mxPorHub,totalPorHub,de:fi(ds),ate:fi(da),deBR:fb(ds),ateBR:fb(da),ts:Date.now()};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#dados='+b64,'_blank');})()`;
 
 // ── Bookmarklet de INDICADORES — roda no Orion, coleta vendas+cancelamentos+tempos, envia para a plataforma via hash
 const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const de=fi(ds),ate=fi(da);const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};const dMin=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?+d.toFixed(2):null;};const base='https://admin.orioncloudkitchens.com.br';try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};} }).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const pl={de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(ds)+'\u2013'+fb(da),semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
@@ -1592,12 +1592,23 @@ async function montarComCache(){const c=verificarCache();if(c.p)gerarEscala(c.p,
 
 // Mapa hub indicadores → hub colaborador
 const HUB_IND_PARA_COLAB = {
-  'Cozinhas Sion': 'Sion',
+  // Nomes reais do Órion → hub de colaborador
   'DS Sion': 'Sion',
+  'Cozinhas Sion': 'Sion',
+  'Cozinhas Sion + DS Sion': 'Sion',
   'Sem hub': 'Sion',
+  '-': 'Sion',
   'DS Cidade Nova': 'Cidade Nova',
   'Cidade Nova': 'Cidade Nova',
   'Varanda Sion': 'Varanda Sion',
+  // DS Delivery Mall não contabilizado
+};
+
+// Mapeamento inverso: hub de colaborador → chaves nos dados coletados
+const HUB_COLAB_PARA_IND = {
+  'Sion': ['DS Sion', 'Cozinhas Sion', 'Sem hub', '-'],
+  'Cidade Nova': ['DS Cidade Nova', 'Cidade Nova'],
+  'Varanda Sion': ['Varanda Sion'],
 };
 
 // Retorna o hub de colaborador ativo (persiste no localStorage)
@@ -1652,16 +1663,20 @@ function gerarEscala(dados, hubFiltro){
   const hubs = Array.isArray(hubFiltro_) ? hubFiltro_ : (hubFiltro_ === 'todos' ? [] : [hubFiltro_]);
 
   if(hubs.length > 0 && dados.mxPorHub){
-    // Mescla as matrizes dos hubs selecionados
+    // Mescla as matrizes dos hubs selecionados usando mapeamento para nomes reais do Órion
     const DIAS_=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
     const p2_=v=>String(v).padStart(2,'0');
     const mxMesclado={};
     DIAS_.forEach(d=>{ mxMesclado[d]={}; for(let h=0;h<30;h++) mxMesclado[d][p2_(h)]=0; });
     let totalMesclado=0;
-    hubs.forEach(h=>{
-      if(!dados.mxPorHub[h]) return;
-      DIAS_.forEach(d=>{ Object.keys(mxMesclado[d]).forEach(hk=>{ mxMesclado[d][hk]+=(dados.mxPorHub[h][d]?.[hk]||0); }); });
-      totalMesclado+=(dados.totalPorHub?.[h]||0);
+    hubs.forEach(hubColab=>{
+      // Obter as chaves reais do Órion para este hub de colaborador
+      const chavesOrion = HUB_COLAB_PARA_IND[hubColab] || [hubColab];
+      chavesOrion.forEach(chave=>{
+        if(!dados.mxPorHub[chave]) return;
+        DIAS_.forEach(d=>{ Object.keys(mxMesclado[d]).forEach(hk=>{ mxMesclado[d][hk]+=(dados.mxPorHub[chave][d]?.[hk]||0); }); });
+        totalMesclado+=(dados.totalPorHub?.[chave]||0);
+      });
     });
     S.matrix = mxMesclado;
     dados = Object.assign({}, dados, { mx: mxMesclado, total: totalMesclado, _hubFiltro: hubFiltro_ });
