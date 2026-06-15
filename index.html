@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615115522">
+<meta name="version" content="v20260615120028">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1592,20 +1592,29 @@ async function montarComCache(){const c=verificarCache();if(c.p)gerarEscala(c.p,
 
 // Mapa hub indicadores → hub colaborador
 const HUB_IND_PARA_COLAB = {
-  // col[1] Hub do Órion → hub de colaborador
+  // Nomes que vêm no col[1] (Hub) da tabela do Órion → hub de colaborador
   'DS Sion': 'Sion',
+  'Cozinhas Sion': 'Sion',
+  'Cozinhas Sion + DS Sion': 'Sion',
+  'Sem hub': 'Sion',
   '-': 'Sion',
   '': 'Sion',
   'DS Cidade Nova': 'Cidade Nova',
-  'Varanda Sion': 'Varanda Sion', // quando já vem mapeado
+  'Cidade Nova': 'Cidade Nova',
+  // Varanda: identificada pelo col[2] (Estabelecimento), já vem normalizada no mxPorHub
+  'Varanda Sion': 'Varanda Sion',
 };
 
-// hub de colaborador → chaves reais no mxPorHub coletado
-const HUB_COLAB_PARA_IND = {
-  'Sion': ['Sion'],
-  'Cidade Nova': ['Cidade Nova'],
-  'Varanda Sion': ['Varanda Sion'],
-};
+// Função que retorna quais chaves do mxPorHub pertencem a um hub de colaborador
+// Usa HUB_IND_PARA_COLAB de forma reversa — funciona com qualquer coleta (antiga ou nova)
+function getChavesMxHub(hubColab, mxPorHub){
+  if(!mxPorHub) return [];
+  // Filtra as chaves do mxPorHub que mapeiam para este hub de colaborador
+  return Object.keys(mxPorHub).filter(chave => {
+    const mapped = HUB_IND_PARA_COLAB[chave] || HUB_IND_PARA_COLAB[chave.trim()] || null;
+    return mapped === hubColab;
+  });
+}
 
 // Retorna o hub de colaborador ativo (persiste no localStorage)
 function getHubColabAtual(){
@@ -1670,7 +1679,8 @@ function gerarEscala(dados, hubFiltro){
       // Converter para nome de colaborador se necessário
       const hubColab = HUB_IND_PARA_COLAB[hubInput] || hubInput;
       // Obter as chaves reais do Órion para este hub de colaborador
-      const chavesOrion = HUB_COLAB_PARA_IND[hubColab] || [hubInput];
+      const chavesOrion = getChavesMxHub(hubColab, dados.mxPorHub);
+      if(chavesOrion.length === 0) chavesOrion.push(hubColab); // fallback
       chavesOrion.forEach(chave=>{
         if(!dados.mxPorHub[chave]) return;
         DIAS_.forEach(d=>{ Object.keys(mxMesclado[d]).forEach(hk=>{ mxMesclado[d][hk]+=(dados.mxPorHub[chave][d]?.[hk]||0); }); });
@@ -1715,7 +1725,8 @@ function gerarEscala(dados, hubFiltro){
   const totalExibido = (hubs.length > 0 && dados.totalPorHub)
     ? hubs.reduce((acc, hubInput) => {
         const hubColab = HUB_IND_PARA_COLAB[hubInput] || hubInput;
-        const chavesOrion = HUB_COLAB_PARA_IND[hubColab] || [hubInput];
+        const chavesOrion = getChavesMxHub(hubColab, dados.mxPorHub);
+        if(chavesOrion.length === 0) return acc + (dados.totalPorHub?.[hubColab] || 0);
         return acc + chavesOrion.reduce((s, chave) => s + (dados.totalPorHub?.[chave] || 0), 0);
       }, 0)
     : dados.total;
