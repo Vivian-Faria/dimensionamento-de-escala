@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615015528">
+<meta name="version" content="v20260615015914">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1691,7 +1691,7 @@ function gerarEscala(dados, hubFiltro){
   const totalExibido = (hubs.length > 0 && dados.totalPorHub)
     ? hubs.reduce((acc, h) => acc + (dados.totalPorHub[h] || 0), 0)
     : dados.total;
-  document.getElementById('sT')?.textContent = totalExibido.toLocaleString('pt-BR');
+  { const _el=document.getElementById('sT'); if(_el) _el.textContent = totalExibido.toLocaleString('pt-BR'); }
   // Mostrar hub no resumo
   const hubLabel = S.hubAtual || 'Todos os hubs';
   const elHub = document.getElementById('sHub') || (() => {
@@ -1703,7 +1703,7 @@ function gerarEscala(dados, hubFiltro){
   })();
   document.getElementById('sHubV').textContent = hubLabel;
   const per=dados.deBR?`${dados.deBR}→${dados.ateBR}`:dados.de;
-  document.getElementById('sPe')?.textContent=`Semana: ${per}`;
+  { const _el=document.getElementById('sPe'); if(_el) _el.textContent=`Semana: ${per}`; }
   const{seg,dom}=proximaSemana();
   document.getElementById('sPi').textContent=`${fmtBR(seg)}–${fmtBR(dom)}`;
   document.getElementById('sPiS').textContent='próxima semana projetada';
@@ -2613,7 +2613,7 @@ function atualizarCustoTotal(){
   document.getElementById('sCustoSub').textContent=total>0?'custo estimado na semana':'sem custos cadastrados';
   const cpp = total>0&&totalPed>0 ? total/totalPed : 0;
   document.getElementById('sCpp').textContent = cpp>0 ? `R$ ${cpp.toFixed(2).replace('.',',')}` : '—';
-  document.getElementById('sCppSub')?.textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe';
+  { const _el=document.getElementById('sCppSub'); if(_el) _el.textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe'; }
 }
 
 function _initApiConfig(){
