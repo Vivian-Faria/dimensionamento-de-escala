@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615155520">
+<meta name="version" content="v20260615160631">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -9016,12 +9016,17 @@ try{
   }
 }catch(e){}
 // Carregar colaboradores do Supabase (fonte principal)
+// Timeout de segurança: se Supabase demorar mais de 4s, renderiza com localStorage
+const _renderTimeout = setTimeout(()=>{ renderCo();atualizarSideRegras(); }, 4000);
 (async()=>{
-  const loaded=await loadColabsFromSupa();
-  if(!loaded){
-    // Primeira vez ou offline — tentar migração
-    await migrarLocalStorageParaSupa();
-  }
+  try{
+    const loaded=await Promise.race([
+      loadColabsFromSupa(),
+      new Promise(r=>setTimeout(()=>r(false),5000))
+    ]);
+    if(!loaded) await migrarLocalStorageParaSupa();
+  }catch(e){ console.warn('[Init] Supabase falhou:',e.message); }
+  clearTimeout(_renderTimeout);
   renderCo();atualizarSideRegras();
 })();
 // Restaurar configurações salvas
