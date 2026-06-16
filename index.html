@@ -503,9 +503,6 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 <!-- HEADER -->
 <div class="hdr">
   <div class="logo">órion <em>·</em> escala <span class="v">v10</span></div>
-  <button class="btn bg sm" onclick="goT('co')">👥 Equipe</button>
-  <button class="btn bg sm" onclick="goT('hm')">🌡 Demanda</button>
-  <button class="btn bg sm" id="btnCol" onclick="iniciarColeta()">↻ Coletar dados</button>
   <div style="position:relative;display:inline-block">
     <button class="btn ba" onclick="abrirSeletorHub()">⚡ Montar escala</button>
     <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid var(--brd);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:200;min-width:260px;padding:0;overflow:hidden">
@@ -778,7 +775,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <h4>💰 Custos adicionais para CPP</h4>
             <p style="font-size:11px;color:var(--mu);margin-top:2px">Informe custos que não são calculados automaticamente pela escala</p>
           </div>
-          <div id="cppManualSemanas" class="cpp-semana-sel"></div>
+          <select id="cppManualSemanas" class="btn bs sm" style="padding:5px 8px;font-size:11px;cursor:pointer" onchange="selecionarSemanaManual(this.value)"></select>
         </div>
         <div class="cpp-manual-body">
           <div class="cpp-custo-grid">
@@ -5841,7 +5838,11 @@ function parsearTabelaOrion(html, tipo='vendas'){
   rows.forEach(row=>{
     const tds=row.querySelectorAll('td');
     if(tds.length<5)return;
-    const hub=(tds[1]?.textContent.trim()||'').replace('-','') || 'Sem hub';
+    const hubRaw=(tds[1]?.textContent.trim()||'').replace('-','') || 'Sem hub';
+    const estab=(tds[2]?.textContent.trim()||'').toLowerCase();
+    // Varanda é identificada pelo estabelecimento (não pelo hub), pois no Órion
+    // pode aparecer como "DS Sion" ou "Sem hub" no campo Hub
+    const hub=(estab.includes('varanda')||estab.includes('1389'))?'Varanda Sion':hubRaw;
     if(tipo==='vendas'){
       dados.push({
         hub,
@@ -5852,7 +5853,6 @@ function parsearTabelaOrion(html, tipo='vendas'){
         conclusao: parseDataOrion(tds[14]?.textContent.trim()),
       });
     } else {
-      // cancelamentos
       dados.push({
         hub,
         motivo:tds[4]?.textContent.trim()||'',
@@ -5862,6 +5862,7 @@ function parsearTabelaOrion(html, tipo='vendas'){
   });
   return dados;
 }
+
 
 function calcularMetricasSemana(vendas, cancelamentos, hub){
   // hub pode ser 'todos', string, ou Set de hubs (multi-seleção)
@@ -6002,7 +6003,7 @@ function inicializarCppManual(){
   const sel=document.getElementById('cppManualSemanas');
   sel.innerHTML=semanas.map(s=>{
     const lbl=s.deBR+'–'+s.ateBR;
-    return`<button class="cpp-semana-btn${s.semanaISO===_cppManualSemanaAtiva?' on':''}" onclick="selecionarSemanaManual('${s.semanaISO}')">${lbl}</button>`;
+    return`<option value="${s.semanaISO}"${s.semanaISO===_cppManualSemanaAtiva?' selected':''}>${lbl}</option>`;
   }).join('');
 
   // Carregar valores salvos
@@ -6119,6 +6120,9 @@ function receberDadosIndicadores(payload){
           r[k]=dt?dt.getTime():null;
         } else if(typeof r[k]!=='number') r[k]=null;
       });
+      // Normaliza hub: Varanda é identificada pelo estabelecimento
+      const estab=(r.estabelecimento||'').toLowerCase();
+      if(estab.includes('varanda')||estab.includes('1389')) r.hub='Varanda Sion';
       return r;
     });
     const entrada={
@@ -9150,6 +9154,30 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();
+// Migração: corrigir hub do Varanda em dados históricos de indicadores já salvos.
+// Antes, pedidos do Varanda podiam estar salvos com hub 'DS Sion' ou 'Sem hub'
+// porque a identificação era feita só pelo col[1] (Hub) do Órion.
+// Agora usamos o col[2] (Estabelecimento) como fonte de verdade.
+try{
+  const _histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
+  let _migrou=false;
+  _histInd.forEach(sem=>{
+    (sem.vendas||[]).forEach(v=>{
+      const estab=(v.estabelecimento||'').toLowerCase();
+      if((estab.includes('varanda')||estab.includes('1389'))&&v.hub!=='Varanda Sion'){
+        v.hub='Varanda Sion'; _migrou=true;
+      }
+    });
+    (sem.cancelamentos||[]).forEach(v=>{
+      const estab=(v.estabelecimento||'').toLowerCase();
+      if((estab.includes('varanda')||estab.includes('1389'))&&v.hub!=='Varanda Sion'){
+        v.hub='Varanda Sion'; _migrou=true;
+      }
+    });
+  });
+  if(_migrou) localStorage.setItem(KIND,JSON.stringify(_histInd));
+}catch(e){}
+
 // Corrigir dados antigos: remover DS Delivery Mall do total
 try{
   const _raw=localStorage.getItem('orion_coleta');
