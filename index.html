@@ -883,7 +883,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 // ══════════════════════════════════════════════════════
 const DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 const DIASF={Dom:'Domingo',Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado'};
-const KC='orion_v7_c',KM='orion_v7_m',KE='orion_v7_e',KCOL='orion_coleta',KH='orion_v7_hist';
+const KC='orion_v7_c',KM='orion_v7_m',KE='orion_v7_e',KCOL='orion_coleta',KH='orion_v7_hist',KIND='orion_v7_indicadores';
 
 // ══════════════════════════════════════════════════════
 // SUPABASE — Integração principal
@@ -2615,69 +2615,198 @@ function preencher(){
   if(btn12) btn12.style.display=_g12.length>=2?'':'none';
 }
 
-function calcularCustos(){
-  if(!S.escala)return;
-  // Primeiro: monta mapa de dias trabalhados por colaborador (para passagem)
-  // passagem é cobrada 1x por dia que o colaborador tem pelo menos 1 hora alocada
-  const diasTrabalhados={}; // {nome: Set<dia>}
-  DIAS.forEach(dia=>{
-    Object.values(S.escala[dia]||{}).forEach(cell=>{
-      if(!cell)return;
-      cell.alocados.forEach(nome=>{
-        if(!diasTrabalhados[nome])diasTrabalhados[nome]=new Set();
-        diasTrabalhados[nome].add(dia);
-      });
-    });
-  });
+// ══════════════════════════════════════════════════════════════════════
+// ENGINE DE CUSTO UNIFICADA
+// Fonte única de verdade para todos os cálculos de custo do sistema.
+// Usada em: escala ativa, publicação, histórico e relatório de colaboradores.
+//
+// Regras:
+//   - custo/hora normal para horas < 22h
+//   - adicional noturno +20% para horas >= 22h (hora 22 = 22:00–23:00)
+//   - passagem: cobrada 1× por dia em que o colaborador tem presença efetiva
+//     (dia com falta total não conta passagem; falta parcial ainda conta)
+//   - horasAbatidas: subtraídas das horas do turno antes do cálculo
+//
+// Retorna um objeto com breakdown completo:
+//   { custoHoras, custoNoturno, custoPassagem, total, breakdown: [...] }
+//
+// Modos de entrada:
+//   modo 'escala'  → recebe S.escala e S.colabs (escala ativa em memória)
+//   modo 'turnos'  → recebe array de turnos confirmados {nome,dia,ini,fim,horas,horasAbatidas,faltou}
+//                    e array de colabs da entrada do histórico
+// ══════════════════════════════════════════════════════════════════════
 
-  DIAS.forEach(dia=>{
-    Object.entries(S.escala[dia]||{}).forEach(([hora, cell])=>{
-      if(!cell)return;
-      const h=parseInt(hora);
-      let custoHora=0;
-      cell.alocados.forEach(nome=>{
-        const c=S.colabs.find(x=>x.nome===nome);
-        if(!c||c.custo<=0) return;
-        // Adicional noturno: +20% para horas a partir das 22h
-        const adicNoturno=(h>=22)?c.custo*0.2:0;
-        custoHora+=c.custo+adicNoturno;
-      });
-      cell.custo=custoHora;
-      cell.custoPorPedido=(custoHora>0&&cell.ped>0)?custoHora/cell.ped:0;
-    });
-  });
+function _calcCustoColabTurno(custoH, ini, fim, horasAbatidas){
+  // Calcula custo de um bloco [ini,fim) com possível abatimento.
+  // Distribui o abatimento pelas horas noturnas primeiro (pior caso para o gestor),
+  // garantindo que se houver menos horas reais, as diurnas sejam abatidas antes.
+  const totalHoras = fim - ini;
+  const abat = Math.min(horasAbatidas||0, totalHoras);
+  const horasEf = totalHoras - abat;
+  if(horasEf <= 0) return { custoHoras:0, custoNoturno:0, horas:0, horasAbat:abat };
 
-  // Distribui o custo de passagem: adiciona na PRIMEIRA hora alocada do colaborador no dia
-  DIAS.forEach(dia=>{
-    const hI=+document.getElementById('cHI').value||8;
-    const hO=+document.getElementById('cHO').value||25;
-    const jaAdicionado=new Set();
-    for(let h=hI;h<=hO;h++){
-      const cell=S.escala[dia]?.[h];
-      if(!cell)continue;
-      cell.alocados.forEach(nome=>{
-        if(jaAdicionado.has(nome))return;
-        const c=S.colabs.find(x=>x.nome===nome);
-        if(c&&(c.passagem||0)>0){
-          cell.custo=(cell.custo||0)+c.passagem;
-          jaAdicionado.add(nome);
-        }
-      });
-    }
-  });
+  let noturnas = 0;
+  for(let h = ini; h < fim; h++){ if(h >= 22) noturnas++; }
+  // O abatimento retira horas a partir das diurnas
+  const diurnas = totalHoras - noturnas;
+  const abatDiurnas = Math.min(abat, diurnas);
+  const abatNoturnas = abat - abatDiurnas;
+  const efDiurnas = diurnas - abatDiurnas;
+  const efNoturnas = noturnas - abatNoturnas;
+
+  const custoHoras   = efDiurnas * custoH;
+  const custoNoturno = efNoturnas * custoH * 0.2; // apenas o adicional (20%)
+  return { custoHoras, custoNoturno, horas: horasEf, horasAbat: abat };
 }
 
+function calcularCustoTotal(modo, escalaOuTurnos, colabs){
+  // ── modo 'escala': usa S.escala + S.colabs
+  if(modo === 'escala'){
+    if(!S.escala) return { custoHoras:0, custoNoturno:0, custoPassagem:0, total:0, breakdown:[] };
+    const _colabs = colabs || S.colabs;
+    const hI = +document.getElementById('cHI').value || 8;
+    const hO = +document.getElementById('cHO').value || 25;
+    const diasO = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+
+    let custoHoras = 0, custoNoturno = 0, custoPassagem = 0;
+    const breakdown = []; // por colaborador
+
+    // Mapa nome → {horas,noturno,diasPresentes}
+    const porColab = {};
+    _colabs.forEach(c=>{ porColab[c.nome]={horas:0,noturno:0,diasPresentes:new Set(),custoH:c.custo||0,passagem:c.passagem||0}; });
+
+    diasO.forEach(dia=>{
+      const jaContouPassagem = new Set();
+      for(let h = hI; h <= hO; h++){
+        const cell = S.escala[dia]?.[h];
+        if(!cell) continue;
+        let custoHoraCell = 0;
+        cell.alocados.forEach(nome=>{
+          const c = _colabs.find(x=>x.nome===nome);
+          if(!c) return;
+          const adicNoturno = (h >= 22) ? c.custo * 0.2 : 0;
+          custoHoraCell += c.custo + adicNoturno;
+          if(!porColab[nome]) porColab[nome]={horas:0,noturno:0,diasPresentes:new Set(),custoH:c.custo||0,passagem:c.passagem||0};
+          porColab[nome].horas++;
+          if(h >= 22) porColab[nome].noturno += c.custo * 0.2;
+          porColab[nome].diasPresentes.add(dia);
+          // Passagem: apenas na primeira hora do dia
+          if(!jaContouPassagem.has(nome) && (c.passagem||0)>0){
+            jaContouPassagem.add(nome);
+          }
+        });
+        // custo da célula = somente custo/hora + adicional noturno (passagem fica separada)
+        cell.custo = custoHoraCell;
+        cell.custoHora = custoHoraCell;
+        cell.custoPassagem = 0; // limpa; será preenchido abaixo na 1ª hora
+        cell.custoPorPedido = (custoHoraCell > 0 && cell.ped > 0) ? custoHoraCell / cell.ped : 0;
+      }
+    });
+
+    // Segunda passada: anota passagem na 1ª célula do colaborador no dia (só visual)
+    // e acumula totais
+    diasO.forEach(dia=>{
+      const jaContou = new Set();
+      for(let h = hI; h <= hO; h++){
+        const cell = S.escala[dia]?.[h];
+        if(!cell) continue;
+        cell.alocados.forEach(nome=>{
+          if(jaContou.has(nome)) return;
+          const c = _colabs.find(x=>x.nome===nome);
+          if(c && (c.passagem||0)>0){
+            cell.custoPassagem = (cell.custoPassagem||0) + c.passagem;
+            jaContou.add(nome);
+          }
+        });
+      }
+    });
+
+    // Totais
+    Object.entries(porColab).forEach(([nome,pc])=>{
+      if(pc.horas === 0) return;
+      const pass = pc.passagem * pc.diasPresentes.size;
+      const custoH_normal = pc.horas * pc.custoH;
+      custoHoras    += custoH_normal;
+      custoNoturno  += pc.noturno;
+      custoPassagem += pass;
+      breakdown.push({ nome, horas:pc.horas, custoHoras:custoH_normal, custoNoturno:pc.noturno, custoPassagem:pass, dias:pc.diasPresentes.size });
+    });
+
+    return { custoHoras, custoNoturno, custoPassagem, total: custoHoras + custoNoturno + custoPassagem, breakdown };
+  }
+
+  // ── modo 'turnos': usa lista de turnos confirmados (histórico)
+  if(modo === 'turnos'){
+    const turnos   = escalaOuTurnos || [];
+    const _colabs  = colabs || [];
+    let custoHoras = 0, custoNoturno = 0, custoPassagem = 0;
+    const breakdown = [];
+
+    // Agrupar turnos por colaborador
+    const porNome = {};
+    turnos.forEach(t=>{ if(!porNome[t.nome]) porNome[t.nome]=[]; porNome[t.nome].push(t); });
+
+    Object.entries(porNome).forEach(([nome, ts])=>{
+      const c = _colabs.find(x=>x.nome===nome);
+      if(!c) return;
+      const custoH   = c.custo   || 0;
+      const passagem = c.passagem || 0;
+      let cH=0, cN=0, hTotal=0;
+      const diasPresentes = new Set();
+      const diasFalta     = new Set();
+
+      ts.forEach(t=>{
+        const r = _calcCustoColabTurno(custoH, t.ini, t.fim, t.horasAbatidas||0);
+        cH     += r.custoHoras;
+        cN     += r.custoNoturno;
+        hTotal += r.horas;
+        if(t.faltou){
+          // Falta total do turno: só marca o dia como falta se NÃO há horas efetivas
+          if(r.horas <= 0) diasFalta.add(t.dia);
+          else             diasPresentes.add(t.dia); // falta parcial → presença conta
+        } else {
+          diasPresentes.add(t.dia);
+        }
+      });
+
+      // Remove dias de falta total do conjunto de presença
+      diasFalta.forEach(d=>diasPresentes.delete(d));
+      const cP = passagem * diasPresentes.size;
+
+      custoHoras    += cH;
+      custoNoturno  += cN;
+      custoPassagem += cP;
+      breakdown.push({ nome, horas:hTotal, custoHoras:cH, custoNoturno:cN, custoPassagem:cP, dias:diasPresentes.size });
+    });
+
+    return { custoHoras, custoNoturno, custoPassagem, total: custoHoras + custoNoturno + custoPassagem, breakdown };
+  }
+
+  return { custoHoras:0, custoNoturno:0, custoPassagem:0, total:0, breakdown:[] };
+}
+
+// ── Wrapper para escala ativa (mantém compatibilidade com todos os chamadores)
+function calcularCustos(){
+  if(!S.escala) return;
+  calcularCustoTotal('escala'); // atualiza cell.custo, cell.custoHora, cell.custoPassagem in-place
+}
+
+// ── Sidebar: custo total + CPP da escala ativa
 function atualizarCustoTotal(){
-  if(!S.escala)return;
-  let total=0, totalPed=0;
-  DIAS.forEach(dia=>Object.values(S.escala[dia]||{}).forEach(c=>{
-    if(c){total+=c.custo||0; totalPed+=c.ped||0;}
-  }));
-  document.getElementById('sCusto').textContent=total>0?`R$ ${total.toFixed(2).replace('.',',')}`:'-';
-  document.getElementById('sCustoSub').textContent=total>0?'custo estimado na semana':'sem custos cadastrados';
+  if(!S.escala) return;
+  const r = calcularCustoTotal('escala');
+  const total    = r.total;
+  let totalPed   = 0;
+  const diasO    = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const hI       = +document.getElementById('cHI').value || 8;
+  const hO       = +document.getElementById('cHO').value || 25;
+  diasO.forEach(dia=>{ for(let h=hI;h<=hO;h++){ const c=S.escala[dia]?.[h]; if(c) totalPed+=c.ped||0; }});
+
+  document.getElementById('sCusto').textContent = total>0 ? `R$ ${total.toFixed(2).replace('.',',')}` : '-';
+  document.getElementById('sCustoSub').textContent = total>0 ? 'custo estimado na semana' : 'sem custos cadastrados';
   const cpp = total>0&&totalPed>0 ? total/totalPed : 0;
   document.getElementById('sCpp').textContent = cpp>0 ? `R$ ${cpp.toFixed(2).replace('.',',')}` : '—';
-  { const _el=document.getElementById('sCppSub'); if(_el) _el.textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe'; }
+  const _el=document.getElementById('sCppSub'); if(_el) _el.textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe';
 }
 
 function _initApiConfig(){
@@ -4075,11 +4204,15 @@ function publicarEscala(){
   const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
 
-  // Monta resumo numérico
-  let totalPed=0,totalCusto=0,totalForca=0,slots=0;
+  // Monta resumo numérico — usa engine unificada para garantir consistência
+  // com o que o histórico e os indicadores usam
+  const _custoResumoPub = calcularCustoTotal('escala');
+  const totalCusto = _custoResumoPub.total;
+  // breakdown por colaborador (para logs e auditoria futura)
+  const _breakdownPub = _custoResumoPub.breakdown;
+
+  let totalPed=0,totalForca=0,slots=0;
   const forcaPorDia={};
-  // Mapa de dias trabalhados por colaborador (para passagem)
-  const diasTrabPub={};
   diasO.forEach(dia=>{
     let fDia=new Set();
     for(let h=hI;h<=hO;h++){
@@ -4088,23 +4221,9 @@ function publicarEscala(){
       totalPed+=cell.ped||0;
       totalForca+=cell.alocados.length;
       if(cell.alocados.length){slots++;}
-      cell.alocados.forEach(n=>{
-        fDia.add(n);
-        if(!diasTrabPub[n])diasTrabPub[n]=new Set();
-        diasTrabPub[n].add(dia);
-      });
-      // Soma custo/hora (sem passagem — passagem será somada separado)
-      cell.alocados.forEach(n=>{
-        const c=S.colabs.find(x=>x.nome===n);
-        if(c&&c.custo>0)totalCusto+=c.custo;
-      });
+      cell.alocados.forEach(n=>fDia.add(n));
     }
     forcaPorDia[dia]=[...fDia];
-  });
-  // Soma passagem: 1× por colaborador por dia trabalhado
-  Object.entries(diasTrabPub).forEach(([nome,diasSet])=>{
-    const c=S.colabs.find(x=>x.nome===nome);
-    if(c&&(c.passagem||0)>0)totalCusto+=c.passagem*diasSet.size;
   });
 
   // Monta mapa de confirmações detalhadas: por colaborador, por dia, por turno
@@ -4528,7 +4647,7 @@ function renderHistorico(filtro){
           <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.mediaForca||'—'}</div><div class="hist-stat-l">média força/h</div></div>
-          <div class="hist-stat"><div class="hist-stat-v" id="hist-stat-custo-${h.id}">${h.resumo.totalCusto>0?'R$ '+h.resumo.totalCusto.toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo líquido</div></div>
+          <div class="hist-stat"><div class="hist-stat-v" id="hist-stat-custo-${h.id}">${h.resumo.totalCusto>0?'R$ '+h.resumo.totalCusto.toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo líquido${h.resumo.custoNoturno>0||h.resumo.custoPassagem>0?` <span title="Hora normal: R$ ${(h.resumo.custoHoras||0).toFixed(2).replace('.',',')}${h.resumo.custoNoturno>0?' · Noturno: R$ '+h.resumo.custoNoturno.toFixed(2).replace('.',','):''}${h.resumo.custoPassagem>0?' · Passagem: R$ '+h.resumo.custoPassagem.toFixed(2).replace('.',','):''}" style="cursor:help;text-decoration:underline dotted">ⓘ</span>`:''}</div></div>
           ${cpp?`<div class="hist-stat"><div class="hist-stat-v">R$ ${cpp}</div><div class="hist-stat-l">custo/pedido</div></div>`:''}
         </div>
         ${diaChips?`<div class="hist-dias" style="padding:8px 18px;border-bottom:1px solid var(--brd)">${diaChips}</div>`:''}
@@ -5226,45 +5345,33 @@ function removerTurnoHist(histId, nome, dia, ini){
 // ── Recalcula resumo.totalCusto a partir das confirmacoes atuais
 function recalcularCustoHist(h){
   if(!h||!h.colabs||!h.colabs.length) return;
-  // Só recalcula se ao menos um colab tem custo definido
-  const temCusto=h.colabs.some(c=>c.custo>0);
-  if(!temCusto) return;
+  if(!h.colabs.some(c=>c.custo>0)) return;
 
-  let totalCusto=0;
-  Object.entries(h.confirmacoes||{}).forEach(([nome,conf])=>{
-    const colab=h.colabs.find(c=>c.nome===nome);
-    if(!colab||!colab.custo) return;
-    const custoH=colab.custo||0;
-    const passagem=colab.passagem||0;
-    const turnos=conf.turnos||[];
-
-    // Horas efetivas COM adicional noturno (+20% nas horas a partir das 22h)
-    let custoHoras=0;
-    turnos.forEach(t=>{
-      const hh=t.horas!=null?t.horas:(t.fim-t.ini)||0;
-      const abat=t.horasAbatidas||0;
-      const horasEf=Math.max(0,hh-abat);
-      if(horasEf<=0)return;
-      if(true){ // adicional noturno é padrão para todos
-        // Contar quantas horas do turno (ini..fim) caem a partir das 22h
-        let horasNoturnas=0;
-        for(let hr=t.ini;hr<t.fim;hr++){ if(hr>=22) horasNoturnas++; }
-        // Limitar pelas horas efetivas (caso haja abatimento)
-        horasNoturnas=Math.min(horasNoturnas,horasEf);
-        const horasNormais=horasEf-horasNoturnas;
-        custoHoras+=horasNormais*custoH + horasNoturnas*custoH*1.2;
-      } else {
-        custoHoras+=horasEf*custoH;
-      }
+  // Monta lista plana de turnos com {nome, dia, ini, fim, horasAbatidas, faltou}
+  // para passar à engine unificada
+  const turnosFlat = [];
+  Object.entries(h.confirmacoes||{}).forEach(([nome, conf])=>{
+    (conf.turnos||[]).forEach(t=>{
+      turnosFlat.push({ nome, dia:t.dia, ini:t.ini, fim:t.fim,
+        horas:t.horas!=null?t.horas:(t.fim-t.ini),
+        horasAbatidas:t.horasAbatidas||0, faltou:!!t.faltou });
     });
-
-    const diasFaltou=new Set(turnos.filter(t=>t.faltou&&(t.horasAbatidas||0)>=(t.horas||1)).map(t=>t.dia));
-    const diasComPresenca=new Set(turnos.filter(t=>!diasFaltou.has(t.dia)).map(t=>t.dia));
-    totalCusto+=custoHoras;
-    totalCusto+=passagem*diasComPresenca.size;
   });
-  // Só atualiza se calculou algo positivo (nunca zera custo que já existe)
-  if(totalCusto>0) h.resumo=Object.assign({},h.resumo||{},{totalCusto});
+
+  const r = calcularCustoTotal('turnos', turnosFlat, h.colabs);
+
+  // Guarda breakdown no histórico para uso no relatório de colaboradores
+  h._custoBreakdown = r.breakdown;
+
+  // Atualiza resumo com breakdown completo
+  if(r.total > 0){
+    h.resumo = Object.assign({}, h.resumo||{}, {
+      totalCusto:     r.total,
+      custoHoras:     r.custoHoras,
+      custoNoturno:   r.custoNoturno,
+      custoPassagem:  r.custoPassagem,
+    });
+  }
 }
 
 // ── Adicionar colaborador ao histórico
@@ -5689,7 +5796,7 @@ try{
 // ══════════════════════════════════════════════════════
 // INDICADORES OPERACIONAIS
 // ══════════════════════════════════════════════════════
-const KIND = 'orion_v7_indicadores';
+// KIND declarado no topo junto com KC/KM/KE/KH
 
 function parseDataOrion(str){
   // Converte "dd/MM/yyyy HH:mm" para Date
@@ -7034,7 +7141,6 @@ function renderColHist(){
         diasO.forEach(dia=>{
           turnosEscalados.forEach(t=>{
             for(let h=t.ini;h<t.fim;h++){
-              // Pedidos nessa hora
               const chave = semana.matrix?.[dia]?.[String(h).padStart(2,'0')];
               const ped = chave||0;
               pedidosSemana += ped;
@@ -7054,17 +7160,44 @@ function renderColHist(){
         });
       }
 
-      // Custo desta semana
-      const horasTotal = turnosEscalados.reduce((s,t)=>s+t.horas,0) - horasAbatidas;
-      const diasTrabalhados = new Set(turnosEscalados.map(t=>t.dia)).size;
-      const custoSemana = (horasTotal>0&&c.custo>0?horasTotal*c.custo:0) + (c.passagem||0)*diasTrabalhados;
+      // Custo desta semana — usa engine unificada com os turnos confirmados.
+      // Se há turnos confirmados, usa eles (mais preciso: considera faltas e abatimentos).
+      // Se não há confirmações, usa turnos escalados como estimativa.
+      let custoSemana = 0, custoHorasSem = 0, custoNoturnoSem = 0, custoPassagemSem = 0;
+      let horasTotal = 0, diasTrabalhados = 0;
+      const _colabArr = semana.colabs || S.colabs;
+
+      if(turnos.length > 0){
+        // Usar turnos confirmados (fonte de verdade pós-publicação)
+        const turnosNome = turnos.map(t=>({...t, nome}));
+        const _r = calcularCustoTotal('turnos', turnosNome, _colabArr);
+        const _b = _r.breakdown.find(x=>x.nome===nome)||{};
+        custoSemana    = _r.total;
+        custoHorasSem  = _b.custoHoras||0;
+        custoNoturnoSem= _b.custoNoturno||0;
+        custoPassagemSem=_b.custoPassagem||0;
+        horasTotal     = _b.horas||0;
+        diasTrabalhados= _b.dias||0;
+      } else if(turnosEscalados.length > 0){
+        // Estimativa pela escala (sem confirmações)
+        const turnosNomeEsc = turnosEscalados.map(t=>({...t, nome, faltou:false, horasAbatidas:0}));
+        const _r = calcularCustoTotal('turnos', turnosNomeEsc, _colabArr);
+        const _b = _r.breakdown.find(x=>x.nome===nome)||{};
+        custoSemana    = _r.total;
+        custoHorasSem  = _b.custoHoras||0;
+        custoNoturnoSem= _b.custoNoturno||0;
+        custoPassagemSem=_b.custoPassagem||0;
+        horasTotal     = _b.horas||0;
+        diasTrabalhados= _b.dias||0;
+      }
 
       colabsMap[nome].semanas.push({
         semana:semana.semana, segISO:semana.segISO,
         turnosEscalados:turnosEscalados.length,
         turnosCumpridos, turnosFaltados, horasAbatidas,
         pedidosSemana, maxPedHora,
-        custoSemana, horasTotal, diasTrabalhados,
+        custoSemana, custoHorasSem, custoNoturnoSem, custoPassagemSem,
+        horasTotal, diasTrabalhados,
         faltou,
       });
     });
@@ -7074,17 +7207,22 @@ function renderColHist(){
   const stats = Object.values(colabsMap).map(c=>{
     const s = c.semanas;
     if(!s.length) return null;
-    const totalEscalados  = s.reduce((a,x)=>a+x.turnosEscalados,0);
-    const totalCumpridos  = s.reduce((a,x)=>a+x.turnosCumpridos,0);
-    const totalFaltas     = s.reduce((a,x)=>a+x.turnosFaltados,0);
-    const assiduidade     = totalEscalados>0?((totalEscalados-totalFaltas)/totalEscalados*100):100;
-    const totalPedidos    = s.reduce((a,x)=>a+x.pedidosSemana,0);
-    const maxPedHora      = Math.max(...s.map(x=>x.maxPedHora));
-    const totalCusto      = s.reduce((a,x)=>a+x.custoSemana,0);
-    const totalHoras      = s.reduce((a,x)=>a+x.horasTotal,0);
-    const semanasAtivas   = s.filter(x=>x.turnosEscalados>0).length;
-    const pedPorHora      = totalHoras>0?totalPedidos/totalHoras:0;
-    return { ...c, totalEscalados, totalCumpridos, totalFaltas, assiduidade, totalPedidos, maxPedHora, totalCusto, totalHoras, semanasAtivas, pedPorHora };
+    const totalEscalados    = s.reduce((a,x)=>a+x.turnosEscalados,0);
+    const totalCumpridos    = s.reduce((a,x)=>a+x.turnosCumpridos,0);
+    const totalFaltas       = s.reduce((a,x)=>a+x.turnosFaltados,0);
+    const assiduidade       = totalEscalados>0?((totalEscalados-totalFaltas)/totalEscalados*100):100;
+    const totalPedidos      = s.reduce((a,x)=>a+x.pedidosSemana,0);
+    const maxPedHora        = Math.max(...s.map(x=>x.maxPedHora));
+    const totalCusto        = s.reduce((a,x)=>a+x.custoSemana,0);
+    const totalCustoHoras   = s.reduce((a,x)=>a+(x.custoHorasSem||0),0);
+    const totalCustoNoturno = s.reduce((a,x)=>a+(x.custoNoturnoSem||0),0);
+    const totalCustoPassagem= s.reduce((a,x)=>a+(x.custoPassagemSem||0),0);
+    const totalHoras        = s.reduce((a,x)=>a+x.horasTotal,0);
+    const semanasAtivas     = s.filter(x=>x.turnosEscalados>0).length;
+    const pedPorHora        = totalHoras>0?totalPedidos/totalHoras:0;
+    return { ...c, totalEscalados, totalCumpridos, totalFaltas, assiduidade,
+      totalPedidos, maxPedHora, totalCusto, totalCustoHoras, totalCustoNoturno,
+      totalCustoPassagem, totalHoras, semanasAtivas, pedPorHora };
   }).filter(Boolean);
 
   // Aplicar filtros
@@ -7120,6 +7258,8 @@ function renderColHist(){
       <td style="padding:5px 8px;font-size:11px;text-align:center">${s.horasTotal.toFixed(1)}h</td>
       <td style="padding:5px 8px;font-size:11px;text-align:center">${s.pedidosSemana.toLocaleString('pt-BR')}</td>
       <td style="padding:5px 8px;font-size:11px;text-align:right;font-weight:600">R$ ${s.custoSemana.toFixed(2).replace('.',',')}</td>
+      <td style="padding:5px 8px;font-size:11px;text-align:right;color:#7c3aed">${(s.custoNoturnoSem||0)>0?'R$ '+s.custoNoturnoSem.toFixed(2).replace('.',','):'—'}</td>
+      <td style="padding:5px 8px;font-size:11px;text-align:right;color:#0891b2">${(s.custoPassagemSem||0)>0?'R$ '+s.custoPassagemSem.toFixed(2).replace('.',','):'—'}</td>
     </tr>`).join('');
 
   con.innerHTML = statsFilt.map((c,ci)=>{
@@ -7151,6 +7291,16 @@ function renderColHist(){
         ${c.custo>0?badge('Custo/hora','R$ '+c.custo.toFixed(2).replace('.',','),'','#374151'):''}
         ${c.passagem>0?badge('Passagem/dia','R$ '+c.passagem.toFixed(2).replace('.',','),'','#374151'):''}
       </div>
+      ${c.totalCusto>0?`
+      <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:11px">
+        <div style="font-weight:700;color:var(--mu);font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Composição do custo (${c.semanasAtivas} sem.)</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div><span style="color:var(--mu)">Hora normal:</span> <strong>R$ ${(c.totalCustoHoras||0).toFixed(2).replace('.',',')}</strong></div>
+          ${(c.totalCustoNoturno||0)>0?`<div><span style="color:#7c3aed">+ Noturno (22h+):</span> <strong style="color:#7c3aed">R$ ${c.totalCustoNoturno.toFixed(2).replace('.',',')}</strong></div>`:''}
+          ${(c.totalCustoPassagem||0)>0?`<div><span style="color:#0891b2">+ Passagem:</span> <strong style="color:#0891b2">R$ ${c.totalCustoPassagem.toFixed(2).replace('.',',')}</strong></div>`:''}
+          <div style="margin-left:auto;font-weight:700;color:var(--tx)">= R$ ${c.totalCusto.toFixed(2).replace('.',',')}</div>
+        </div>
+      </div>`:''}
 
       <details style="margin-top:4px">
         <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--mu);padding:4px 0">Ver histórico semanal (${c.semanas.length} semanas)</summary>
@@ -7162,6 +7312,8 @@ function renderColHist(){
             <th style="padding:5px 8px;text-align:center">Horas</th>
             <th style="padding:5px 8px;text-align:center">Pedidos</th>
             <th style="padding:5px 8px;text-align:right">Custo</th>
+            <th style="padding:5px 8px;text-align:right;font-size:9px">↳ noturno</th>
+            <th style="padding:5px 8px;text-align:right;font-size:9px">↳ passagem</th>
           </tr></thead>
           <tbody>${semanaRows(c)}</tbody>
         </table>
