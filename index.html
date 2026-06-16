@@ -5702,6 +5702,7 @@ try {
 
     var b64Escala=extrairParam(raw,'dados');
     var b64Ind=extrairParam(raw,'ind_dados');
+    var b64Hist=extrairParam(raw,'ind_historico');
 
     if(b64Escala){
       try{
@@ -5724,6 +5725,18 @@ try {
           temDados=true;
         }
       }catch(e){ console.error('[OrionEscala] hash ind_dados erro:',e); }
+    }
+
+    // ── HISTÓRICO MÚLTIPLAS SEMANAS (coleta histórica)
+    if(b64Hist){
+      try{
+        var jsonH=decodeURIComponent(escape(atob(b64Hist)));
+        var pH=JSON.parse(jsonH);
+        if(pH&&pH._historico&&Array.isArray(pH.entradas)&&pH.entradas.length){
+          window._INBOUND_HISTORICO=pH.entradas;
+          temDados=true;
+        }
+      }catch(e){ console.error('[OrionEscala] hash ind_historico erro:',e); }
     }
 
     // ── LINK CURTO: #s=CODE ou #s=CODE@APIHOST
@@ -5771,6 +5784,45 @@ window.addEventListener('message',function(ev){
     if(_pmIndProcessado)return;
     _pmIndProcessado=true;
     receberDadosIndicadores(ev.data.payload);
+  }
+  // ── Coleta histórica: múltiplas semanas via iframe/postMessage
+  if(ev.data&&ev.data.type==='ORION_HISTORICO'&&Array.isArray(ev.data.entradas)&&ev.data.entradas.length){
+    try{
+      var hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+      var adicionados=0, atualizados=0;
+      ev.data.entradas.forEach(function(entrada){
+        var normaliza=function(arr){ return (arr||[]).map(function(v){
+          var r=Object.assign({},v);
+          ['cadastro','pronto','coleta','conclusao'].forEach(function(k){
+            if(typeof r[k]==='string'&&r[k]!=='-'&&r[k].includes('/')){var dt=parseDataOrion(r[k]);r[k]=dt?dt.getTime():null;}
+            else if(typeof r[k]!=='number')r[k]=null;
+          });
+          var estab=(r.estabelecimento||'').toLowerCase();
+          if(typeof _normalizarHub==='function') r.hub=_normalizarHub(r.hub||'',r.estabelecimento||'');
+          else if(estab.includes('varanda')||estab.includes('1389')) r.hub='Varanda Sion';
+          else if(!r.hub||r.hub==='-'||r.hub==='Sem hub') r.hub='Cozinhas Sion';
+          return r;
+        });};
+        var e={
+          de:entrada.de,ate:entrada.ate,deBR:entrada.deBR,ateBR:entrada.ateBR,
+          ts:entrada.ts||Date.now(),
+          semana:entrada.semana||(entrada.deBR+'–'+entrada.ateBR),
+          semanaISO:entrada.semanaISO||(entrada.de+'/'+entrada.ate),
+          vendas:normaliza(entrada.vendas),
+          cancelamentos:normaliza(entrada.cancelamentos),
+          hubs:entrada.hubs||[],
+        };
+        var idx=hist.findIndex(function(h){return h.semanaISO===e.semanaISO;});
+        if(idx!==-1){hist[idx]=e;atualizados++;}else{hist.push(e);adicionados++;}
+      });
+      hist.sort(function(a,b){return b.de.localeCompare(a.de);});
+      if(hist.length>52)hist.splice(52);
+      localStorage.setItem(KIND,JSON.stringify(hist));
+      if(typeof renderIndicadores==='function'){goT('ind');renderIndicadores();}
+      toast('✅ '+adicionados+' semanas importadas, '+atualizados+' atualizadas.','tok');
+      // Confirma para o script que enviou
+      try{ev.source.postMessage({type:'ORION_HISTORICO_OK'},'*');}catch(e2){}
+    }catch(err){console.error('ORION_HISTORICO erro:',err);}
   }
 });
 
@@ -5830,6 +5882,16 @@ async function buscarPaginaOrion(url){
   return r.text();
 }
 
+function _normalizarHub(hubRaw, estab){
+  const e=(estab||'').toLowerCase();
+  // Varanda: identificada pelo estabelecimento — tem prioridade sobre o hub
+  if(e.includes('varanda')||e.includes('1389')) return 'Varanda Sion';
+  // Hub vazio ou traço → Cozinhas Sion
+  const h=(hubRaw||'').replace(/-/g,'').trim();
+  if(!h||h==='Sem hub') return 'Cozinhas Sion';
+  return h;
+}
+
 function parsearTabelaOrion(html, tipo='vendas'){
   const doc=new DOMParser().parseFromString(html,'text/html');
   const rows=doc.querySelectorAll('table tbody tr');
@@ -5837,24 +5899,29 @@ function parsearTabelaOrion(html, tipo='vendas'){
   rows.forEach(row=>{
     const tds=row.querySelectorAll('td');
     if(tds.length<5)return;
-    const hubRaw=(tds[1]?.textContent.trim()||'').replace('-','') || 'Sem hub';
-    const estab=(tds[2]?.textContent.trim()||'').toLowerCase();
-    // Varanda é identificada pelo estabelecimento (não pelo hub), pois no Órion
-    // pode aparecer como "DS Sion" ou "Sem hub" no campo Hub
-    const hub=(estab.includes('varanda')||estab.includes('1389'))?'Varanda Sion':hubRaw;
+    const hubRaw=tds[1]?.textContent.trim()||'';
+    const estab=tds[2]?.textContent.trim()||'';
+    const hub=_normalizarHub(hubRaw, estab);
     if(tipo==='vendas'){
+      if(tds.length<15)return;
+      // Colunas confirmadas da tabela do Órion:
+      // 0=cod, 1=hub, 2=estabelecimento, 3=cliente, 4=produtos, 5=desconto,
+      // 6=subtotal, 7=serviços, 8=total, 9=status,
+      // 10=cadastro, 11=pronto, 12=coleta, 13=entregador, 14=conclusão
       dados.push({
         hub,
-        estabelecimento:tds[2]?.textContent.trim()||'',
+        estabelecimento: estab,
         cadastro:  parseDataOrion(tds[10]?.textContent.trim()),
         pronto:    parseDataOrion(tds[11]?.textContent.trim()),
         coleta:    parseDataOrion(tds[12]?.textContent.trim()),
         conclusao: parseDataOrion(tds[14]?.textContent.trim()),
       });
     } else {
+      // cancelamentos: 0=cod, 1=hub, 2=estab, 3=cliente, 4=motivo, 5=cadastro
       dados.push({
         hub,
-        motivo:tds[4]?.textContent.trim()||'',
+        estabelecimento: estab,
+        motivo: tds[4]?.textContent.trim()||'',
         cadastro: parseDataOrion(tds[5]?.textContent.trim()),
       });
     }
@@ -6119,9 +6186,9 @@ function receberDadosIndicadores(payload){
           r[k]=dt?dt.getTime():null;
         } else if(typeof r[k]!=='number') r[k]=null;
       });
-      // Normaliza hub: Varanda é identificada pelo estabelecimento
+      // Normaliza hub usando a mesma regra do parser
       const estab=(r.estabelecimento||'').toLowerCase();
-      if(estab.includes('varanda')||estab.includes('1389')) r.hub='Varanda Sion';
+      r.hub = _normalizarHub(r.hub||'', r.estabelecimento||'');
       return r;
     });
     const entrada={
@@ -9162,16 +9229,12 @@ try{
   let _migrou=false;
   _histInd.forEach(sem=>{
     (sem.vendas||[]).forEach(v=>{
-      const estab=(v.estabelecimento||'').toLowerCase();
-      if((estab.includes('varanda')||estab.includes('1389'))&&v.hub!=='Varanda Sion'){
-        v.hub='Varanda Sion'; _migrou=true;
-      }
+      const hubCorr=_normalizarHub(v.hub||'', v.estabelecimento||'');
+      if(hubCorr!==v.hub){v.hub=hubCorr;_migrou=true;}
     });
     (sem.cancelamentos||[]).forEach(v=>{
-      const estab=(v.estabelecimento||'').toLowerCase();
-      if((estab.includes('varanda')||estab.includes('1389'))&&v.hub!=='Varanda Sion'){
-        v.hub='Varanda Sion'; _migrou=true;
-      }
+      const hubCorr=_normalizarHub(v.hub||'', v.estabelecimento||'');
+      if(hubCorr!==v.hub){v.hub=hubCorr;_migrou=true;}
     });
   });
   if(_migrou) localStorage.setItem(KIND,JSON.stringify(_histInd));
@@ -9323,8 +9386,50 @@ if(window._LEILAO_HIST_ID){ renderLeilaoMode(); }
 
 // Inicialização — processa dados recebidos via hash ou postMessage
 {
-  const _pi=window._INBOUND_IND; window._INBOUND_IND=null;
-  const _pe=window._INBOUND;     window._INBOUND=null;
+  const _pi=window._INBOUND_IND;     window._INBOUND_IND=null;
+  const _pe=window._INBOUND;          window._INBOUND=null;
+  const _ph=window._INBOUND_HISTORICO; window._INBOUND_HISTORICO=null;
+
+  // ── Coleta histórica: múltiplas semanas de uma vez
+  if(_ph&&_ph.length){
+    setTimeout(()=>{
+      goT('ind');
+      const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
+      let adicionados=0, atualizados=0;
+      _ph.forEach(entrada=>{
+        // Normaliza timestamps e hub Varanda (mesma lógica de receberDadosIndicadores)
+        const normaliza=arr=>(arr||[]).map(v=>{
+          const r={...v};
+          ['cadastro','pronto','coleta','conclusao'].forEach(k=>{
+            if(r[k] instanceof Date) r[k]=r[k].getTime();
+            else if(typeof r[k]==='string'&&r[k]!=='-'&&r[k].includes('/')){
+              const dt=parseDataOrion(r[k]); r[k]=dt?dt.getTime():null;
+            } else if(typeof r[k]!=='number') r[k]=null;
+          });
+          const estab=(r.estabelecimento||'').toLowerCase();
+          if(estab.includes('varanda')||estab.includes('1389')) r.hub='Varanda Sion';
+          return r;
+        });
+        const e={
+          de:entrada.de, ate:entrada.ate, deBR:entrada.deBR, ateBR:entrada.ateBR,
+          ts:entrada.ts||Date.now(),
+          semana:entrada.semana||(entrada.deBR+'–'+entrada.ateBR),
+          semanaISO:entrada.semanaISO||(entrada.de+'/'+entrada.ate),
+          vendas:normaliza(entrada.vendas),
+          cancelamentos:normaliza(entrada.cancelamentos),
+          hubs:entrada.hubs||[],
+        };
+        const idx=hist.findIndex(h=>h.semanaISO===e.semanaISO);
+        if(idx!==-1){ hist[idx]=e; atualizados++; } else { hist.push(e); adicionados++; }
+      });
+      // Ordenar por data decrescente e limitar a 52 semanas
+      hist.sort((a,b)=>b.de.localeCompare(a.de));
+      if(hist.length>52) hist.splice(52);
+      localStorage.setItem(KIND,JSON.stringify(hist));
+      renderIndicadores();
+      toast(`✅ Histórico importado: ${adicionados} semanas novas, ${atualizados} atualizadas.`,'tok');
+    },400);
+  }
 
   if(_pe&&_pi){
     // Chegaram os dois juntos (botão unificado)
