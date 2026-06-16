@@ -6743,6 +6743,8 @@ function renderIndicadores(){
       const totalCustos=sum(custos);
       const totalAdics=sum(adics);
       const totalCppComAdic=totalCustos!==null&&totalVol>0?((totalCustos+(totalAdics||0))/totalVol):null;
+      const cppsComAdic=metricas.map(x=>x.cppComAdicional).filter(v=>v!==null&&v>0);
+      const avgCppComAdic=cppsComAdic.length?cppsComAdic.reduce((a,b)=>a+b,0)/cppsComAdic.length:null;
       // Linha de média
       tbody+=`<tr style="background:#f0f9ff;font-weight:600;border-top:2px solid #bae6fd">
         <td style="padding:6px 12px;font-size:11px;color:#0369a1;font-weight:700">📊 Média do mês</td>
@@ -6754,7 +6756,8 @@ function renderIndicadores(){
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(desps))}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${custos.length?'R$ '+avg(custos).toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cpps.length?'R$ '+avg(cpps).toFixed(2).replace('.',','):'—'}</td>
-        <td colspan="2"></td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:var(--mu)">${adics.length?'R$ '+avg(adics).toFixed(2).replace('.',','):'—'}</td>
+        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700;${avgCppComAdic!==null&&adics.length?'color:#dc2626':''}">${avgCppComAdic!==null?'R$ '+avgCppComAdic.toFixed(2).replace('.',','):'—'}</td>
       </tr>`;
       // Linha de total
       tbody+=`<tr style="background:#fef9c3;font-weight:700;border-top:1px solid #fde68a">
