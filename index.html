@@ -5934,7 +5934,7 @@ function calcularMetricasSemana(vendas, cancelamentos, hub){
   // hub pode ser 'todos', string, ou Set de hubs (multi-seleção)
   const hubSet=hub instanceof Set?hub:new Set([hub]);
   const filtro=v=>{
-    if(HUB_EXCLUIR&&HUB_EXCLUIR.has(v.hub))return false; // excluir DS Delivery Mall etc
+    if(HUB_EXCLUIR&&HUB_EXCLUIR.has(v.hub))return false;
     return hubSet.has('todos')||hubSet.has(v.hub)||(!v.hub&&hubSet.has('Sem hub'));
   };
   const vF=vendas.filter(filtro);
@@ -5942,18 +5942,17 @@ function calcularMetricasSemana(vendas, cancelamentos, hub){
 
   const tPreparo=[], tColeta=[], tDespacho=[];
   vF.forEach(v=>{
-    if(v.cadastro&&v.pronto){
-      const t=diffMinutos(v.cadastro,v.pronto);
-      if(t!==null)tPreparo.push(t);
-    }
-    if(v.pronto&&v.coleta){
-      const t=diffMinutos(v.pronto,v.coleta);
-      if(t!==null)tColeta.push(t);
-    }
-    if(v.coleta&&v.conclusao){
-      const t=diffMinutos(v.coleta,v.conclusao);
-      if(t!==null)tDespacho.push(t);
-    }
+    // Suporta dois formatos:
+    // 1) deltas pré-calculados: {dPreparo, dColeta, dDespacho} (em minutos)
+    // 2) timestamps brutos:     {cadastro, pronto, coleta, conclusao}
+    if(v.dPreparo!=null)  { if(v.dPreparo>=0&&v.dPreparo<480)  tPreparo.push(v.dPreparo); }
+    else if(v.cadastro&&v.pronto){ const t=diffMinutos(v.cadastro,v.pronto); if(t!==null)tPreparo.push(t); }
+
+    if(v.dColeta!=null)   { if(v.dColeta>=0&&v.dColeta<480)    tColeta.push(v.dColeta); }
+    else if(v.pronto&&v.coleta){   const t=diffMinutos(v.pronto,v.coleta);   if(t!==null)tColeta.push(t); }
+
+    if(v.dDespacho!=null) { if(v.dDespacho>=0&&v.dDespacho<480) tDespacho.push(v.dDespacho); }
+    else if(v.coleta&&v.conclusao){ const t=diffMinutos(v.coleta,v.conclusao); if(t!==null)tDespacho.push(t); }
   });
 
   const media=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
