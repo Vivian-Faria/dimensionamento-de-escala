@@ -5903,18 +5903,18 @@ function parsearTabelaOrion(html, tipo='vendas'){
     const estab=tds[2]?.textContent.trim()||'';
     const hub=_normalizarHub(hubRaw, estab);
     if(tipo==='vendas'){
-      if(tds.length<15)return;
-      // Colunas confirmadas da tabela do Órion:
-      // 0=cod, 1=hub, 2=estabelecimento, 3=cliente, 4=produtos, 5=desconto,
-      // 6=subtotal, 7=serviços, 8=total, 9=status,
-      // 10=cadastro, 11=pronto, 12=coleta, 13=entregador, 14=conclusão
+      // Estrutura real confirmada (14 colunas):
+      // 0=cod, 1=hub, 2=estab, 3=cliente, 4=produtos, 5=desconto,
+      // 6=subtotal, 7=serviços, 8=total,
+      // 9=cadastro, 10=pronto, 11=coleta, 12=entregador, 13=conclusão
+      if(tds.length<14)return;
       dados.push({
         hub,
         estabelecimento: estab,
-        cadastro:  parseDataOrion(tds[10]?.textContent.trim()),
-        pronto:    parseDataOrion(tds[11]?.textContent.trim()),
-        coleta:    parseDataOrion(tds[12]?.textContent.trim()),
-        conclusao: parseDataOrion(tds[14]?.textContent.trim()),
+        cadastro:  parseDataOrion(tds[9]?.textContent.trim()),
+        pronto:    parseDataOrion(tds[10]?.textContent.trim()),
+        coleta:    parseDataOrion(tds[11]?.textContent.trim()),
+        conclusao: parseDataOrion(tds[13]?.textContent.trim()),
       });
     } else {
       // cancelamentos: 0=cod, 1=hub, 2=estab, 3=cliente, 4=motivo, 5=cadastro
