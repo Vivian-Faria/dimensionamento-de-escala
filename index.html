@@ -4857,9 +4857,19 @@ function verEscalaHistorico(id){
   // Montar linhas: eixo Y = colaboradores, eixo X = dias (cada célula = bloco de horário)
   const linhas = colabsUnicos.map(nome=>{
     const cor = corColab[nome]||'#374151';
+    const colab = S.colabs.find(c=>c.nome===nome);
     const tds = diasO.map(dia=>{
       const blocos = turnosDoDia(nome, dia);
-      if(!blocos.length) return '<td class="vazio">—</td>';
+      if(!blocos.length){
+        // Mostra "Folga" só para colaboradores com folga cadastrada (6x1)
+        // e apenas se aquele dia é o dia de folga deles
+        const temFolga = colab && colab.folgaDias && colab.folgaDias.length > 0;
+        const ehDiaFolga = temFolga && colab.folgaDias.includes(dia);
+        if(ehDiaFolga){
+          return `<td class="vazio" style="color:#2563eb;font-size:9px;font-weight:700;background:#eff6ff">🏖 Folga</td>`;
+        }
+        return '<td class="vazio">—</td>';
+      }
       const txt = blocos.map(b=>fH(b.ini)+'–'+fH(b.fim)).join(', ');
       const horas = blocos.reduce((s,b)=>s+(b.fim-b.ini),0);
       return `<td class="turno" style="border-left:3px solid ${cor}">
