@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260615171410">
+<meta name="version" content="v20260618191307">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -342,6 +342,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 
       <div style="display:flex;gap:8px;margin-bottom:2px">
         <button class="btn bs sm" onclick="document.getElementById('calcTipoContrato').value='mensal';toggleTipoCalculo()" id="calcBtnMensal" style="flex:1;font-weight:700;background:var(--ac);color:#fff">Mensal / 6x1</button>
+        <button class="btn bs sm" onclick="document.getElementById('calcTipoContrato').value='12x36';toggleTipoCalculo()" id="calcBtn12x36" style="flex:1">12×36</button>
         <button class="btn bs sm" onclick="document.getElementById('calcTipoContrato').value='intermitente';toggleTipoCalculo()" id="calcBtnInterm" style="flex:1">Intermitente</button>
         <input type="hidden" id="calcTipoContrato" value="mensal">
       </div>
@@ -370,6 +371,9 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
         </select>
       </div>
 
+      <div id="calcNota12x36" style="display:none;font-size:10px;background:rgba(16,185,129,.08);color:#065f46;border:1px solid rgba(16,185,129,.2);border-radius:6px;padding:8px;line-height:1.6">
+        ⏱ <strong>12×36:</strong> jornada de 12h com 36h de descanso. Base de cálculo: <strong>180h/mês</strong> (15 dias × 12h). DSR zerado — já embutido na jornada. Domingos e feriados trabalhados têm acréscimo de 100% aplicado automaticamente na escala.
+      </div>
       <div style="font-size:11px;font-weight:600;color:var(--mu);margin-top:2px">Encargos (% sobre o salário)</div>
       <div class="fr">
         <div class="fg"><label>FGTS</label><input id="calcFgts" type="number" step="0.01" min="0" value="8" oninput="calcularCustoHoraEncargos()"></div>
@@ -503,6 +507,9 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 <!-- HEADER -->
 <div class="hdr">
   <div class="logo">órion <em>·</em> escala <span class="v">v10</span></div>
+  <button class="btn bg sm" onclick="goT('co')">👥 Equipe</button>
+  <button class="btn bg sm" onclick="goT('hm')">🌡 Demanda</button>
+  <button class="btn bg sm" id="btnCol" onclick="iniciarColeta()">↻ Coletar dados</button>
   <div style="position:relative;display:inline-block">
     <button class="btn ba" onclick="abrirSeletorHub()">⚡ Montar escala</button>
     <div id="hubSeletorDrop" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid var(--brd);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:200;min-width:260px;padding:0;overflow:hidden">
@@ -761,6 +768,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
               </div>
             </div>
           </div>
+          <button class="btn bs sm" onclick="limparIndicadores()">↺ Limpar</button>
         </div>
       </div>
 
@@ -774,7 +782,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
             <h4>💰 Custos adicionais para CPP</h4>
             <p style="font-size:11px;color:var(--mu);margin-top:2px">Informe custos que não são calculados automaticamente pela escala</p>
           </div>
-          <select id="cppManualSemanas" class="btn bs sm" style="padding:5px 8px;font-size:11px;cursor:pointer" onchange="selecionarSemanaManual(this.value)"></select>
+          <div id="cppManualSemanas" class="cpp-semana-sel"></div>
         </div>
         <div class="cpp-manual-body">
           <div class="cpp-custo-grid">
@@ -879,7 +887,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
 // ══════════════════════════════════════════════════════
 const DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
 const DIASF={Dom:'Domingo',Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sab:'Sábado'};
-const KC='orion_v7_c',KM='orion_v7_m',KE='orion_v7_e',KCOL='orion_coleta',KH='orion_v7_hist',KIND='orion_v7_indicadores';
+const KC='orion_v7_c',KM='orion_v7_m',KE='orion_v7_e',KCOL='orion_coleta',KH='orion_v7_hist';
 
 // ══════════════════════════════════════════════════════
 // SUPABASE — Integração principal
@@ -1205,8 +1213,7 @@ function getFeriadoBH(data){
 const BM_SCRIPT=`(()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const mkMx=()=>{const m={};D.forEach(d=>{m[d]={};for(let h=0;h<30;h++)m[d][p(h)]=0;});return m;};const mx=mkMx();const mxPorHub={};const totalPorHub={};let tt=0;const HUBS_COLAB={'DS Sion':'Sion','-':'Sion','':'Sion','DS Cidade Nova':'Cidade Nova'};const rw=document.querySelectorAll('table tbody tr');rw.forEach(r=>{const cs=r.querySelectorAll('td');if(cs.length<10)return;const cadastro=(cs[9]?.textContent?.trim()||'');if(!cadastro||!cadastro.includes('/')||!cadastro.includes(' '))return;const[dp,tp]=cadastro.split(' ');const[dd,mm,yyyy]=dp.split('/');const h=parseInt(tp.split(':')[0],10);const di=D[new Date(+yyyy,+mm-1,+dd).getDay()];const hk=p(h);if(!mx[di]||mx[di][hk]===undefined)return;const hubRaw=(cs[1]?.textContent?.trim()||'');const estab=(cs[2]?.textContent?.trim()||'');let hubKey;if(estab.toLowerCase().includes('varanda')){hubKey='Varanda Sion';}else{hubKey=HUBS_COLAB[hubRaw]||null;}if(!hubKey)return;mx[di][hk]++;tt++;if(!mxPorHub[hubKey]){mxPorHub[hubKey]=mkMx();totalPorHub[hubKey]=0;}mxPorHub[hubKey][di][hk]++;totalPorHub[hubKey]++;});const url=window.location.href;const m=url.match(/start_date=([\d-]+).*end_date=([\d-]+)/);const de=m?m[1]:fi(new Date());const ate=m?m[2]:fi(new Date());const ds=new Date(de),da=new Date(ate);const pl={mx,total:tt,mxPorHub,totalPorHub,de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now()};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#dados='+b64,'_blank');})()`;
 
 // ── Bookmarklet de INDICADORES — roda no Orion, coleta vendas+cancelamentos+tempos, envia para a plataforma via hash
-const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const de=fi(ds),ate=fi(da);const pDt=s=>{if(!s||s==='-'||!s.includes('/'))return null;const[dp,tp]=s.trim().split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');const ms=new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();return isNaN(ms)?null:ms;};const delta=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?Math.round(d*10)/10:null;};const normHub=(h,e)=>{const el=(e||'').toLowerCase();if(el.includes('varanda')||el.includes('1389'))return 'Varanda Sion';const hh=(h||'').replace(/-/g,'').trim();if(!hh||hh==='Sem hub')return 'Cozinhas Sion';return hh;};try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=normHub(t[1]?.textContent.trim()||'',t[2]?.textContent.trim()||'');const estab=t[2]?.textContent.trim()||'';if(tipo==='v'){if(t.length<14)return null;const c=pDt(t[9]?.textContent.trim()),pr=pDt(t[10]?.textContent.trim()),co=pDt(t[11]?.textContent.trim()),cn=pDt(t[13]?.textContent.trim());return{hub,estabelecimento:estab,dPreparo:delta(c,pr),dColeta:delta(pr,co),dDespacho:delta(co,cn)};}else{return{hub,estabelecimento:estab,motivo:t[4]?.textContent.trim()||''};}}).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const pl={de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(ds)+'\u2013'+fb(da),semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
-
+const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const de=fi(ds),ate=fi(da);const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};const dMin=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?+d.toFixed(2):null;};const base='https://admin.orioncloudkitchens.com.br';try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};} }).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const pl={de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(ds)+'\u2013'+fb(da),semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
 
 // ── Colaboradores padrão com regras detalhadas
 const COLAB_DEF=[
@@ -2612,198 +2619,69 @@ function preencher(){
   if(btn12) btn12.style.display=_g12.length>=2?'':'none';
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// ENGINE DE CUSTO UNIFICADA
-// Fonte única de verdade para todos os cálculos de custo do sistema.
-// Usada em: escala ativa, publicação, histórico e relatório de colaboradores.
-//
-// Regras:
-//   - custo/hora normal para horas < 22h
-//   - adicional noturno +20% para horas >= 22h (hora 22 = 22:00–23:00)
-//   - passagem: cobrada 1× por dia em que o colaborador tem presença efetiva
-//     (dia com falta total não conta passagem; falta parcial ainda conta)
-//   - horasAbatidas: subtraídas das horas do turno antes do cálculo
-//
-// Retorna um objeto com breakdown completo:
-//   { custoHoras, custoNoturno, custoPassagem, total, breakdown: [...] }
-//
-// Modos de entrada:
-//   modo 'escala'  → recebe S.escala e S.colabs (escala ativa em memória)
-//   modo 'turnos'  → recebe array de turnos confirmados {nome,dia,ini,fim,horas,horasAbatidas,faltou}
-//                    e array de colabs da entrada do histórico
-// ══════════════════════════════════════════════════════════════════════
-
-function _calcCustoColabTurno(custoH, ini, fim, horasAbatidas){
-  // Calcula custo de um bloco [ini,fim) com possível abatimento.
-  // Distribui o abatimento pelas horas noturnas primeiro (pior caso para o gestor),
-  // garantindo que se houver menos horas reais, as diurnas sejam abatidas antes.
-  const totalHoras = fim - ini;
-  const abat = Math.min(horasAbatidas||0, totalHoras);
-  const horasEf = totalHoras - abat;
-  if(horasEf <= 0) return { custoHoras:0, custoNoturno:0, horas:0, horasAbat:abat };
-
-  let noturnas = 0;
-  for(let h = ini; h < fim; h++){ if(h >= 22) noturnas++; }
-  // O abatimento retira horas a partir das diurnas
-  const diurnas = totalHoras - noturnas;
-  const abatDiurnas = Math.min(abat, diurnas);
-  const abatNoturnas = abat - abatDiurnas;
-  const efDiurnas = diurnas - abatDiurnas;
-  const efNoturnas = noturnas - abatNoturnas;
-
-  const custoHoras   = efDiurnas * custoH;
-  const custoNoturno = efNoturnas * custoH * 0.2; // apenas o adicional (20%)
-  return { custoHoras, custoNoturno, horas: horasEf, horasAbat: abat };
-}
-
-function calcularCustoTotal(modo, escalaOuTurnos, colabs){
-  // ── modo 'escala': usa S.escala + S.colabs
-  if(modo === 'escala'){
-    if(!S.escala) return { custoHoras:0, custoNoturno:0, custoPassagem:0, total:0, breakdown:[] };
-    const _colabs = colabs || S.colabs;
-    const hI = +document.getElementById('cHI').value || 8;
-    const hO = +document.getElementById('cHO').value || 25;
-    const diasO = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-
-    let custoHoras = 0, custoNoturno = 0, custoPassagem = 0;
-    const breakdown = []; // por colaborador
-
-    // Mapa nome → {horas,noturno,diasPresentes}
-    const porColab = {};
-    _colabs.forEach(c=>{ porColab[c.nome]={horas:0,noturno:0,diasPresentes:new Set(),custoH:c.custo||0,passagem:c.passagem||0}; });
-
-    diasO.forEach(dia=>{
-      const jaContouPassagem = new Set();
-      for(let h = hI; h <= hO; h++){
-        const cell = S.escala[dia]?.[h];
-        if(!cell) continue;
-        let custoHoraCell = 0;
-        cell.alocados.forEach(nome=>{
-          const c = _colabs.find(x=>x.nome===nome);
-          if(!c) return;
-          const adicNoturno = (h >= 22) ? c.custo * 0.2 : 0;
-          custoHoraCell += c.custo + adicNoturno;
-          if(!porColab[nome]) porColab[nome]={horas:0,noturno:0,diasPresentes:new Set(),custoH:c.custo||0,passagem:c.passagem||0};
-          porColab[nome].horas++;
-          if(h >= 22) porColab[nome].noturno += c.custo * 0.2;
-          porColab[nome].diasPresentes.add(dia);
-          // Passagem: apenas na primeira hora do dia
-          if(!jaContouPassagem.has(nome) && (c.passagem||0)>0){
-            jaContouPassagem.add(nome);
-          }
-        });
-        // custo da célula = somente custo/hora + adicional noturno (passagem fica separada)
-        cell.custo = custoHoraCell;
-        cell.custoHora = custoHoraCell;
-        cell.custoPassagem = 0; // limpa; será preenchido abaixo na 1ª hora
-        cell.custoPorPedido = (custoHoraCell > 0 && cell.ped > 0) ? custoHoraCell / cell.ped : 0;
-      }
+function calcularCustos(){
+  if(!S.escala)return;
+  // Primeiro: monta mapa de dias trabalhados por colaborador (para passagem)
+  // passagem é cobrada 1x por dia que o colaborador tem pelo menos 1 hora alocada
+  const diasTrabalhados={}; // {nome: Set<dia>}
+  DIAS.forEach(dia=>{
+    Object.values(S.escala[dia]||{}).forEach(cell=>{
+      if(!cell)return;
+      cell.alocados.forEach(nome=>{
+        if(!diasTrabalhados[nome])diasTrabalhados[nome]=new Set();
+        diasTrabalhados[nome].add(dia);
+      });
     });
+  });
 
-    // Segunda passada: anota passagem na 1ª célula do colaborador no dia (só visual)
-    // e acumula totais
-    diasO.forEach(dia=>{
-      const jaContou = new Set();
-      for(let h = hI; h <= hO; h++){
-        const cell = S.escala[dia]?.[h];
-        if(!cell) continue;
-        cell.alocados.forEach(nome=>{
-          if(jaContou.has(nome)) return;
-          const c = _colabs.find(x=>x.nome===nome);
-          if(c && (c.passagem||0)>0){
-            cell.custoPassagem = (cell.custoPassagem||0) + c.passagem;
-            jaContou.add(nome);
-          }
-        });
-      }
+  DIAS.forEach(dia=>{
+    Object.entries(S.escala[dia]||{}).forEach(([hora, cell])=>{
+      if(!cell)return;
+      const h=parseInt(hora);
+      let custoHora=0;
+      cell.alocados.forEach(nome=>{
+        const c=S.colabs.find(x=>x.nome===nome);
+        if(!c||c.custo<=0) return;
+        // Adicional noturno: +20% para horas a partir das 22h
+        const adicNoturno=(h>=22)?c.custo*0.2:0;
+        custoHora+=c.custo+adicNoturno;
+      });
+      cell.custo=custoHora;
+      cell.custoPorPedido=(custoHora>0&&cell.ped>0)?custoHora/cell.ped:0;
     });
+  });
 
-    // Totais
-    Object.entries(porColab).forEach(([nome,pc])=>{
-      if(pc.horas === 0) return;
-      const pass = pc.passagem * pc.diasPresentes.size;
-      const custoH_normal = pc.horas * pc.custoH;
-      custoHoras    += custoH_normal;
-      custoNoturno  += pc.noturno;
-      custoPassagem += pass;
-      breakdown.push({ nome, horas:pc.horas, custoHoras:custoH_normal, custoNoturno:pc.noturno, custoPassagem:pass, dias:pc.diasPresentes.size });
-    });
-
-    return { custoHoras, custoNoturno, custoPassagem, total: custoHoras + custoNoturno + custoPassagem, breakdown };
-  }
-
-  // ── modo 'turnos': usa lista de turnos confirmados (histórico)
-  if(modo === 'turnos'){
-    const turnos   = escalaOuTurnos || [];
-    const _colabs  = colabs || [];
-    let custoHoras = 0, custoNoturno = 0, custoPassagem = 0;
-    const breakdown = [];
-
-    // Agrupar turnos por colaborador
-    const porNome = {};
-    turnos.forEach(t=>{ if(!porNome[t.nome]) porNome[t.nome]=[]; porNome[t.nome].push(t); });
-
-    Object.entries(porNome).forEach(([nome, ts])=>{
-      const c = _colabs.find(x=>x.nome===nome);
-      if(!c) return;
-      const custoH   = c.custo   || 0;
-      const passagem = c.passagem || 0;
-      let cH=0, cN=0, hTotal=0;
-      const diasPresentes = new Set();
-      const diasFalta     = new Set();
-
-      ts.forEach(t=>{
-        const r = _calcCustoColabTurno(custoH, t.ini, t.fim, t.horasAbatidas||0);
-        cH     += r.custoHoras;
-        cN     += r.custoNoturno;
-        hTotal += r.horas;
-        if(t.faltou){
-          // Falta total do turno: só marca o dia como falta se NÃO há horas efetivas
-          if(r.horas <= 0) diasFalta.add(t.dia);
-          else             diasPresentes.add(t.dia); // falta parcial → presença conta
-        } else {
-          diasPresentes.add(t.dia);
+  // Distribui o custo de passagem: adiciona na PRIMEIRA hora alocada do colaborador no dia
+  DIAS.forEach(dia=>{
+    const hI=+document.getElementById('cHI').value||8;
+    const hO=+document.getElementById('cHO').value||25;
+    const jaAdicionado=new Set();
+    for(let h=hI;h<=hO;h++){
+      const cell=S.escala[dia]?.[h];
+      if(!cell)continue;
+      cell.alocados.forEach(nome=>{
+        if(jaAdicionado.has(nome))return;
+        const c=S.colabs.find(x=>x.nome===nome);
+        if(c&&(c.passagem||0)>0){
+          cell.custo=(cell.custo||0)+c.passagem;
+          jaAdicionado.add(nome);
         }
       });
-
-      // Remove dias de falta total do conjunto de presença
-      diasFalta.forEach(d=>diasPresentes.delete(d));
-      const cP = passagem * diasPresentes.size;
-
-      custoHoras    += cH;
-      custoNoturno  += cN;
-      custoPassagem += cP;
-      breakdown.push({ nome, horas:hTotal, custoHoras:cH, custoNoturno:cN, custoPassagem:cP, dias:diasPresentes.size });
-    });
-
-    return { custoHoras, custoNoturno, custoPassagem, total: custoHoras + custoNoturno + custoPassagem, breakdown };
-  }
-
-  return { custoHoras:0, custoNoturno:0, custoPassagem:0, total:0, breakdown:[] };
+    }
+  });
 }
 
-// ── Wrapper para escala ativa (mantém compatibilidade com todos os chamadores)
-function calcularCustos(){
-  if(!S.escala) return;
-  calcularCustoTotal('escala'); // atualiza cell.custo, cell.custoHora, cell.custoPassagem in-place
-}
-
-// ── Sidebar: custo total + CPP da escala ativa
 function atualizarCustoTotal(){
-  if(!S.escala) return;
-  const r = calcularCustoTotal('escala');
-  const total    = r.total;
-  let totalPed   = 0;
-  const diasO    = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const hI       = +document.getElementById('cHI').value || 8;
-  const hO       = +document.getElementById('cHO').value || 25;
-  diasO.forEach(dia=>{ for(let h=hI;h<=hO;h++){ const c=S.escala[dia]?.[h]; if(c) totalPed+=c.ped||0; }});
-
-  document.getElementById('sCusto').textContent = total>0 ? `R$ ${total.toFixed(2).replace('.',',')}` : '-';
-  document.getElementById('sCustoSub').textContent = total>0 ? 'custo estimado na semana' : 'sem custos cadastrados';
+  if(!S.escala)return;
+  let total=0, totalPed=0;
+  DIAS.forEach(dia=>Object.values(S.escala[dia]||{}).forEach(c=>{
+    if(c){total+=c.custo||0; totalPed+=c.ped||0;}
+  }));
+  document.getElementById('sCusto').textContent=total>0?`R$ ${total.toFixed(2).replace('.',',')}`:'-';
+  document.getElementById('sCustoSub').textContent=total>0?'custo estimado na semana':'sem custos cadastrados';
   const cpp = total>0&&totalPed>0 ? total/totalPed : 0;
   document.getElementById('sCpp').textContent = cpp>0 ? `R$ ${cpp.toFixed(2).replace('.',',')}` : '—';
-  const _el=document.getElementById('sCppSub'); if(_el) _el.textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe';
+  { const _el=document.getElementById('sCppSub'); if(_el) _el.textContent = cpp>0 ? `${totalPed.toLocaleString()} pedidos · méd/hora` : 'preencha a equipe'; }
 }
 
 function _initApiConfig(){
@@ -3544,12 +3422,17 @@ function confirmarLancarTurno(){
 // ── Presets de regime tributário
 const REGIME_PRESETS = {
   simples:    { fgts:8,    inss:0,    ferias:11.11, decimo:8.33, dsr:16.67, outros:0 },
-  presumido:  { fgts:8,    inss:20,   ferias:11.11, decimo:8.33, dsr:16.67, outros:5.8 }, // +5,8% terceiros (Sistema S)
+  presumido:  { fgts:8,    inss:20,   ferias:11.11, decimo:8.33, dsr:16.67, outros:5.8 },
   real:       { fgts:8,    inss:20,   ferias:11.11, decimo:8.33, dsr:16.67, outros:5.8 },
+  // 12x36: DSR não incide separadamente (já embutido na jornada)
+  // Horas em domingos/feriados com acréscimo 100% já compensadas pelo regime
+  simples_12x36:   { fgts:8, inss:0,  ferias:11.11, decimo:8.33, dsr:0, outros:0 },
+  presumido_12x36: { fgts:8, inss:20, ferias:11.11, decimo:8.33, dsr:0, outros:5.8 },
+  real_12x36:      { fgts:8, inss:20, ferias:11.11, decimo:8.33, dsr:0, outros:5.8 },
 };
 
-function aplicarPresetRegime(){
-  const regime=document.getElementById('calcRegime')?.value||'simples';
+function aplicarPresetRegime(chave){
+  const regime=chave||document.getElementById('calcRegime')?.value||'simples';
   const p=REGIME_PRESETS[regime];
   if(!p)return;
   document.getElementById('calcFgts').value=p.fgts;
@@ -3565,13 +3448,26 @@ function aplicarPresetRegime(){
 function toggleTipoCalculo(){
   const tipo=document.getElementById('calcTipoContrato')?.value||'mensal';
   const isInterm=tipo==='intermitente';
+  const is12x36=tipo==='12x36';
   document.getElementById('calcBlocoMensal').style.display=isInterm?'none':'flex';
   document.getElementById('calcBlocoIntermitente').style.display=isInterm?'flex':'none';
+  // Nota informativa específica para 12x36
+  const nota12=document.getElementById('calcNota12x36');
+  if(nota12) nota12.style.display=is12x36?'block':'none';
+  // Aplicar preset de encargos automaticamente ao trocar tipo
+  if(is12x36){
+    const regime=document.getElementById('calcRegime')?.value||'simples';
+    aplicarPresetRegime(regime+'_12x36');
+  }
   // Estilo dos botões toggle
   const btnM=document.getElementById('calcBtnMensal');
+  const btn12=document.getElementById('calcBtn12x36');
   const btnI=document.getElementById('calcBtnInterm');
-  if(btnM){btnM.style.background=isInterm?'':'var(--ac)';btnM.style.color=isInterm?'':'#fff';btnM.style.fontWeight=isInterm?'':'700';}
-  if(btnI){btnI.style.background=isInterm?'var(--ac)':'';btnI.style.color=isInterm?'#fff':'';btnI.style.fontWeight=isInterm?'700':'';}
+  const ativo={background:'var(--ac)',color:'#fff',fontWeight:'700'};
+  const inativo={background:'',color:'',fontWeight:''};
+  if(btnM) Object.assign(btnM.style,tipo==='mensal'?ativo:inativo);
+  if(btn12) Object.assign(btn12.style,is12x36?ativo:inativo);
+  if(btnI) Object.assign(btnI.style,isInterm?ativo:inativo);
   const labA=document.getElementById('lblBenefAlim');
   const labB=document.getElementById('lblBenefBonus');
   if(labA)labA.textContent=isInterm?'Alimentação (R$/mês)':'Alimentação';
@@ -3594,7 +3490,16 @@ function calcularCustoHoraEncargos(){
 
   let custoHora, custoMensal, subtotalEncargos, beneficios, horasMes;
 
-  if(tipo==='intermitente'){
+  if(tipo==='12x36'){
+    // 12x36: ~15 dias/mês × 12h = 180h/mês
+    // DSR não incide separadamente (já embutido) — preset já tem dsr:0
+    const salario=parseFloat(document.getElementById('calcSalario')?.value)||0;
+    const horasMes12=180; // fixo para 12x36
+    subtotalEncargos=salario*(1+totalPct/100);
+    beneficios=alimentacao+bonus;
+    custoMensal=subtotalEncargos+beneficios;
+    custoHora=custoMensal/horasMes12;
+  } else if(tipo==='intermitente'){
     const valorHora=parseFloat(document.getElementById('calcValorHora')?.value)||0;
     const passagemDia=parseFloat(document.getElementById('calcPassagemInterm')?.value)||0;
     const MIN_HORAS_CHAMADA=3; // mínimo garantido por chamada intermitente
@@ -3625,7 +3530,8 @@ function calcularCustoHoraEncargos(){
   document.getElementById('calcTotalPct').textContent=totalPct.toFixed(2).replace('.',',')+'%';
   document.getElementById('calcSubtotalEncargos').textContent='R$ '+subtotalEncargos.toFixed(2).replace('.',',')+(tipo==='intermitente'?'/h (valor hora + encargos)':'');
   document.getElementById('calcBeneficios').textContent='R$ '+beneficios.toFixed(2).replace('.',',');
-  document.getElementById('calcCustoMensal').textContent='R$ '+custoMensal.toFixed(2).replace('.',',')+(tipo==='intermitente'?' (ref. 220h)':'');
+  const _refH=tipo==='intermitente'?' (ref. 220h)':tipo==='12x36'?' (ref. 180h)':'';
+  document.getElementById('calcCustoMensal').textContent='R$ '+custoMensal.toFixed(2).replace('.',',')+_refH;
   // Para intermitente, mostrar breakdown da passagem
   const elPass=document.getElementById('calcPassagemHora');
   if(elPass){
@@ -4201,15 +4107,11 @@ function publicarEscala(){
   const hI=+document.getElementById('cHI').value||8;
   const hO=+document.getElementById('cHO').value||25;
 
-  // Monta resumo numérico — usa engine unificada para garantir consistência
-  // com o que o histórico e os indicadores usam
-  const _custoResumoPub = calcularCustoTotal('escala');
-  const totalCusto = _custoResumoPub.total;
-  // breakdown por colaborador (para logs e auditoria futura)
-  const _breakdownPub = _custoResumoPub.breakdown;
-
-  let totalPed=0,totalForca=0,slots=0;
+  // Monta resumo numérico
+  let totalPed=0,totalCusto=0,totalForca=0,slots=0;
   const forcaPorDia={};
+  // Mapa de dias trabalhados por colaborador (para passagem)
+  const diasTrabPub={};
   diasO.forEach(dia=>{
     let fDia=new Set();
     for(let h=hI;h<=hO;h++){
@@ -4218,9 +4120,23 @@ function publicarEscala(){
       totalPed+=cell.ped||0;
       totalForca+=cell.alocados.length;
       if(cell.alocados.length){slots++;}
-      cell.alocados.forEach(n=>fDia.add(n));
+      cell.alocados.forEach(n=>{
+        fDia.add(n);
+        if(!diasTrabPub[n])diasTrabPub[n]=new Set();
+        diasTrabPub[n].add(dia);
+      });
+      // Soma custo/hora (sem passagem — passagem será somada separado)
+      cell.alocados.forEach(n=>{
+        const c=S.colabs.find(x=>x.nome===n);
+        if(c&&c.custo>0)totalCusto+=c.custo;
+      });
     }
     forcaPorDia[dia]=[...fDia];
+  });
+  // Soma passagem: 1× por colaborador por dia trabalhado
+  Object.entries(diasTrabPub).forEach(([nome,diasSet])=>{
+    const c=S.colabs.find(x=>x.nome===nome);
+    if(c&&(c.passagem||0)>0)totalCusto+=c.passagem*diasSet.size;
   });
 
   // Monta mapa de confirmações detalhadas: por colaborador, por dia, por turno
@@ -4644,7 +4560,7 @@ function renderHistorico(filtro){
           <div class="hist-stat"><div class="hist-stat-v">${(h.resumo.totalPed||0).toLocaleString('pt-BR')}</div><div class="hist-stat-l">pedidos proj.</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.slots||0}</div><div class="hist-stat-l">slots cobertos</div></div>
           <div class="hist-stat"><div class="hist-stat-v">${h.resumo.mediaForca||'—'}</div><div class="hist-stat-l">média força/h</div></div>
-          <div class="hist-stat"><div class="hist-stat-v" id="hist-stat-custo-${h.id}">${h.resumo.totalCusto>0?'R$ '+h.resumo.totalCusto.toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo líquido${h.resumo.custoNoturno>0||h.resumo.custoPassagem>0?` <span title="Hora normal: R$ ${(h.resumo.custoHoras||0).toFixed(2).replace('.',',')}${h.resumo.custoNoturno>0?' · Noturno: R$ '+h.resumo.custoNoturno.toFixed(2).replace('.',','):''}${h.resumo.custoPassagem>0?' · Passagem: R$ '+h.resumo.custoPassagem.toFixed(2).replace('.',','):''}" style="cursor:help;text-decoration:underline dotted">ⓘ</span>`:''}</div></div>
+          <div class="hist-stat"><div class="hist-stat-v" id="hist-stat-custo-${h.id}">${h.resumo.totalCusto>0?'R$ '+h.resumo.totalCusto.toFixed(2).replace('.',','):'—'}</div><div class="hist-stat-l">custo líquido</div></div>
           ${cpp?`<div class="hist-stat"><div class="hist-stat-v">R$ ${cpp}</div><div class="hist-stat-l">custo/pedido</div></div>`:''}
         </div>
         ${diaChips?`<div class="hist-dias" style="padding:8px 18px;border-bottom:1px solid var(--brd)">${diaChips}</div>`:''}
@@ -4857,19 +4773,9 @@ function verEscalaHistorico(id){
   // Montar linhas: eixo Y = colaboradores, eixo X = dias (cada célula = bloco de horário)
   const linhas = colabsUnicos.map(nome=>{
     const cor = corColab[nome]||'#374151';
-    const colab = S.colabs.find(c=>c.nome===nome);
     const tds = diasO.map(dia=>{
       const blocos = turnosDoDia(nome, dia);
-      if(!blocos.length){
-        // Mostra "Folga" só para colaboradores com folga cadastrada (6x1)
-        // e apenas se aquele dia é o dia de folga deles
-        const temFolga = colab && colab.folgaDias && colab.folgaDias.length > 0;
-        const ehDiaFolga = temFolga && colab.folgaDias.includes(dia);
-        if(ehDiaFolga){
-          return `<td class="vazio" style="color:#2563eb;font-size:9px;font-weight:700;background:#eff6ff">🏖 Folga</td>`;
-        }
-        return '<td class="vazio">—</td>';
-      }
+      if(!blocos.length) return '<td class="vazio">—</td>';
       const txt = blocos.map(b=>fH(b.ini)+'–'+fH(b.fim)).join(', ');
       const horas = blocos.reduce((s,b)=>s+(b.fim-b.ini),0);
       return `<td class="turno" style="border-left:3px solid ${cor}">
@@ -5352,33 +5258,45 @@ function removerTurnoHist(histId, nome, dia, ini){
 // ── Recalcula resumo.totalCusto a partir das confirmacoes atuais
 function recalcularCustoHist(h){
   if(!h||!h.colabs||!h.colabs.length) return;
-  if(!h.colabs.some(c=>c.custo>0)) return;
+  // Só recalcula se ao menos um colab tem custo definido
+  const temCusto=h.colabs.some(c=>c.custo>0);
+  if(!temCusto) return;
 
-  // Monta lista plana de turnos com {nome, dia, ini, fim, horasAbatidas, faltou}
-  // para passar à engine unificada
-  const turnosFlat = [];
-  Object.entries(h.confirmacoes||{}).forEach(([nome, conf])=>{
-    (conf.turnos||[]).forEach(t=>{
-      turnosFlat.push({ nome, dia:t.dia, ini:t.ini, fim:t.fim,
-        horas:t.horas!=null?t.horas:(t.fim-t.ini),
-        horasAbatidas:t.horasAbatidas||0, faltou:!!t.faltou });
+  let totalCusto=0;
+  Object.entries(h.confirmacoes||{}).forEach(([nome,conf])=>{
+    const colab=h.colabs.find(c=>c.nome===nome);
+    if(!colab||!colab.custo) return;
+    const custoH=colab.custo||0;
+    const passagem=colab.passagem||0;
+    const turnos=conf.turnos||[];
+
+    // Horas efetivas COM adicional noturno (+20% nas horas a partir das 22h)
+    let custoHoras=0;
+    turnos.forEach(t=>{
+      const hh=t.horas!=null?t.horas:(t.fim-t.ini)||0;
+      const abat=t.horasAbatidas||0;
+      const horasEf=Math.max(0,hh-abat);
+      if(horasEf<=0)return;
+      if(true){ // adicional noturno é padrão para todos
+        // Contar quantas horas do turno (ini..fim) caem a partir das 22h
+        let horasNoturnas=0;
+        for(let hr=t.ini;hr<t.fim;hr++){ if(hr>=22) horasNoturnas++; }
+        // Limitar pelas horas efetivas (caso haja abatimento)
+        horasNoturnas=Math.min(horasNoturnas,horasEf);
+        const horasNormais=horasEf-horasNoturnas;
+        custoHoras+=horasNormais*custoH + horasNoturnas*custoH*1.2;
+      } else {
+        custoHoras+=horasEf*custoH;
+      }
     });
+
+    const diasFaltou=new Set(turnos.filter(t=>t.faltou&&(t.horasAbatidas||0)>=(t.horas||1)).map(t=>t.dia));
+    const diasComPresenca=new Set(turnos.filter(t=>!diasFaltou.has(t.dia)).map(t=>t.dia));
+    totalCusto+=custoHoras;
+    totalCusto+=passagem*diasComPresenca.size;
   });
-
-  const r = calcularCustoTotal('turnos', turnosFlat, h.colabs);
-
-  // Guarda breakdown no histórico para uso no relatório de colaboradores
-  h._custoBreakdown = r.breakdown;
-
-  // Atualiza resumo com breakdown completo
-  if(r.total > 0){
-    h.resumo = Object.assign({}, h.resumo||{}, {
-      totalCusto:     r.total,
-      custoHoras:     r.custoHoras,
-      custoNoturno:   r.custoNoturno,
-      custoPassagem:  r.custoPassagem,
-    });
-  }
+  // Só atualiza se calculou algo positivo (nunca zera custo que já existe)
+  if(totalCusto>0) h.resumo=Object.assign({},h.resumo||{},{totalCusto});
 }
 
 // ── Adicionar colaborador ao histórico
@@ -5713,23 +5631,6 @@ try {
 
     var b64Escala=extrairParam(raw,'dados');
     var b64Ind=extrairParam(raw,'ind_dados');
-    var b64Hist=extrairParam(raw,'ind_historico');
-    var impKey=extrairParam(raw,'_imp');
-
-    // ── Importação histórica via sessionStorage (chave passada pelo script de coleta)
-    if(impKey){
-      try{
-        var impRaw=sessionStorage.getItem(impKey);
-        if(impRaw){
-          var impData=JSON.parse(impRaw);
-          if(Array.isArray(impData)&&impData.length){
-            window._INBOUND_HISTORICO=impData;
-            temDados=true;
-            sessionStorage.removeItem(impKey); // limpa após usar
-          }
-        }
-      }catch(e){ console.error('[OrionEscala] _imp erro:',e); }
-    }
 
     if(b64Escala){
       try{
@@ -5752,18 +5653,6 @@ try {
           temDados=true;
         }
       }catch(e){ console.error('[OrionEscala] hash ind_dados erro:',e); }
-    }
-
-    // ── HISTÓRICO MÚLTIPLAS SEMANAS (coleta histórica)
-    if(b64Hist){
-      try{
-        var jsonH=decodeURIComponent(escape(atob(b64Hist)));
-        var pH=JSON.parse(jsonH);
-        if(pH&&pH._historico&&Array.isArray(pH.entradas)&&pH.entradas.length){
-          window._INBOUND_HISTORICO=pH.entradas;
-          temDados=true;
-        }
-      }catch(e){ console.error('[OrionEscala] hash ind_historico erro:',e); }
     }
 
     // ── LINK CURTO: #s=CODE ou #s=CODE@APIHOST
@@ -5812,45 +5701,6 @@ window.addEventListener('message',function(ev){
     _pmIndProcessado=true;
     receberDadosIndicadores(ev.data.payload);
   }
-  // ── Coleta histórica: múltiplas semanas via iframe/postMessage
-  if(ev.data&&ev.data.type==='ORION_HISTORICO'&&Array.isArray(ev.data.entradas)&&ev.data.entradas.length){
-    try{
-      var hist=JSON.parse(localStorage.getItem(KIND)||'[]');
-      var adicionados=0, atualizados=0;
-      ev.data.entradas.forEach(function(entrada){
-        var normaliza=function(arr){ return (arr||[]).map(function(v){
-          var r=Object.assign({},v);
-          ['cadastro','pronto','coleta','conclusao'].forEach(function(k){
-            if(typeof r[k]==='string'&&r[k]!=='-'&&r[k].includes('/')){var dt=parseDataOrion(r[k]);r[k]=dt?dt.getTime():null;}
-            else if(typeof r[k]!=='number')r[k]=null;
-          });
-          var estab=(r.estabelecimento||'').toLowerCase();
-          if(typeof _normalizarHub==='function') r.hub=_normalizarHub(r.hub||'',r.estabelecimento||'');
-          else if(estab.includes('varanda')||estab.includes('1389')) r.hub='Varanda Sion';
-          else if(!r.hub||r.hub==='-'||r.hub==='Sem hub') r.hub='Cozinhas Sion';
-          return r;
-        });};
-        var e={
-          de:entrada.de,ate:entrada.ate,deBR:entrada.deBR,ateBR:entrada.ateBR,
-          ts:entrada.ts||Date.now(),
-          semana:entrada.semana||(entrada.deBR+'–'+entrada.ateBR),
-          semanaISO:entrada.semanaISO||(entrada.de+'/'+entrada.ate),
-          vendas:normaliza(entrada.vendas),
-          cancelamentos:normaliza(entrada.cancelamentos),
-          hubs:entrada.hubs||[],
-        };
-        var idx=hist.findIndex(function(h){return h.semanaISO===e.semanaISO;});
-        if(idx!==-1){hist[idx]=e;atualizados++;}else{hist.push(e);adicionados++;}
-      });
-      hist.sort(function(a,b){return b.de.localeCompare(a.de);});
-      if(hist.length>52)hist.splice(52);
-      localStorage.setItem(KIND,JSON.stringify(hist));
-      if(typeof renderIndicadores==='function'){goT('ind');renderIndicadores();}
-      toast('✅ '+adicionados+' semanas importadas, '+atualizados+' atualizadas.','tok');
-      // Confirma para o script que enviou
-      try{ev.source.postMessage({type:'ORION_HISTORICO_OK'},'*');}catch(e2){}
-    }catch(err){console.error('ORION_HISTORICO erro:',err);}
-  }
 });
 
 // C) BroadcastChannel — mesma origem (fallback)
@@ -5871,7 +5721,7 @@ try{
 // ══════════════════════════════════════════════════════
 // INDICADORES OPERACIONAIS
 // ══════════════════════════════════════════════════════
-// KIND declarado no topo junto com KC/KM/KE/KH
+const KIND = 'orion_v7_indicadores';
 
 function parseDataOrion(str){
   // Converte "dd/MM/yyyy HH:mm" para Date
@@ -5909,16 +5759,6 @@ async function buscarPaginaOrion(url){
   return r.text();
 }
 
-function _normalizarHub(hubRaw, estab){
-  const e=(estab||'').toLowerCase();
-  // Varanda: identificada pelo estabelecimento — tem prioridade sobre o hub
-  if(e.includes('varanda')||e.includes('1389')) return 'Varanda Sion';
-  // Hub vazio ou traço → Cozinhas Sion
-  const h=(hubRaw||'').replace(/-/g,'').trim();
-  if(!h||h==='Sem hub') return 'Cozinhas Sion';
-  return h;
-}
-
 function parsearTabelaOrion(html, tipo='vendas'){
   const doc=new DOMParser().parseFromString(html,'text/html');
   const rows=doc.querySelectorAll('table tbody tr');
@@ -5926,29 +5766,21 @@ function parsearTabelaOrion(html, tipo='vendas'){
   rows.forEach(row=>{
     const tds=row.querySelectorAll('td');
     if(tds.length<5)return;
-    const hubRaw=tds[1]?.textContent.trim()||'';
-    const estab=tds[2]?.textContent.trim()||'';
-    const hub=_normalizarHub(hubRaw, estab);
+    const hub=(tds[1]?.textContent.trim()||'').replace('-','') || 'Sem hub';
     if(tipo==='vendas'){
-      // Estrutura real confirmada (14 colunas):
-      // 0=cod, 1=hub, 2=estab, 3=cliente, 4=produtos, 5=desconto,
-      // 6=subtotal, 7=serviços, 8=total,
-      // 9=cadastro, 10=pronto, 11=coleta, 12=entregador, 13=conclusão
-      if(tds.length<14)return;
       dados.push({
         hub,
-        estabelecimento: estab,
-        cadastro:  parseDataOrion(tds[9]?.textContent.trim()),
-        pronto:    parseDataOrion(tds[10]?.textContent.trim()),
-        coleta:    parseDataOrion(tds[11]?.textContent.trim()),
-        conclusao: parseDataOrion(tds[13]?.textContent.trim()),
+        estabelecimento:tds[2]?.textContent.trim()||'',
+        cadastro:  parseDataOrion(tds[10]?.textContent.trim()),
+        pronto:    parseDataOrion(tds[11]?.textContent.trim()),
+        coleta:    parseDataOrion(tds[12]?.textContent.trim()),
+        conclusao: parseDataOrion(tds[14]?.textContent.trim()),
       });
     } else {
-      // cancelamentos: 0=cod, 1=hub, 2=estab, 3=cliente, 4=motivo, 5=cadastro
+      // cancelamentos
       dados.push({
         hub,
-        estabelecimento: estab,
-        motivo: tds[4]?.textContent.trim()||'',
+        motivo:tds[4]?.textContent.trim()||'',
         cadastro: parseDataOrion(tds[5]?.textContent.trim()),
       });
     }
@@ -5956,12 +5788,11 @@ function parsearTabelaOrion(html, tipo='vendas'){
   return dados;
 }
 
-
 function calcularMetricasSemana(vendas, cancelamentos, hub){
   // hub pode ser 'todos', string, ou Set de hubs (multi-seleção)
   const hubSet=hub instanceof Set?hub:new Set([hub]);
   const filtro=v=>{
-    if(HUB_EXCLUIR&&HUB_EXCLUIR.has(v.hub))return false;
+    if(HUB_EXCLUIR&&HUB_EXCLUIR.has(v.hub))return false; // excluir DS Delivery Mall etc
     return hubSet.has('todos')||hubSet.has(v.hub)||(!v.hub&&hubSet.has('Sem hub'));
   };
   const vF=vendas.filter(filtro);
@@ -5969,17 +5800,18 @@ function calcularMetricasSemana(vendas, cancelamentos, hub){
 
   const tPreparo=[], tColeta=[], tDespacho=[];
   vF.forEach(v=>{
-    // Suporta dois formatos:
-    // 1) deltas pré-calculados: {dPreparo, dColeta, dDespacho} (em minutos)
-    // 2) timestamps brutos:     {cadastro, pronto, coleta, conclusao}
-    if(v.dPreparo!=null)  { if(v.dPreparo>=0&&v.dPreparo<480)  tPreparo.push(v.dPreparo); }
-    else if(v.cadastro&&v.pronto){ const t=diffMinutos(v.cadastro,v.pronto); if(t!==null)tPreparo.push(t); }
-
-    if(v.dColeta!=null)   { if(v.dColeta>=0&&v.dColeta<480)    tColeta.push(v.dColeta); }
-    else if(v.pronto&&v.coleta){   const t=diffMinutos(v.pronto,v.coleta);   if(t!==null)tColeta.push(t); }
-
-    if(v.dDespacho!=null) { if(v.dDespacho>=0&&v.dDespacho<480) tDespacho.push(v.dDespacho); }
-    else if(v.coleta&&v.conclusao){ const t=diffMinutos(v.coleta,v.conclusao); if(t!==null)tDespacho.push(t); }
+    if(v.cadastro&&v.pronto){
+      const t=diffMinutos(v.cadastro,v.pronto);
+      if(t!==null)tPreparo.push(t);
+    }
+    if(v.pronto&&v.coleta){
+      const t=diffMinutos(v.pronto,v.coleta);
+      if(t!==null)tColeta.push(t);
+    }
+    if(v.coleta&&v.conclusao){
+      const t=diffMinutos(v.coleta,v.conclusao);
+      if(t!==null)tDespacho.push(t);
+    }
   });
 
   const media=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
@@ -6095,7 +5927,7 @@ function inicializarCppManual(){
   const sel=document.getElementById('cppManualSemanas');
   sel.innerHTML=semanas.map(s=>{
     const lbl=s.deBR+'–'+s.ateBR;
-    return`<option value="${s.semanaISO}"${s.semanaISO===_cppManualSemanaAtiva?' selected':''}>${lbl}</option>`;
+    return`<button class="cpp-semana-btn${s.semanaISO===_cppManualSemanaAtiva?' on':''}" onclick="selecionarSemanaManual('${s.semanaISO}')">${lbl}</button>`;
   }).join('');
 
   // Carregar valores salvos
@@ -6212,9 +6044,6 @@ function receberDadosIndicadores(payload){
           r[k]=dt?dt.getTime():null;
         } else if(typeof r[k]!=='number') r[k]=null;
       });
-      // Normaliza hub usando a mesma regra do parser
-      const estab=(r.estabelecimento||'').toLowerCase();
-      r.hub = _normalizarHub(r.hub||'', r.estabelecimento||'');
       return r;
     });
     const entrada={
@@ -6753,8 +6582,6 @@ function renderIndicadores(){
       const totalCustos=sum(custos);
       const totalAdics=sum(adics);
       const totalCppComAdic=totalCustos!==null&&totalVol>0?((totalCustos+(totalAdics||0))/totalVol):null;
-      const cppsComAdic=metricas.map(x=>x.cppComAdicional).filter(v=>v!==null&&v>0);
-      const avgCppComAdic=cppsComAdic.length?cppsComAdic.reduce((a,b)=>a+b,0)/cppsComAdic.length:null;
       // Linha de média
       tbody+=`<tr style="background:#f0f9ff;font-weight:600;border-top:2px solid #bae6fd">
         <td style="padding:6px 12px;font-size:11px;color:#0369a1;font-weight:700">📊 Média do mês</td>
@@ -6766,8 +6593,7 @@ function renderIndicadores(){
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${fmtTempo(avg(desps))}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${custos.length?'R$ '+avg(custos).toFixed(2).replace('.',','):'—'}</td>
         <td style="padding:6px 12px;font-size:12px;font-family:var(--mo)">${cpps.length?'R$ '+avg(cpps).toFixed(2).replace('.',','):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);color:var(--mu)">${adics.length?'R$ '+avg(adics).toFixed(2).replace('.',','):'—'}</td>
-        <td style="padding:6px 12px;font-size:12px;font-family:var(--mo);font-weight:700;${avgCppComAdic!==null&&adics.length?'color:#dc2626':''}">${avgCppComAdic!==null?'R$ '+avgCppComAdic.toFixed(2).replace('.',','):'—'}</td>
+        <td colspan="2"></td>
       </tr>`;
       // Linha de total
       tbody+=`<tr style="background:#fef9c3;font-weight:700;border-top:1px solid #fde68a">
@@ -7240,6 +7066,7 @@ function renderColHist(){
         diasO.forEach(dia=>{
           turnosEscalados.forEach(t=>{
             for(let h=t.ini;h<t.fim;h++){
+              // Pedidos nessa hora
               const chave = semana.matrix?.[dia]?.[String(h).padStart(2,'0')];
               const ped = chave||0;
               pedidosSemana += ped;
@@ -7259,44 +7086,17 @@ function renderColHist(){
         });
       }
 
-      // Custo desta semana — usa engine unificada com os turnos confirmados.
-      // Se há turnos confirmados, usa eles (mais preciso: considera faltas e abatimentos).
-      // Se não há confirmações, usa turnos escalados como estimativa.
-      let custoSemana = 0, custoHorasSem = 0, custoNoturnoSem = 0, custoPassagemSem = 0;
-      let horasTotal = 0, diasTrabalhados = 0;
-      const _colabArr = semana.colabs || S.colabs;
-
-      if(turnos.length > 0){
-        // Usar turnos confirmados (fonte de verdade pós-publicação)
-        const turnosNome = turnos.map(t=>({...t, nome}));
-        const _r = calcularCustoTotal('turnos', turnosNome, _colabArr);
-        const _b = _r.breakdown.find(x=>x.nome===nome)||{};
-        custoSemana    = _r.total;
-        custoHorasSem  = _b.custoHoras||0;
-        custoNoturnoSem= _b.custoNoturno||0;
-        custoPassagemSem=_b.custoPassagem||0;
-        horasTotal     = _b.horas||0;
-        diasTrabalhados= _b.dias||0;
-      } else if(turnosEscalados.length > 0){
-        // Estimativa pela escala (sem confirmações)
-        const turnosNomeEsc = turnosEscalados.map(t=>({...t, nome, faltou:false, horasAbatidas:0}));
-        const _r = calcularCustoTotal('turnos', turnosNomeEsc, _colabArr);
-        const _b = _r.breakdown.find(x=>x.nome===nome)||{};
-        custoSemana    = _r.total;
-        custoHorasSem  = _b.custoHoras||0;
-        custoNoturnoSem= _b.custoNoturno||0;
-        custoPassagemSem=_b.custoPassagem||0;
-        horasTotal     = _b.horas||0;
-        diasTrabalhados= _b.dias||0;
-      }
+      // Custo desta semana
+      const horasTotal = turnosEscalados.reduce((s,t)=>s+t.horas,0) - horasAbatidas;
+      const diasTrabalhados = new Set(turnosEscalados.map(t=>t.dia)).size;
+      const custoSemana = (horasTotal>0&&c.custo>0?horasTotal*c.custo:0) + (c.passagem||0)*diasTrabalhados;
 
       colabsMap[nome].semanas.push({
         semana:semana.semana, segISO:semana.segISO,
         turnosEscalados:turnosEscalados.length,
         turnosCumpridos, turnosFaltados, horasAbatidas,
         pedidosSemana, maxPedHora,
-        custoSemana, custoHorasSem, custoNoturnoSem, custoPassagemSem,
-        horasTotal, diasTrabalhados,
+        custoSemana, horasTotal, diasTrabalhados,
         faltou,
       });
     });
@@ -7306,22 +7106,17 @@ function renderColHist(){
   const stats = Object.values(colabsMap).map(c=>{
     const s = c.semanas;
     if(!s.length) return null;
-    const totalEscalados    = s.reduce((a,x)=>a+x.turnosEscalados,0);
-    const totalCumpridos    = s.reduce((a,x)=>a+x.turnosCumpridos,0);
-    const totalFaltas       = s.reduce((a,x)=>a+x.turnosFaltados,0);
-    const assiduidade       = totalEscalados>0?((totalEscalados-totalFaltas)/totalEscalados*100):100;
-    const totalPedidos      = s.reduce((a,x)=>a+x.pedidosSemana,0);
-    const maxPedHora        = Math.max(...s.map(x=>x.maxPedHora));
-    const totalCusto        = s.reduce((a,x)=>a+x.custoSemana,0);
-    const totalCustoHoras   = s.reduce((a,x)=>a+(x.custoHorasSem||0),0);
-    const totalCustoNoturno = s.reduce((a,x)=>a+(x.custoNoturnoSem||0),0);
-    const totalCustoPassagem= s.reduce((a,x)=>a+(x.custoPassagemSem||0),0);
-    const totalHoras        = s.reduce((a,x)=>a+x.horasTotal,0);
-    const semanasAtivas     = s.filter(x=>x.turnosEscalados>0).length;
-    const pedPorHora        = totalHoras>0?totalPedidos/totalHoras:0;
-    return { ...c, totalEscalados, totalCumpridos, totalFaltas, assiduidade,
-      totalPedidos, maxPedHora, totalCusto, totalCustoHoras, totalCustoNoturno,
-      totalCustoPassagem, totalHoras, semanasAtivas, pedPorHora };
+    const totalEscalados  = s.reduce((a,x)=>a+x.turnosEscalados,0);
+    const totalCumpridos  = s.reduce((a,x)=>a+x.turnosCumpridos,0);
+    const totalFaltas     = s.reduce((a,x)=>a+x.turnosFaltados,0);
+    const assiduidade     = totalEscalados>0?((totalEscalados-totalFaltas)/totalEscalados*100):100;
+    const totalPedidos    = s.reduce((a,x)=>a+x.pedidosSemana,0);
+    const maxPedHora      = Math.max(...s.map(x=>x.maxPedHora));
+    const totalCusto      = s.reduce((a,x)=>a+x.custoSemana,0);
+    const totalHoras      = s.reduce((a,x)=>a+x.horasTotal,0);
+    const semanasAtivas   = s.filter(x=>x.turnosEscalados>0).length;
+    const pedPorHora      = totalHoras>0?totalPedidos/totalHoras:0;
+    return { ...c, totalEscalados, totalCumpridos, totalFaltas, assiduidade, totalPedidos, maxPedHora, totalCusto, totalHoras, semanasAtivas, pedPorHora };
   }).filter(Boolean);
 
   // Aplicar filtros
@@ -7357,8 +7152,6 @@ function renderColHist(){
       <td style="padding:5px 8px;font-size:11px;text-align:center">${s.horasTotal.toFixed(1)}h</td>
       <td style="padding:5px 8px;font-size:11px;text-align:center">${s.pedidosSemana.toLocaleString('pt-BR')}</td>
       <td style="padding:5px 8px;font-size:11px;text-align:right;font-weight:600">R$ ${s.custoSemana.toFixed(2).replace('.',',')}</td>
-      <td style="padding:5px 8px;font-size:11px;text-align:right;color:#7c3aed">${(s.custoNoturnoSem||0)>0?'R$ '+s.custoNoturnoSem.toFixed(2).replace('.',','):'—'}</td>
-      <td style="padding:5px 8px;font-size:11px;text-align:right;color:#0891b2">${(s.custoPassagemSem||0)>0?'R$ '+s.custoPassagemSem.toFixed(2).replace('.',','):'—'}</td>
     </tr>`).join('');
 
   con.innerHTML = statsFilt.map((c,ci)=>{
@@ -7390,16 +7183,6 @@ function renderColHist(){
         ${c.custo>0?badge('Custo/hora','R$ '+c.custo.toFixed(2).replace('.',','),'','#374151'):''}
         ${c.passagem>0?badge('Passagem/dia','R$ '+c.passagem.toFixed(2).replace('.',','),'','#374151'):''}
       </div>
-      ${c.totalCusto>0?`
-      <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:11px">
-        <div style="font-weight:700;color:var(--mu);font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Composição do custo (${c.semanasAtivas} sem.)</div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap">
-          <div><span style="color:var(--mu)">Hora normal:</span> <strong>R$ ${(c.totalCustoHoras||0).toFixed(2).replace('.',',')}</strong></div>
-          ${(c.totalCustoNoturno||0)>0?`<div><span style="color:#7c3aed">+ Noturno (22h+):</span> <strong style="color:#7c3aed">R$ ${c.totalCustoNoturno.toFixed(2).replace('.',',')}</strong></div>`:''}
-          ${(c.totalCustoPassagem||0)>0?`<div><span style="color:#0891b2">+ Passagem:</span> <strong style="color:#0891b2">R$ ${c.totalCustoPassagem.toFixed(2).replace('.',',')}</strong></div>`:''}
-          <div style="margin-left:auto;font-weight:700;color:var(--tx)">= R$ ${c.totalCusto.toFixed(2).replace('.',',')}</div>
-        </div>
-      </div>`:''}
 
       <details style="margin-top:4px">
         <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--mu);padding:4px 0">Ver histórico semanal (${c.semanas.length} semanas)</summary>
@@ -7411,8 +7194,6 @@ function renderColHist(){
             <th style="padding:5px 8px;text-align:center">Horas</th>
             <th style="padding:5px 8px;text-align:center">Pedidos</th>
             <th style="padding:5px 8px;text-align:right">Custo</th>
-            <th style="padding:5px 8px;text-align:right;font-size:9px">↳ noturno</th>
-            <th style="padding:5px 8px;text-align:right;font-size:9px">↳ passagem</th>
           </tr></thead>
           <tbody>${semanaRows(c)}</tbody>
         </table>
@@ -9249,26 +9030,6 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();
-// Migração: corrigir hub do Varanda em dados históricos de indicadores já salvos.
-// Antes, pedidos do Varanda podiam estar salvos com hub 'DS Sion' ou 'Sem hub'
-// porque a identificação era feita só pelo col[1] (Hub) do Órion.
-// Agora usamos o col[2] (Estabelecimento) como fonte de verdade.
-try{
-  const _histInd=JSON.parse(localStorage.getItem(KIND)||'[]');
-  let _migrou=false;
-  _histInd.forEach(sem=>{
-    (sem.vendas||[]).forEach(v=>{
-      const hubCorr=_normalizarHub(v.hub||'', v.estabelecimento||'');
-      if(hubCorr!==v.hub){v.hub=hubCorr;_migrou=true;}
-    });
-    (sem.cancelamentos||[]).forEach(v=>{
-      const hubCorr=_normalizarHub(v.hub||'', v.estabelecimento||'');
-      if(hubCorr!==v.hub){v.hub=hubCorr;_migrou=true;}
-    });
-  });
-  if(_migrou) localStorage.setItem(KIND,JSON.stringify(_histInd));
-}catch(e){}
-
 // Corrigir dados antigos: remover DS Delivery Mall do total
 try{
   const _raw=localStorage.getItem('orion_coleta');
@@ -9415,50 +9176,8 @@ if(window._LEILAO_HIST_ID){ renderLeilaoMode(); }
 
 // Inicialização — processa dados recebidos via hash ou postMessage
 {
-  const _pi=window._INBOUND_IND;     window._INBOUND_IND=null;
-  const _pe=window._INBOUND;          window._INBOUND=null;
-  const _ph=window._INBOUND_HISTORICO; window._INBOUND_HISTORICO=null;
-
-  // ── Coleta histórica: múltiplas semanas de uma vez
-  if(_ph&&_ph.length){
-    setTimeout(()=>{
-      goT('ind');
-      const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
-      let adicionados=0, atualizados=0;
-      _ph.forEach(entrada=>{
-        // Normaliza timestamps e hub Varanda (mesma lógica de receberDadosIndicadores)
-        const normaliza=arr=>(arr||[]).map(v=>{
-          const r={...v};
-          ['cadastro','pronto','coleta','conclusao'].forEach(k=>{
-            if(r[k] instanceof Date) r[k]=r[k].getTime();
-            else if(typeof r[k]==='string'&&r[k]!=='-'&&r[k].includes('/')){
-              const dt=parseDataOrion(r[k]); r[k]=dt?dt.getTime():null;
-            } else if(typeof r[k]!=='number') r[k]=null;
-          });
-          const estab=(r.estabelecimento||'').toLowerCase();
-          if(estab.includes('varanda')||estab.includes('1389')) r.hub='Varanda Sion';
-          return r;
-        });
-        const e={
-          de:entrada.de, ate:entrada.ate, deBR:entrada.deBR, ateBR:entrada.ateBR,
-          ts:entrada.ts||Date.now(),
-          semana:entrada.semana||(entrada.deBR+'–'+entrada.ateBR),
-          semanaISO:entrada.semanaISO||(entrada.de+'/'+entrada.ate),
-          vendas:normaliza(entrada.vendas),
-          cancelamentos:normaliza(entrada.cancelamentos),
-          hubs:entrada.hubs||[],
-        };
-        const idx=hist.findIndex(h=>h.semanaISO===e.semanaISO);
-        if(idx!==-1){ hist[idx]=e; atualizados++; } else { hist.push(e); adicionados++; }
-      });
-      // Ordenar por data decrescente e limitar a 52 semanas
-      hist.sort((a,b)=>b.de.localeCompare(a.de));
-      if(hist.length>52) hist.splice(52);
-      localStorage.setItem(KIND,JSON.stringify(hist));
-      renderIndicadores();
-      toast(`✅ Histórico importado: ${adicionados} semanas novas, ${atualizados} atualizadas.`,'tok');
-    },400);
-  }
+  const _pi=window._INBOUND_IND; window._INBOUND_IND=null;
+  const _pe=window._INBOUND;     window._INBOUND=null;
 
   if(_pe&&_pi){
     // Chegaram os dois juntos (botão unificado)
