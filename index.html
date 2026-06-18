@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260618191307">
+<meta name="version" content="v20260618192438">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -7144,7 +7144,7 @@ function renderColHist(){
   }
   function assiduidadeColor(p){ return p>=95?'#16a34a':p>=80?'#d97706':'#dc2626'; }
 
-  const semanaRows = (c) => c.semanas.slice(0,8).map((s,i)=>`
+  const semanaRows = (c) => c.semanas.map((s,i)=>`
     <tr style="background:${i%2===0?'var(--card2)':''}">
       <td style="padding:5px 8px;font-size:11px">${s.semana}</td>
       <td style="padding:5px 8px;font-size:11px;text-align:center">${s.turnosEscalados}</td>
