@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260618192438">
+<meta name="version" content="v20260619141758">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -372,7 +372,7 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
       </div>
 
       <div id="calcNota12x36" style="display:none;font-size:10px;background:rgba(16,185,129,.08);color:#065f46;border:1px solid rgba(16,185,129,.2);border-radius:6px;padding:8px;line-height:1.6">
-        ⏱ <strong>12×36:</strong> jornada de 12h com 36h de descanso. Base de cálculo: <strong>180h/mês</strong> (15 dias × 12h). DSR zerado — já embutido na jornada. Domingos e feriados trabalhados têm acréscimo de 100% aplicado automaticamente na escala.
+        ⏱ <strong>12×36:</strong> jornada de 12h com 36h de descanso. Base: <strong>180h/mês</strong> (15 dias × 12h). DSR = 0 (embutido). Adicional noturno de <strong>3,33%</strong> já incluso no preset (2h noturnas ÷ 12h totais × 20%). Use o campo "Passagem" para incluir o VT mensal fixo.
       </div>
       <div style="font-size:11px;font-weight:600;color:var(--mu);margin-top:2px">Encargos (% sobre o salário)</div>
       <div class="fr">
@@ -1688,22 +1688,23 @@ function gerarEscala(dados, hubFiltro){
   const hubFiltro_ = hubFiltro || dados._hubFiltro || 'todos';
   const hubs = Array.isArray(hubFiltro_) ? hubFiltro_ : (hubFiltro_ === 'todos' ? [] : [hubFiltro_]);
 
+  let totalMesclado=0; // escopo elevado para uso posterior na sidebar
   if(hubs.length > 0 && dados.mxPorHub){
     // Mescla as matrizes dos hubs selecionados usando mapeamento para nomes reais do Órion
     const DIAS_=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
     const p2_=v=>String(v).padStart(2,'0');
     const mxMesclado={};
     DIAS_.forEach(d=>{ mxMesclado[d]={}; for(let h=0;h<30;h++) mxMesclado[d][p2_(h)]=0; });
-    let totalMesclado=0;
-    hubs.forEach(hubInput=>{
-      // hubInput pode ser nome do Órion ('DS Sion') ou nome de colaborador ('Sion')
-      // Converter para nome de colaborador se necessário
-      const hubColab = HUB_IND_PARA_COLAB[hubInput] || hubInput;
-      // Obter as chaves reais do Órion para este hub de colaborador
-      // Para demanda: Sion inclui Varanda; para colaboradores: apenas o hub exato
+    // Deduplica: vários hubInput (ex: 'Cozinhas Sion' e 'DS Sion') podem mapear
+    // para o mesmo hubColab ('Sion'). Processar cada hubColab uma única vez.
+    const hubColabsUnicos = [...new Set(hubs.map(hubInput => HUB_IND_PARA_COLAB[hubInput] || hubInput))];
+    const chavesJaSomadas = new Set();
+    hubColabsUnicos.forEach(hubColab=>{
       const chavesOrion = getChavesMxHubDemanda(hubColab, dados.mxPorHub);
-      if(chavesOrion.length === 0) chavesOrion.push(hubColab); // fallback
-      chavesOrion.forEach(chave=>{
+      const chavesFinais = chavesOrion.length === 0 ? [hubColab] : chavesOrion;
+      chavesFinais.forEach(chave=>{
+        if(chavesJaSomadas.has(chave)) return; // evita duplicar (ex: Varanda contada 1x mesmo se aparecer em 2 hubColabs)
+        chavesJaSomadas.add(chave);
         if(!dados.mxPorHub[chave]) return;
         DIAS_.forEach(d=>{ Object.keys(mxMesclado[d]).forEach(hk=>{ mxMesclado[d][hk]+=(dados.mxPorHub[chave][d]?.[hk]||0); }); });
         totalMesclado+=(dados.totalPorHub?.[chave]||0);
@@ -1745,12 +1746,7 @@ function gerarEscala(dados, hubFiltro){
 
   // Sidebar — total filtrado pelo hub selecionado
   const totalExibido = (hubs.length > 0 && dados.totalPorHub)
-    ? hubs.reduce((acc, hubInput) => {
-        const hubColab = HUB_IND_PARA_COLAB[hubInput] || hubInput;
-        const chavesOrion = getChavesMxHubDemanda(hubColab, dados.mxPorHub);
-        if(chavesOrion.length === 0) return acc + (dados.totalPorHub?.[hubColab] || 0);
-        return acc + chavesOrion.reduce((s, chave) => s + (dados.totalPorHub?.[chave] || 0), 0);
-      }, 0)
+    ? totalMesclado
     : dados.total;
   { const _el=document.getElementById('sT'); if(_el) _el.textContent = totalExibido.toLocaleString('pt-BR'); }
   // Mostrar hub no resumo
@@ -3424,11 +3420,10 @@ const REGIME_PRESETS = {
   simples:    { fgts:8,    inss:0,    ferias:11.11, decimo:8.33, dsr:16.67, outros:0 },
   presumido:  { fgts:8,    inss:20,   ferias:11.11, decimo:8.33, dsr:16.67, outros:5.8 },
   real:       { fgts:8,    inss:20,   ferias:11.11, decimo:8.33, dsr:16.67, outros:5.8 },
-  // 12x36: DSR não incide separadamente (já embutido na jornada)
-  // Horas em domingos/feriados com acréscimo 100% já compensadas pelo regime
-  simples_12x36:   { fgts:8, inss:0,  ferias:11.11, decimo:8.33, dsr:0, outros:0 },
-  presumido_12x36: { fgts:8, inss:20, ferias:11.11, decimo:8.33, dsr:0, outros:5.8 },
-  real_12x36:      { fgts:8, inss:20, ferias:11.11, decimo:8.33, dsr:0, outros:5.8 },
+  // 12x36: DSR=0 (embutido), adicional noturno=3,33% (2h noturnas/12h totais × 20%)
+  simples_12x36:   { fgts:8, inss:0,  ferias:11.11, decimo:8.33, dsr:0, outros:3.33 },
+  presumido_12x36: { fgts:8, inss:20, ferias:11.11, decimo:8.33, dsr:0, outros:9.13 }, // 3,33% noturno + 5,8% Sistema S
+  real_12x36:      { fgts:8, inss:20, ferias:11.11, decimo:8.33, dsr:0, outros:9.13 },
 };
 
 function aplicarPresetRegime(chave){
