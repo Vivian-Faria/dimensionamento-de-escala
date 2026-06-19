@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260619141758">
+<meta name="version" content="v20260619143002">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2153,7 +2153,13 @@ async function abrirDispEscala(){
   const segBR=p2(seg.getDate())+'/'+p2(seg.getMonth()+1);
   const domBR=p2(dom.getDate())+'/'+p2(dom.getMonth()+1);
   const semana=segBR+'–'+domBR;
-  const nomes=S.colabs.map(c=>c.nome).sort();
+  // Filtrar apenas colaboradores ativos do hub atualmente selecionado
+  const _hca=getHubColabAtual();
+  const _colabsFiltrados=_hca?S.colabs.filter(c=>{
+    const hubsC=c.hubs&&c.hubs.length>0?c.hubs:[c.hub||'Sion'];
+    return hubsC.includes(_hca);
+  }):S.colabs;
+  const nomes=_colabsFiltrados.map(c=>c.nome).sort();
   // Sem timer — link sem expiração
   const dados={tipo:'grupo_hist_disp',histId:'semana_'+segISO,nomes,semana,semanaISO:segISO,segISO,apiUrl:getApiUrl()};
 
@@ -5654,7 +5660,14 @@ try {
     var shortCode=extrairParam(raw,'s');
     if(shortCode&&shortCode.length>=6){
       window._SHORT_CODE=shortCode;
+      try{ sessionStorage.setItem('_orion_short_code', shortCode); }catch(e){}
       history.replaceState(null,'',location.pathname);
+    } else {
+      // Sem hash: verificar se há um short code salvo desta navegação (sobrevive a refresh)
+      try{
+        var savedCode = sessionStorage.getItem('_orion_short_code');
+        if(savedCode) window._SHORT_CODE = savedCode;
+      }catch(e){}
     }
 
     if(temDados) history.replaceState(null,'',location.pathname);
@@ -7206,11 +7219,20 @@ function renderColHist(){
 (function(){
   try{
     const h = location.hash;
-    if(!h.startsWith('#disp=')) return;
-    const b64 = decodeURIComponent(h.slice(6));
-    const dados = JSON.parse(decodeURIComponent(escape(atob(b64))));
-    window._DISP_MODE = dados;
-    history.replaceState(null,'',location.pathname);
+    if(h.startsWith('#disp=')){
+      const b64 = decodeURIComponent(h.slice(6));
+      const dados = JSON.parse(decodeURIComponent(escape(atob(b64))));
+      window._DISP_MODE = dados;
+      // Persistir em sessionStorage para sobreviver a refresh sem expor o app de gestão
+      try{ sessionStorage.setItem('_orion_disp_mode', JSON.stringify(dados)); }catch(e){}
+      history.replaceState(null,'',location.pathname);
+      return;
+    }
+    // Sem hash: verificar se há um modo disp salvo de uma navegação anterior nesta aba
+    const saved = sessionStorage.getItem('_orion_disp_mode');
+    if(saved){
+      window._DISP_MODE = JSON.parse(saved);
+    }
   }catch(e){}
 })();
 
