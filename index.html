@@ -2166,7 +2166,7 @@ async function abrirDispEscala(){
   toast('Gerando link...','tok');
   const link=await criarLinkCurto(dados);
 
-  const msg='Oi pessoal! 👋\n\nInformem os dias que *não podem* trabalhar na semana *'+semana+'*:\n\n'+link+'\n\nVocês têm 2 minutos para responder. Obrigado!';
+  const msg='Bora fazer a escala da semana que vem! 👋\n\nInformem os dias que *não poderão* trabalhar na semana dos dias *'+semana+'*:\n\n'+link+'\n\nRespondam o mais rápido possível, por favor!';
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 
   localStorage.setItem('orion_v7_disptimer_semana_'+segISO,JSON.stringify({segISO}));
