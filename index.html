@@ -2504,6 +2504,11 @@ function preencher(){
         console.log('[Preencher/Fixo] Bloqueando',c.nome,'em',dia,'(marcou indisponível)');
         return;
       }
+      // Folga fixa cadastrada no perfil — bloqueia independente de resposta ao link
+      if(c.folgaFixa&&Array.isArray(c.folgaDias)&&c.folgaDias.includes(dia)){
+        console.log('[Preencher/Fixo] Bloqueando',c.nome,'em',dia,'(folga fixa cadastrada)');
+        return;
+      }
       // Resolve os blocos de turno: usa turnosFixos se preenchido, senão monta do cadastro
       const blocos=(c.turnosFixos&&c.turnosFixos.length)
         ? c.turnosFixos
@@ -2554,6 +2559,10 @@ function preencher(){
         const _dispColab = _dispSemana[c.nome];
         if(_dispColab && Array.isArray(_dispColab.diasIndisponiveis) && _dispColab.diasIndisponiveis.includes(dia)){
           console.log('[Preencher] Bloqueando', c.nome, 'em', dia, '(marcou indisponivel)');
+          return false;
+        }
+        // Folga fixa cadastrada no perfil (ex: colaboradores 6x1 que não respondem disponibilidade)
+        if(c.folgaFixa && Array.isArray(c.folgaDias) && c.folgaDias.includes(dia)){
           return false;
         }
         const dispH=c.dispDia?.[dia]||{horaIn:c.horaIn,horaOut:c.horaOut};
