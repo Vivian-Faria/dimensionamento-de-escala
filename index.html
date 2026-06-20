@@ -7830,7 +7830,11 @@ function renderConfirmacaoMode(d){
       return;
     }
     const savedLeilao = sessionStorage.getItem('_orion_leilao_id');
-    if(savedLeilao) window._LEILAO_HIST_ID = savedLeilao;
+    if(savedLeilao){
+      window._LEILAO_HIST_ID = savedLeilao;
+      const savedApi = sessionStorage.getItem('_orion_leilao_api');
+      if(savedApi) window._LEILAO_API_URL = savedApi;
+    }
   }catch(e){}
 })();
 
@@ -9100,11 +9104,15 @@ if(window._SHORT_CODE){
       if(d.ok&&d.payload){
         if(d.payload.apiUrl) localStorage.setItem('orion_api_url',d.payload.apiUrl);
         window._DISP_MODE=d.payload;
+        // Persistir o payload completo para sobreviver a refresh (resolução via API não roda de novo)
+        try{ sessionStorage.setItem('_orion_disp_mode', JSON.stringify(d.payload)); }catch(e){}
         const pd=d.payload;
         if(pd.tipo==='leilao'){
           // Leilão de horários
           window._LEILAO_HIST_ID=pd.histId;
           window._LEILAO_API_URL=pd.apiUrl||d.payload.apiUrl||localStorage.getItem('orion_api_url')||'';
+          try{ sessionStorage.setItem('_orion_leilao_id', pd.histId); }catch(e){}
+          try{ sessionStorage.setItem('_orion_leilao_api', window._LEILAO_API_URL||''); }catch(e){}
           renderLeilaoMode();
         } else if(pd.tipo==='confirmacao'){
           renderConfirmacaoMode(pd);
