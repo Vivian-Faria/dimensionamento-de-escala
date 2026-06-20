@@ -7823,9 +7823,14 @@ function renderConfirmacaoMode(d){
 (function(){
   try{
     const h = location.hash;
-    if(!h.startsWith('#leilao=')) return;
-    window._LEILAO_HIST_ID = decodeURIComponent(h.slice(8));
-    history.replaceState(null,'',location.pathname);
+    if(h.startsWith('#leilao=')){
+      window._LEILAO_HIST_ID = decodeURIComponent(h.slice(8));
+      try{ sessionStorage.setItem('_orion_leilao_id', window._LEILAO_HIST_ID); }catch(e){}
+      history.replaceState(null,'',location.pathname);
+      return;
+    }
+    const savedLeilao = sessionStorage.getItem('_orion_leilao_id');
+    if(savedLeilao) window._LEILAO_HIST_ID = savedLeilao;
   }catch(e){}
 })();
 
@@ -7888,7 +7893,7 @@ function renderLeilaoMode(){
 
   function renderPagina(){
     // Renderizar imediatamente do localStorage — sem await, sem bloqueio
-    const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+    const leilao=JSON.parse(localStorage.getItem(leilaoKey)||'[]').filter(t=>t.ofertadoPor!=='Sistema');
     const disponiveis=leilao.filter(t=>!t.pegoPor);
     const tomados=leilao.filter(t=>t.pegoPor);
 
@@ -9007,6 +9012,18 @@ function exportarIndicadores(){
 
 // ── Indicadores: inicialização
 load();
+// Limpar slots "Sistema" (sem cobertura automática) de leilões antigos
+try{
+  Object.keys(localStorage)
+    .filter(k=>k.startsWith('orion_v7_leilao_'))
+    .forEach(k=>{
+      try{
+        const arr=JSON.parse(localStorage.getItem(k)||'[]');
+        const limpo=arr.filter(t=>t.ofertadoPor!=='Sistema');
+        if(limpo.length!==arr.length) localStorage.setItem(k,JSON.stringify(limpo));
+      }catch(e){}
+    });
+}catch(e){}
 // Corrigir dados antigos: remover DS Delivery Mall do total
 try{
   const _raw=localStorage.getItem('orion_coleta');
