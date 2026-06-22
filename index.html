@@ -2839,7 +2839,14 @@ function renderEscala(){
   document.getElementById('esEmp').style.display='none';
   document.getElementById('esCon').style.display='block';
 
-  const{seg,dom}=proximaSemana();
+  // Usar a semana da escala salva (S.escalaSegISO) se disponível, senão próxima semana
+  let seg, dom;
+  if(S.escalaSegISO){
+    seg = new Date(S.escalaSegISO + 'T00:00:00');
+    dom = new Date(seg); dom.setDate(seg.getDate()+6);
+  } else {
+    const p=proximaSemana(); seg=p.seg; dom=p.dom;
+  }
   document.getElementById('esSub').textContent=`Semana de ${fmtBR(seg)} a ${fmtBR(dom)} · baseada na semana anterior`;
 
   // Cards semana
