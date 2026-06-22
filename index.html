@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260622160047">
+<meta name="version" content="v20260622160929">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4840,6 +4840,32 @@ function verEscalaHistorico(id){
   const hI = _regraHubHist ? _regraHubHist.horaMin : 8;
   const hO = _regraHubHist ? _regraHubHist.horaMax : 25;
 
+  // Calcular folgas de domingo 6x1 para visualização
+  const _folgas6x1Dom={};
+  try{
+    const colab6x1=(entrada.colabs||[]).filter(c=>{
+      const hubs=c.hubs&&c.hubs.length?c.hubs:[c.hub||'Sion'];
+      return hubs.includes('Varanda Sion')&&c.tipoContrato==='6x1';
+    }).map(c=>c.nome).sort();
+    if(colab6x1.length){
+      const segISO=entrada.semanaISO||entrada.segISO||'';
+      if(segISO){
+        const segD=new Date(segISO+'T00:00:00');
+        const domD=new Date(segD);domD.setDate(segD.getDate()+6);
+        const domISO=domD.toISOString().substring(0,10);
+        const [anoR,mesR]=[domD.getFullYear(),domD.getMonth()+1];
+        const domingos=[];
+        const dR=new Date(anoR,mesR-1,1);
+        while(dR.getMonth()===mesR-1){if(dR.getDay()===0)domingos.push(new Date(dR));dR.setDate(dR.getDate()+1);}
+        const p2=v=>String(v).padStart(2,'0');
+        colab6x1.forEach((nome,i)=>{
+          const fd=domingos[i%domingos.length];
+          if(fd&&fd.toISOString().substring(0,10)===domISO) _folgas6x1Dom[nome]=p2(fd.getDate())+'/'+p2(mesR);
+        });
+      }
+    }
+  }catch(e){}
+
   // Cores por colaborador
   const colabsUnicos=[...new Set(diasO.flatMap(d=>
     Object.values(entrada.escala[d]||{}).flatMap(c=>c.alocados||[])
@@ -4871,7 +4897,16 @@ function verEscalaHistorico(id){
   // Montar linhas: eixo Y = colaboradores, eixo X = dias (cada célula = bloco de horário)
   const linhas = colabsUnicos.map(nome=>{
     const cor = corColab[nome]||'#374151';
+    // Verificar se tem folga de domingo nesta semana
+    const folgaDom = _folgas6x1Dom[nome];
     const tds = diasO.map(dia=>{
+      // Domingo de folga 6x1
+      if(dia==='Dom'&&folgaDom){
+        return `<td class="turno" style="background:rgba(37,99,235,.07);border-left:3px solid #1d4ed8;text-align:center">
+          <span style="font-size:10px;color:#1d4ed8;font-weight:700">🏖 Folga</span>
+          <span style="font-size:9px;color:#6b7280;display:block">${folgaDom}</span>
+        </td>`;
+      }
       const blocos = turnosDoDia(nome, dia);
       if(!blocos.length) return '<td class="vazio">—</td>';
       const txt = blocos.map(b=>fH(b.ini)+'–'+fH(b.fim)).join(', ');
@@ -4884,6 +4919,7 @@ function verEscalaHistorico(id){
     return `<tr>
       <td class="colab" style="color:${cor}">
         <span class="dot" style="background:${cor}"></span>${nome}
+        ${folgaDom?'<span style="font-size:9px;color:#1d4ed8;margin-left:4px">🏖</span>':''}
       </td>
       ${tds}
     </tr>`;
