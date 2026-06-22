@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260622160929">
+<meta name="version" content="v20260622161343">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4840,6 +4840,9 @@ function verEscalaHistorico(id){
   const hI = _regraHubHist ? _regraHubHist.horaMin : 8;
   const hO = _regraHubHist ? _regraHubHist.horaMax : 25;
 
+  // Calcular segD (segunda da semana) para usar nos cabeçalhos e folgas
+  const segD = new Date((entrada.semanaISO||entrada.segISO||new Date().toISOString().substring(0,10))+'T00:00:00');
+
   // Calcular folgas de domingo 6x1 para visualização
   const _folgas6x1Dom={};
   try{
@@ -4850,8 +4853,8 @@ function verEscalaHistorico(id){
     if(colab6x1.length){
       const segISO=entrada.semanaISO||entrada.segISO||'';
       if(segISO){
-        const segD=new Date(segISO+'T00:00:00');
-        const domD=new Date(segD);domD.setDate(segD.getDate()+6);
+        const segD2=new Date(segISO+'T00:00:00');
+        const domD=new Date(segD2);domD.setDate(segD2.getDate()+6);
         const domISO=domD.toISOString().substring(0,10);
         const [anoR,mesR]=[domD.getFullYear(),domD.getMonth()+1];
         const domingos=[];
@@ -4989,7 +4992,12 @@ function verEscalaHistorico(id){
     <thead>
       <tr>
         <th class="th-colab">Colaborador</th>
-        ${diasO.map(d=>`<th class="th-dia">${d}</th>`).join('')}
+        ${diasO.map((d,i)=>{
+          const dataCol=new Date(segD);dataCol.setDate(segD.getDate()+i);
+          const p2=v=>String(v).padStart(2,'0');
+          const dataStr=p2(dataCol.getDate())+'/'+p2(dataCol.getMonth()+1);
+          return `<th class="th-dia">${d}<br><span style="font-size:9px;font-weight:400;opacity:.7">${dataStr}</span></th>`;
+        }).join('')}
       </tr>
     </thead>
     <tbody>
