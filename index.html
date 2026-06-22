@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260619143002">
+<meta name="version" content="v20260622123854">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2529,6 +2529,8 @@ function preencher(){
         console.log('[Preencher/Fixo] Bloqueando',c.nome,'em',dia,'(marcou indisponível)');
         return;
       }
+      // Folga fixa cadastrada no perfil
+      if(c.folgaFixa&&Array.isArray(c.folgaDias)&&c.folgaDias.includes(dia)) return;
       // Folga fixa cadastrada no perfil — bloqueia independente de resposta ao link
       if(c.folgaFixa&&Array.isArray(c.folgaDias)&&c.folgaDias.includes(dia)){
         console.log('[Preencher/Fixo] Bloqueando',c.nome,'em',dia,'(folga fixa cadastrada)');
@@ -2586,6 +2588,8 @@ function preencher(){
           console.log('[Preencher] Bloqueando', c.nome, 'em', dia, '(marcou indisponivel)');
           return false;
         }
+        // Folga fixa cadastrada no perfil (6x1 que não respondem disponibilidade)
+        if(c.folgaFixa&&Array.isArray(c.folgaDias)&&c.folgaDias.includes(dia)) return false;
         // Folga fixa cadastrada no perfil (ex: colaboradores 6x1 que não respondem disponibilidade)
         if(c.folgaFixa && Array.isArray(c.folgaDias) && c.folgaDias.includes(dia)){
           return false;
