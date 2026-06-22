@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260622123854">
+<meta name="version" content="v20260622160047">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -551,6 +551,10 @@ html,body{height:100%;font-family:var(--fn);font-size:13px;color:var(--tx);backg
   <div id="sideRegras" style="display:none"></div>
   <div id="sideFolgas"></div>
 
+  <div id="sideRodizio" style="display:none;margin-top:12px">
+    <div class="stit">🗓 Folgas de domingo (6x1)</div>
+    <div id="sideRodizioLista" style="font-size:10px;color:var(--mu);line-height:1.8"></div>
+  </div>
   <div class="stit" style="margin-top:16px">Dados coletados</div>
   <div style="font-size:11px;color:var(--mu);line-height:1.8">
     <div><span class="sb-dot" id="dDot" style="background:var(--or)"></span><span id="dLbl" style="font-weight:600;color:var(--tx)">Sem dados</span></div>
@@ -1104,6 +1108,45 @@ function p2(v){return String(v).padStart(2,'0');}
 function fmtISOlocal(d){return`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
 function diaDaSemanaLocal(dd,mm,yyyy){return DIAS[new Date(Number(yyyy),Number(mm)-1,Number(dd)).getDay()];}
 function salvarColetaLocal(dados){localStorage.setItem(KCOL,JSON.stringify(dados));return dados;}
+// ── Rodízio de domingos para colaboradores 6x1
+// Retorna o domingo (Date) de folga de um colaborador 6x1 no mês/ano fornecido
+function calcFolgaDomingo6x1(nomeColab, mesAno){
+  // Pegar todos os colaboradores 6x1 do Varanda, ordenados alfabeticamente
+  const colab6x1 = S.colabs.filter(c => {
+    const hubs = c.hubs && c.hubs.length ? c.hubs : [c.hub||'Sion'];
+    return hubs.includes('Varanda Sion') && c.tipoContrato === '6x1';
+  }).map(c => c.nome).sort();
+
+  if(!colab6x1.length) return null;
+
+  const idx = colab6x1.indexOf(nomeColab);
+  if(idx < 0) return null; // não é 6x1 do Varanda
+
+  // Pegar todos os domingos do mês
+  const [ano, mes] = mesAno ? mesAno.split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth()+1];
+  const domingos = [];
+  const d = new Date(ano, mes-1, 1);
+  while(d.getMonth() === mes-1){
+    if(d.getDay() === 0) domingos.push(new Date(d));
+    d.setDate(d.getDate()+1);
+  }
+
+  if(!domingos.length) return null;
+
+  // Distribuir em rodízio: colaborador idx folga no domingo (idx % domingos.length)
+  return domingos[idx % domingos.length];
+}
+
+// Verifica se um colaborador 6x1 tem folga no domingo de uma data específica
+function isFolgaDomingo6x1(nomeColab, dataISO){
+  const data = new Date(dataISO + 'T00:00:00');
+  if(data.getDay() !== 0) return false; // só domingos
+  const mesAno = dataISO.substring(0,7); // YYYY-MM
+  const folgaDate = calcFolgaDomingo6x1(nomeColab, mesAno);
+  if(!folgaDate) return false;
+  return folgaDate.toISOString().substring(0,10) === dataISO;
+}
+
 function totalColetaReal(d){
   if(!d) return 0;
   if(d.totalPorHub && Object.keys(d.totalPorHub).length){
@@ -2531,6 +2574,16 @@ function preencher(){
       }
       // Folga fixa cadastrada no perfil
       if(c.folgaFixa&&Array.isArray(c.folgaDias)&&c.folgaDias.includes(dia)) return;
+      // Rodízio de domingo para 6x1 do Varanda
+      if(dia==='Dom'&&c.tipoContrato==='6x1'){
+        const hubs=c.hubs&&c.hubs.length?c.hubs:[c.hub||'Sion'];
+        if(hubs.includes('Varanda Sion')&&S.escalaSegISO){
+          const segDate=new Date(S.escalaSegISO+'T00:00:00');
+          const domDate=new Date(segDate);domDate.setDate(segDate.getDate()+6);
+          const domISO=domDate.getFullYear()+'-'+String(domDate.getMonth()+1).padStart(2,'0')+'-'+String(domDate.getDate()).padStart(2,'0');
+          if(typeof isFolgaDomingo6x1==='function'&&isFolgaDomingo6x1(c.nome,domISO)) return;
+        }
+      }
       // Folga fixa cadastrada no perfil — bloqueia independente de resposta ao link
       if(c.folgaFixa&&Array.isArray(c.folgaDias)&&c.folgaDias.includes(dia)){
         console.log('[Preencher/Fixo] Bloqueando',c.nome,'em',dia,'(folga fixa cadastrada)');
@@ -2590,6 +2643,17 @@ function preencher(){
         }
         // Folga fixa cadastrada no perfil (6x1 que não respondem disponibilidade)
         if(c.folgaFixa&&Array.isArray(c.folgaDias)&&c.folgaDias.includes(dia)) return false;
+        // Rodízio de domingo para 6x1 do Varanda
+        if(dia==='Dom'&&c.tipoContrato==='6x1'){
+          const hubs=c.hubs&&c.hubs.length?c.hubs:[c.hub||'Sion'];
+          if(hubs.includes('Varanda Sion')&&S.escalaSegISO){
+            // Calcular a data real do domingo da semana projetada
+            const segDate=new Date(S.escalaSegISO+'T00:00:00');
+            const domDate=new Date(segDate);domDate.setDate(segDate.getDate()+6);
+            const domISO=domDate.getFullYear()+'-'+String(domDate.getMonth()+1).padStart(2,'0')+'-'+String(domDate.getDate()).padStart(2,'0');
+            if(typeof isFolgaDomingo6x1==='function'&&isFolgaDomingo6x1(c.nome,domISO)) return false;
+          }
+        }
         // Folga fixa cadastrada no perfil (ex: colaboradores 6x1 que não respondem disponibilidade)
         if(c.folgaFixa && Array.isArray(c.folgaDias) && c.folgaDias.includes(dia)){
           return false;
@@ -2979,6 +3043,34 @@ function renderEscala(){
     renderEscalaFiltrada(_diaFiltro);
   }
   atualizarCustoTotal();
+
+  // Rodízio de domingos 6x1 Varanda
+  try{
+    const colab6x1Varanda = S.colabs.filter(c=>{
+      const hubs=c.hubs&&c.hubs.length?c.hubs:[c.hub||'Sion'];
+      return hubs.includes('Varanda Sion')&&c.tipoContrato==='6x1';
+    }).map(c=>c.nome).sort();
+
+    const sideRod = document.getElementById('sideRodizio');
+    const sideRodLista = document.getElementById('sideRodizioLista');
+    if(sideRod && colab6x1Varanda.length > 0){
+      sideRod.style.display = 'block';
+      // Usar o mês da semana projetada
+      const mesRef = S.escalaSegISO ? S.escalaSegISO.substring(0,7) : null;
+      const [anoR, mesR] = mesRef ? mesRef.split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth()+1];
+      const domingos = [];
+      const dR = new Date(anoR, mesR-1, 1);
+      while(dR.getMonth()===mesR-1){if(dR.getDay()===0)domingos.push(new Date(dR));dR.setDate(dR.getDate()+1);}
+      const p2=v=>String(v).padStart(2,'0');
+      sideRodLista.innerHTML = colab6x1Varanda.map((nome,i)=>{
+        const dom = domingos[i%domingos.length];
+        const label = dom ? `${p2(dom.getDate())}/${p2(dom.getMonth()+1)}` : '—';
+        return `<div>• <strong>${nome}</strong>: dom ${label}</div>`;
+      }).join('');
+    } else if(sideRod){
+      sideRod.style.display = 'none';
+    }
+  }catch(e){}
 }
 
 // ══════════════════════════════════════════════════════
