@@ -2043,12 +2043,37 @@ async function buscarConfirmacoesAPI(){
     if(rl.ok&&rl.turnos?.length>0){
       const leilaoKey='orion_v7_leilao_'+ultima.id;
       const leilaoLocal=JSON.parse(localStorage.getItem(leilaoKey)||'[]');
+      let escalaAtualizada=false;
       rl.turnos.forEach(t=>{
         const dup=leilaoLocal.find(l=>l.dia===t.dia&&l.ini===t.ini&&l.ofertadoPor===t.ofertadoPor);
         if(!dup){leilaoLocal.push(t);}
         else if(t.pegoPor&&!dup.pegoPor){dup.pegoPor=t.pegoPor;dup.pegadoEm=t.pegadoEm;}
+        // Inserir na S.escala se tem pegoPor
+        if(t.pegoPor&&S.escala){
+          for(let h=t.ini;h<t.fim;h++){
+            const cell=S.escala?.[t.dia]?.[h];
+            if(!cell)continue;
+            // Remover quem ofertou (trocou o turno)
+            if(t.ofertadoPor&&t.ofertadoPor!=='Sistema')
+              cell.alocados=cell.alocados.filter(n=>n!==t.ofertadoPor);
+            // Adicionar quem pegou
+            if(!cell.alocados.includes(t.pegoPor))cell.alocados.push(t.pegoPor);
+          }
+          escalaAtualizada=true;
+        }
       });
       localStorage.setItem(leilaoKey,JSON.stringify(leilaoLocal));
+      // Salvar e renderizar escala atualizada
+      if(escalaAtualizada){
+        save();
+        if(typeof renderEscala==='function')renderEscala();
+        if(typeof calcularCustos==='function')calcularCustos();
+        // Atualizar histórico publicado
+        try{
+          const histLocal=JSON.parse(localStorage.getItem(KH)||'[]');
+          if(histLocal.length>0){histLocal[0].escala=JSON.parse(JSON.stringify(S.escala));localStorage.setItem(KH,JSON.stringify(histLocal));}
+        }catch(e){}
+      }
     }
 
     // Feedback
