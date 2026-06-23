@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260622161343">
+<meta name="version" content="v20260623153715">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1027,6 +1027,22 @@ const DB={
     return await supaUpsert('disponibilidades',{
       id,semana_iso:semanaISO,dados,updated_at:new Date().toISOString()
     });
+  },
+  // Coleta de pedidos
+  async getColeta(){
+    const rows=await supaGet('coletas','id=eq.coleta_atual');
+    if(rows===null)return null;
+    return rows.length>0?rows[0].dados:null;
+  },
+  async saveColeta(dados){
+    return await supaUpsert('coletas',{
+      id:'coleta_atual',
+      dados,
+      de:dados.de||null,
+      ate:dados.ate||null,
+      total:dados.total||0,
+      updated_at:new Date().toISOString()
+    });
   }
 };
 
@@ -1107,7 +1123,15 @@ const S={colabs:[],matrix:null,escala:null,editId:null};
 function p2(v){return String(v).padStart(2,'0');}
 function fmtISOlocal(d){return`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
 function diaDaSemanaLocal(dd,mm,yyyy){return DIAS[new Date(Number(yyyy),Number(mm)-1,Number(dd)).getDay()];}
-function salvarColetaLocal(dados){localStorage.setItem(KCOL,JSON.stringify(dados));return dados;}
+function salvarColetaLocal(dados){
+  localStorage.setItem(KCOL,JSON.stringify(dados));
+  // Salvar no Supabase para compartilhar entre dispositivos
+  DB.saveColeta(dados).then(ok=>{
+    if(ok) console.log('[Supa] Coleta salva no banco:',dados.total,'pedidos');
+    else console.warn('[Supa] Falha ao salvar coleta');
+  });
+  return dados;
+}
 // ── Rodízio de domingos para colaboradores 6x1
 // Retorna o domingo (Date) de folga de um colaborador 6x1 no mês/ano fornecido
 function calcFolgaDomingo6x1(nomeColab, mesAno){
@@ -1158,11 +1182,23 @@ function totalColetaReal(d){
 }
 function lerColetaLocal(){
   try{
-    const s=localStorage.getItem(KCOL);
-    if(!s)return null;
-    const p=JSON.parse(s);
-    return p?.mx&&typeof p.total==='number'?p:null;
+    const raw=localStorage.getItem(KCOL);
+    if(!raw)return null;
+    return JSON.parse(raw);
   }catch(e){return null;}
+}
+
+async function loadColetaFromSupa(){
+  try{
+    const dados=await DB.getColeta();
+    if(!dados)return false;
+    const local=lerColetaLocal();
+    if(!local||!local.ts||(dados.ts&&dados.ts>local.ts)){
+      localStorage.setItem(KCOL,JSON.stringify(dados));
+      console.log('[Supa] Coleta carregada do banco:',dados.total,'pedidos');
+    }
+    return true;
+  }catch(e){console.warn('[Supa] Erro coleta:',e.message);return false;}
 }
 function pedirDadosDaExtensao(timeout=2500){
   return new Promise(resolve=>{
@@ -9237,16 +9273,15 @@ try{
     const _ss=document.getElementById('sCoSub');if(_ss)_ss.textContent=`${_dc.deBR||''}→${_dc.ateBR||''}`;
   }
 }catch(e){}
-// Carregar colaboradores do Supabase (fonte principal)
-// Timeout de segurança: se Supabase demorar mais de 4s, renderiza com localStorage
+// Carregar dados do Supabase (fonte principal)
 const _renderTimeout = setTimeout(()=>{ renderCo();atualizarSideRegras(); }, 4000);
 (async()=>{
   try{
-    const loaded=await Promise.race([
-      loadColabsFromSupa(),
-      new Promise(r=>setTimeout(()=>r(false),5000))
+    const [colabsOk] = await Promise.race([
+      Promise.all([loadColabsFromSupa(), loadColetaFromSupa()]),
+      new Promise(r=>setTimeout(()=>r([false,false]),5000))
     ]);
-    if(!loaded) await migrarLocalStorageParaSupa();
+    if(!colabsOk) await migrarLocalStorageParaSupa();
   }catch(e){ console.warn('[Init] Supabase falhou:',e.message); }
   clearTimeout(_renderTimeout);
   renderCo();atualizarSideRegras();
