@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260626215319">
+<meta name="version" content="v20260626220150">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4638,14 +4638,16 @@ function renderHistorico(filtro){
             <input type="text" placeholder="09:00"
               value="${fmtHorarioInput(t.ini)}"
               style="width:52px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
-              onchange="editarIniTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseHorario(this.value))"
-              title="Hora de início (ex: 09:30)">
+              onblur="editarIniTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseHorario(this.value))"
+              onkeydown="if(event.key==='Enter')this.blur()"
+              title="Hora de início (ex: 09:30) — pressione Enter para salvar">
             <label style="font-size:10px;color:var(--mu)">Fim</label>
             <input type="text" placeholder="18:00"
               value="${fmtHorarioInput(t.fim)}"
               style="width:52px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
-              onchange="editarFimTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseHorario(this.value))"
-              title="Hora de fim (ex: 22:30)">
+              onblur="editarFimTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseHorario(this.value))"
+              onkeydown="if(event.key==='Enter')this.blur()"
+              title="Hora de fim (ex: 22:30) — pressione Enter para salvar">
           </div>
           <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px">
             <input type="checkbox" ${t.faltou?'checked':''}
@@ -5391,11 +5393,13 @@ function editarIniTurno(histId, nome, iniAntigo, dia, novoIni){
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const h=hist.find(x=>x.id===histId);
   if(!h||!h.confirmacoes?.[nome]) return;
-  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===iniAntigo);
-  if(!t||novoIni>=t.fim) return;
+  // Busca pelo turno com tolerância (ini pode ter sido editado antes)
+  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&Math.abs(x.ini-iniAntigo)<0.01);
+  if(!t) return;
+  if(novoIni>=t.fim) return;
   _khSnapshot('editar início');
   t.ini=novoIni;
-  t.horas=t.fim-t.ini;
+  t.horas=Math.round((t.fim-t.ini)*100)/100;
   recalcularCustoHist(h);
   localStorage.setItem(KH,JSON.stringify(hist));
   _atualizarBtnDesfazer();
@@ -5411,11 +5415,11 @@ function editarFimTurno(histId, nome, ini, dia, novoFim){
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const h=hist.find(x=>x.id===histId);
   if(!h||!h.confirmacoes?.[nome]) return;
-  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&x.ini===ini);
+  const t=h.confirmacoes[nome].turnos?.find(x=>x.dia===dia&&Math.abs(x.ini-ini)<0.01);
   if(!t||novoFim<=t.ini) return;
   _khSnapshot('editar fim');
   t.fim=novoFim;
-  t.horas=t.fim-t.ini;
+  t.horas=Math.round((t.fim-t.ini)*100)/100;
   recalcularCustoHist(h);
   localStorage.setItem(KH,JSON.stringify(hist));
   _atualizarBtnDesfazer();
