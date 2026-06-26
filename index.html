@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260623153715">
+<meta name="version" content="v20260626213703">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1426,7 +1426,34 @@ function proximaSemana(){
 }
 function fmtISO(d){return fmtISOlocal(d);}
 function fmtBR(d){return`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;}
-function fH(h){const r=h<24?h:h-24;return String(r).padStart(2,'0')+':00';}
+
+// Parseia horário digitado para número decimal
+// "09:30" → 9.5 | "22:20" → 22.333 | "9" → 9 | "25" → 25 (01:00+1d)
+function parseHorario(str){
+  if(str===''||str===null||str===undefined) return null;
+  str = String(str).trim().replace(',','.');
+  if(str.includes(':')){
+    const [h,m] = str.split(':');
+    return parseInt(h) + (parseInt(m)||0)/60;
+  }
+  return parseFloat(str)||0;
+}
+
+// Formata decimal para input (ex: 9.5 → "09:30")
+function fmtHorarioInput(h){
+  if(h===null||h===undefined||isNaN(h)) return '';
+  const r = h >= 24 ? h - 24 : h;
+  const hInt = Math.floor(r);
+  const min = Math.round((r - hInt) * 60);
+  return String(hInt).padStart(2,'0') + ':' + String(min).padStart(2,'0');
+}
+function fH(h){
+  // Suporta horários decimais: 9.5 → "09:30", 22.33 → "22:20"
+  const r = h >= 24 ? h - 24 : h;
+  const hInt = Math.floor(r);
+  const min = Math.round((r - hInt) * 60);
+  return String(hInt).padStart(2,'0') + ':' + String(min).padStart(2,'0');
+}
 
 // ══════════════════════════════════════════════════════
 // BANNER / INSTRUCOES
@@ -3504,8 +3531,7 @@ function abrirLancarTurno(){
   const hMax=_regraHub?_regraHub.horaMax:(+document.getElementById('cHO').value||25);
 
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const opcoesHora=[];
-  for(let h=hMin;h<=hMax;h++) opcoesHora.push(`<option value="${h}">${fH(h)}</option>`);
+  // opcoesHora removido — usando inputs de texto livres
 
   let overlay=document.getElementById('lancarTurnoModal');
   if(overlay) overlay.remove();
@@ -3527,12 +3553,12 @@ function abrirLancarTurno(){
       </div>
       <div style="display:flex;gap:10px">
         <div class="fg" style="flex:1">
-          <label>Início</label>
-          <select id="ltIni" style="width:100%">${opcoesHora}</select>
+          <label>Início (ex: 09:30)</label>
+          <input id="ltIni" type="text" placeholder="09:00" style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
         </div>
         <div class="fg" style="flex:1">
-          <label>Fim</label>
-          <select id="ltFim" style="width:100%">${opcoesHora}</select>
+          <label>Fim (ex: 22:30)</label>
+          <input id="ltFim" type="text" placeholder="18:00" style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
         </div>
       </div>
       <div class="fg">
@@ -3562,33 +3588,47 @@ function abrirLancarTurno(){
 
   // Default: fim = início + 8h (ou hMax se exceder)
   const fimSel=document.getElementById('ltFim');
-  fimSel.value=Math.min(hMin+8,hMax);
+  fimSel.value=fmtHorarioInput(Math.min(hMin+8,hMax));
+  document.getElementById('ltIni').value=fmtHorarioInput(hMin);
 }
 
 function confirmarLancarTurno(){
   const nome=document.getElementById('ltColab').value;
-  const ini=+document.getElementById('ltIni').value;
-  const fim=+document.getElementById('ltFim').value;
+  const ini=parseHorario(document.getElementById('ltIni').value);
+  const fim=parseHorario(document.getElementById('ltFim').value);
   const dias=[...document.querySelectorAll('#ltDias .folga-dia.on')].map(el=>el.dataset.dia);
 
   if(!nome){toast('Selecione um colaborador.','ter');return;}
+  if(ini===null||fim===null||isNaN(ini)||isNaN(fim)){toast('Horário inválido (ex: 09:30).','ter');return;}
   if(fim<=ini){toast('O horário de fim deve ser maior que o início.','ter');return;}
   if(!dias.length){toast('Selecione ao menos um dia.','ter');return;}
 
+  // Alocação com suporte a horários decimais
+  // Armazena como turno com ini/fim decimal na célula da hora inteira mais próxima
   let totalSlots=0;
   dias.forEach(dia=>{
-    for(let h=ini;h<fim;h++){
+    // Guardar turno decimal no primeiro slot
+    const hIniInt = Math.floor(ini);
+    const hFimInt = Math.ceil(fim);
+    for(let h=hIniInt;h<hFimInt;h++){
       const cell=S.escala[dia]?.[h];
       if(cell&&!cell.alocados.includes(nome)){
         cell.alocados.push(nome);
         totalSlots++;
       }
     }
+    // Guardar horário decimal no estado para exibição correta
+    if(!S._turnosDecimais) S._turnosDecimais={};
+    const key=dia+'|'+nome;
+    if(!S._turnosDecimais[key]) S._turnosDecimais[key]=[];
+    // Remover turno existente no mesmo intervalo
+    S._turnosDecimais[key]=S._turnosDecimais[key].filter(t=>t.fim<=ini||t.ini>=fim);
+    S._turnosDecimais[key].push({ini,fim});
   });
 
   calcularCustos();save();renderEscala();
   document.getElementById('lancarTurnoModal').remove();
-  toast(`✓ ${nome}: ${fH(ini)}–${fH(fim)} lançado em ${dias.length} dia(s) (${totalSlots} slots).`,'tok');
+  toast(`✓ ${nome}: ${fH(ini)}–${fH(fim)} lançado em ${dias.length} dia(s).`,'tok');
 }
 
 // ── Presets de regime tributário
@@ -4595,17 +4635,17 @@ function renderHistorico(filtro){
             style="display:none;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:5px;padding:2px 8px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0">🗑</button>
           <div class="turno-edit-campos" style="display:none;align-items:center;gap:4px;margin-left:4px">
             <label style="font-size:10px;color:var(--mu)">Ini</label>
-            <input type="number" min="0" max="25" step="1"
-              value="${t.ini}"
-              style="width:42px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
-              onchange="editarIniTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseInt(this.value))"
-              title="Hora de início (0-25)">
+            <input type="text" placeholder="09:00"
+              value="${fmtHorarioInput(t.ini)}"
+              style="width:52px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
+              onchange="editarIniTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseHorario(this.value))"
+              title="Hora de início (ex: 09:30)">
             <label style="font-size:10px;color:var(--mu)">Fim</label>
-            <input type="number" min="0" max="26" step="1"
-              value="${t.fim}"
-              style="width:42px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
-              onchange="editarFimTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseInt(this.value))"
-              title="Hora de fim (ex: 25=01:00)">
+            <input type="text" placeholder="18:00"
+              value="${fmtHorarioInput(t.fim)}"
+              style="width:52px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
+              onchange="editarFimTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseHorario(this.value))"
+              title="Hora de fim (ex: 22:30)">
           </div>
           <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px">
             <input type="checkbox" ${t.faltou?'checked':''}
@@ -5333,7 +5373,7 @@ function salvarComCusto(hist, histId, label){
 }
 
 function editarIniTurno(histId, nome, iniAntigo, dia, novoIni){
-  if(isNaN(novoIni)||novoIni<0||novoIni>25) return;
+  if(novoIni===null||isNaN(novoIni)||novoIni<0) return;
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const h=hist.find(x=>x.id===histId);
   if(!h||!h.confirmacoes?.[nome]) return;
@@ -5349,11 +5389,11 @@ function editarIniTurno(histId, nome, iniAntigo, dia, novoIni){
   renderHistorico();
   _reabrirCards(abertos);
   setTimeout(()=>toggleEditarTurnos(histId,nome),50);
-  toast(`✏ ${nome} ${dia}: início ${String(novoIni>=24?novoIni-24:novoIni).padStart(2,'0')}:00`,'tok');
+  toast(`✏ ${nome} ${dia}: início ${fH(novoIni)}`,'tok');
 }
 
 function editarFimTurno(histId, nome, ini, dia, novoFim){
-  if(isNaN(novoFim)||novoFim<=0||novoFim>26) return;
+  if(novoFim===null||isNaN(novoFim)||novoFim<=0) return;
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
   const h=hist.find(x=>x.id===histId);
   if(!h||!h.confirmacoes?.[nome]) return;
@@ -5369,7 +5409,7 @@ function editarFimTurno(histId, nome, ini, dia, novoFim){
   renderHistorico();
   _reabrirCards(abertos);
   setTimeout(()=>toggleEditarTurnos(histId,nome),50);
-  toast(`✏ ${nome} ${dia}: fim ${String(novoFim>=24?novoFim-24:novoFim).padStart(2,'0')}:00`,'tok');
+  toast(`✏ ${nome} ${dia}: fim ${fH(novoFim)}`,'tok');
 }
 
 function _getAbertos(){
@@ -5557,11 +5597,11 @@ function adicionarTurnoHist(histId, nome){
       <div style="display:flex;gap:8px">
         <div style="flex:1">
           <label style="font-size:11px;color:var(--mu)">Início (h)</label>
-          <input id="_addIni" type="number" min="0" max="25" value="9" style="width:100%;margin-top:3px;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
+          <input id="_addIni" type="text" placeholder="09:00" value="09:00" style="width:100%;margin-top:3px;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
         </div>
         <div style="flex:1">
           <label style="font-size:11px;color:var(--mu)">Fim (h)</label>
-          <input id="_addFim" type="number" min="1" max="26" value="18" style="width:100%;margin-top:3px;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
+          <input id="_addFim" type="text" placeholder="18:00" value="18:00" style="width:100%;margin-top:3px;padding:8px;border:1px solid var(--brd);border-radius:8px;font-size:13px;font-family:inherit;background:var(--card2);color:var(--tx)">
         </div>
       </div>
     </div>
@@ -5578,9 +5618,9 @@ function adicionarTurnoHist(histId, nome){
 
 function _confirmarAdicionarTurno(histId, nome){
   const dia=document.getElementById('_addDia')?.value;
-  const ini=parseInt(document.getElementById('_addIni')?.value);
-  const fim=parseInt(document.getElementById('_addFim')?.value);
-  if(!dia||isNaN(ini)||isNaN(fim)||fim<=ini){toast('Horário inválido — fim deve ser maior que início','ter');return;}
+  const ini=parseHorario(document.getElementById('_addIni')?.value);
+  const fim=parseHorario(document.getElementById('_addFim')?.value);
+  if(!dia||ini===null||fim===null||isNaN(ini)||isNaN(fim)||fim<=ini){toast('Horário inválido — fim deve ser maior que início (ex: 09:30)','ter');return;}
   document.querySelectorAll('[style*="fixed"][style*="z-index:99999"]').forEach(el=>el.remove());
 
   const hist=JSON.parse(localStorage.getItem(KH)||'[]');
@@ -5589,7 +5629,7 @@ function _confirmarAdicionarTurno(histId, nome){
   _khSnapshot('adicionar turno');
   if(!h.confirmacoes[nome].turnos) h.confirmacoes[nome].turnos=[];
 
-  const horas=fim-ini;
+  const horas=Math.round((fim-ini)*100)/100; // suporte decimal
   const novoTurno={dia,ini,fim,horas,faltou:false,horasAbatidas:0};
   const DIAS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   h.confirmacoes[nome].turnos.push(novoTurno);
