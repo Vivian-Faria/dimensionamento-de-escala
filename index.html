@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260626220150">
+<meta name="version" content="v20260626220732">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4635,19 +4635,22 @@ function renderHistorico(filtro){
             style="display:none;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:5px;padding:2px 8px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0">🗑</button>
           <div class="turno-edit-campos" style="display:none;align-items:center;gap:4px;margin-left:4px">
             <label style="font-size:10px;color:var(--mu)">Ini</label>
-            <input type="text" placeholder="09:00"
-              value="${fmtHorarioInput(t.ini)}"
-              style="width:52px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
-              onblur="editarIniTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseHorario(this.value))"
-              onkeydown="if(event.key==='Enter')this.blur()"
-              title="Hora de início (ex: 09:30) — pressione Enter para salvar">
+            <input type="text" placeholder="${fmtHorarioInput(t.ini)}"
+              id="ini_${h.id}_${nomeOnclick.replace(/\s/g,'_')}_${t.dia}_${t.ini}"
+              style="width:52px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)">
             <label style="font-size:10px;color:var(--mu)">Fim</label>
-            <input type="text" placeholder="18:00"
-              value="${fmtHorarioInput(t.fim)}"
-              style="width:52px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)"
-              onblur="editarFimTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',parseHorario(this.value))"
-              onkeydown="if(event.key==='Enter')this.blur()"
-              title="Hora de fim (ex: 22:30) — pressione Enter para salvar">
+            <input type="text" placeholder="${fmtHorarioInput(t.fim)}"
+              id="fim_${h.id}_${nomeOnclick.replace(/\s/g,'_')}_${t.dia}_${t.ini}"
+              style="width:52px;padding:2px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;font-family:var(--fn)">
+            <button onclick="(()=>{
+              const ini=parseHorario(document.getElementById('ini_${h.id}_${nomeOnclick.replace(/\s/g,'_')}_${t.dia}_${t.ini}').value||'${fmtHorarioInput(t.ini)}');
+              const fim=parseHorario(document.getElementById('fim_${h.id}_${nomeOnclick.replace(/\s/g,'_')}_${t.dia}_${t.ini}').value||'${fmtHorarioInput(t.fim)}');
+              if(ini!==null&&fim!==null&&fim>ini){
+                editarIniTurno('${h.id}','${nomeOnclick}',${t.ini},'${t.dia}',ini);
+                setTimeout(()=>editarFimTurno('${h.id}','${nomeOnclick}',ini,'${t.dia}',fim),100);
+              } else { toast('Horário inválido','ter'); }
+            })()"
+            style="background:#16a34a;color:#fff;border:none;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;font-weight:700">✓</button>
           </div>
           <label style="display:flex;align-items:center;gap:4px;margin-left:auto;cursor:pointer;font-size:11px">
             <input type="checkbox" ${t.faltou?'checked':''}
