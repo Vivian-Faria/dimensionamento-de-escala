@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260626213703">
+<meta name="version" content="v20260626215319">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4976,14 +4976,25 @@ function verEscalaHistorico(id){
   // Montar linhas: eixo Y = colaboradores, eixo X = dias (cada célula = bloco de horário)
   const linhas = colabsUnicos.map(nome=>{
     const cor = corColab[nome]||'#374151';
-    // Verificar se tem folga de domingo nesta semana
+    // Verificar folga de domingo 6x1 (rodízio)
     const folgaDom = _folgas6x1Dom[nome];
+    // Buscar folgas semanais do colaborador
+    const colabData = (entrada.colabs||[]).find(c=>c.nome===nome);
+    const folgasDias = colabData?.folgaDias||[];
+    const folgaFixa = colabData?.folgaFixa||false;
     const tds = diasO.map(dia=>{
-      // Domingo de folga 6x1
+      // Domingo de folga 6x1 (rodízio)
       if(dia==='Dom'&&folgaDom){
         return `<td class="turno" style="background:rgba(37,99,235,.07);border-left:3px solid #1d4ed8;text-align:center">
           <span style="font-size:10px;color:#1d4ed8;font-weight:700">🏖 Folga</span>
           <span style="font-size:9px;color:#6b7280;display:block">${folgaDom}</span>
+        </td>`;
+      }
+      // Folga semanal cadastrada no perfil
+      if(folgasDias.includes(dia)){
+        const ico=folgaFixa?'🔒':'🏖';
+        return `<td class="turno" style="background:rgba(107,114,128,.06);border-left:3px solid #d1d5db;text-align:center">
+          <span style="font-size:10px;color:#9ca3af;font-weight:700">${ico} Folga</span>
         </td>`;
       }
       const blocos = turnosDoDia(nome, dia);
@@ -4992,12 +5003,15 @@ function verEscalaHistorico(id){
       const horas = blocos.reduce((s,b)=>s+(b.fim-b.ini),0);
       return `<td class="turno" style="border-left:3px solid ${cor}">
         <span class="t-hrs">${txt}</span>
-        <span class="t-h">${horas}h</span>
+        <span class="t-h">${Math.round(horas*100)/100}h</span>
       </td>`;
     }).join('');
+    const folgaLabel = folgasDias.length>0
+      ? ` <span style="font-size:8px;color:#9ca3af">${folgaFixa?'🔒':'🏖'} ${folgasDias.map(d=>d==='Sab'?'Sáb':d).join(', ')}</span>`
+      : '';
     return `<tr>
       <td class="colab" style="color:${cor}">
-        <span class="dot" style="background:${cor}"></span>${nome}
+        <span class="dot" style="background:${cor}"></span>${nome}${folgaLabel}
         ${folgaDom?'<span style="font-size:9px;color:#1d4ed8;margin-left:4px">🏖</span>':''}
       </td>
       ${tds}
