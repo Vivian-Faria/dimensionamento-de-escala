@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260630154848">
+<meta name="version" content="v20260630162808">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1829,6 +1829,11 @@ function horaPermitidaHub(hub, hora){
 
 function gerarEscala(dados, hubFiltro){
   if(dados) S.params = dados; // salva para re-uso ao navegar semanas
+  // Persistir a coleta recebida (mescla com Supabase e localStorage) — sem isso,
+  // dados vindos via hash/bookmarklet nunca eram salvos, ficando presos na sessão
+  if(dados && dados.mx && typeof dados.total === 'number'){
+    salvarColetaLocal(dados).catch(e=>console.warn('[gerarEscala] Falha ao persistir coleta:', e.message));
+  }
   // Salvar segISO da semana sendo gerada para preencher() usar a chave certa de disponibilidade
   try{
     const {seg:_sg}=proximaSemana();
