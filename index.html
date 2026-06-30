@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260630141523">
+<meta name="version" content="v20260630154848">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1123,13 +1123,50 @@ const S={colabs:[],matrix:null,escala:null,editId:null};
 function p2(v){return String(v).padStart(2,'0');}
 function fmtISOlocal(d){return`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
 function diaDaSemanaLocal(dd,mm,yyyy){return DIAS[new Date(Number(yyyy),Number(mm)-1,Number(dd)).getDay()];}
-function salvarColetaLocal(dados){
+async function salvarColetaLocal(dados){
+  // Buscar a coleta mais recente (Supabase tem prioridade — pode ter sido
+  // atualizada por outro dispositivo desde a última leitura local)
+  let existente = null;
+  try{
+    const remoto = await DB.getColeta();
+    const local = JSON.parse(localStorage.getItem(KCOL)||'null');
+    existente = (remoto && local) ? ((remoto.ts||0) >= (local.ts||0) ? remoto : local) : (remoto || local);
+  }catch(e){
+    try{ existente = JSON.parse(localStorage.getItem(KCOL)||'null'); }catch(e2){}
+  }
+
+  // Mesclar por hub: nunca perder hubs que não vieram nesta nova coleta
+  if(existente && existente.de === dados.de && existente.ate === dados.ate){
+    const mxPorHubMesclado = Object.assign({}, existente.mxPorHub||{}, dados.mxPorHub||{});
+    const totalPorHubMesclado = Object.assign({}, existente.totalPorHub||{}, dados.totalPorHub||{});
+    const totalMesclado = Object.values(totalPorHubMesclado).reduce((s,v)=>s+v,0);
+
+    // Recalcular mx geral a partir do mxPorHub mesclado (fonte única da verdade — evita dupla contagem)
+    const DIAS_=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];
+    const p2_=v=>String(v).padStart(2,'0');
+    const mxRecalc = {};
+    DIAS_.forEach(d=>{ mxRecalc[d]={}; for(let h=0;h<30;h++) mxRecalc[d][p2_(h)]=0; });
+    Object.entries(mxPorHubMesclado).forEach(([hub,mxHub])=>{
+      DIAS_.forEach(d=>{
+        for(let h=0;h<30;h++){
+          const hk=p2_(h);
+          mxRecalc[d][hk]+=(mxHub[d]?.[hk]||0);
+        }
+      });
+    });
+
+    dados = Object.assign({}, dados, {
+      mx: mxRecalc, mxPorHub: mxPorHubMesclado, totalPorHub: totalPorHubMesclado, total: totalMesclado,
+    });
+    console.log('[Coleta] Mesclado. Hubs:', Object.keys(mxPorHubMesclado), 'Total:', totalMesclado);
+  } else if(existente){
+    console.log('[Coleta] Período diferente — substituindo (nova semana).');
+  }
+
   localStorage.setItem(KCOL,JSON.stringify(dados));
-  // Salvar no Supabase para compartilhar entre dispositivos
-  DB.saveColeta(dados).then(ok=>{
-    if(ok) console.log('[Supa] Coleta salva no banco:',dados.total,'pedidos');
-    else console.warn('[Supa] Falha ao salvar coleta');
-  });
+  const ok = await DB.saveColeta(dados);
+  if(ok) console.log('[Supa] Coleta salva:',dados.total,'pedidos, hubs:',Object.keys(dados.totalPorHub||{}));
+  else console.warn('[Supa] Falha ao salvar coleta');
   return dados;
 }
 // ── Rodízio de domingos para colaboradores 6x1
@@ -1558,7 +1595,7 @@ async function iniciarColeta(){
   if (btnCol) { btnCol.textContent = '↻ Coletar dados'; btnCol.disabled = false; }
 
   if (dados) {
-    salvarColetaLocal(dados);
+    await salvarColetaLocal(dados);
     toast('✓ Dados recebidos! Clique em ⚡ Montar escala.', 'tok');
   } else {
     // Mostrar instruções
@@ -1575,9 +1612,20 @@ function hubVisivel(h){ return !HUB_EXCLUIR.has(h); }
 // Seletor multi-hub antes de montar escala
 let _hubsSelecionados = new Set();
 
-function abrirSeletorHub(){
+async function abrirSeletorHub(){
   const drop = document.getElementById('hubSeletorDrop');
   const lista = document.getElementById('hubSeletorLista');
+
+  // Mostrar loading rápido enquanto busca dados atualizados do Supabase
+  const isOpenAntes = drop.style.display !== 'none';
+  if(!isOpenAntes){
+    lista.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--mu)">Carregando dados...</div>';
+    drop.style.display = 'block';
+  }
+
+  // Buscar coleta atualizada do Supabase e sincronizar com localStorage
+  try{ await loadColetaFromSupa(); }catch(e){}
+
   const raw = localStorage.getItem('orion_coleta');
   // Hubs fixos que sempre aparecem (mesmo sem dados coletados)
   const HUBS_FIXOS = ['Varanda Sion'];
@@ -1608,9 +1656,7 @@ function abrirSeletorHub(){
       +'</label>';
   }).join('');
 
-  const isOpen = drop.style.display !== 'none';
-  drop.style.display = isOpen ? 'none' : 'block';
-  if(!isOpen){
+  if(!isOpenAntes){
     // Fechar ao clicar fora — usar um único listener com cleanup garantido
     if(window._hubDropListener) document.removeEventListener('click', window._hubDropListener);
     window._hubDropListener = function(e){
@@ -1694,7 +1740,7 @@ async function montarEscala(hubFiltro){
       if(hubKey&&mxPorHub[hubKey]&&mxPorHub[hubKey][dia]&&mxPorHub[hubKey][dia][hk]!==undefined){mxPorHub[hubKey][dia][hk]++;totalPorHub[hubKey]++;}
     });
     dados={mx,total,mxPorHub,totalPorHub,de:fmtISO(segAnt),ate:fmtISO(domAnt),deBR:fmtBR(segAnt),ateBR:fmtBR(domAnt),ts:Date.now()};
-    salvarColetaLocal(dados);
+    await salvarColetaLocal(dados);
   }catch(e){}
 
   // ESTRATÉGIA 4: Cache local (dados coletados anteriormente)
