@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260626220732">
+<meta name="version" content="v20260630141523">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1323,6 +1323,7 @@ function save(){
     if(S.matrix)localStorage.setItem(KM,JSON.stringify(S.matrix));
     if(S.escala)localStorage.setItem(KE,JSON.stringify(S.escala));
     if(S.hubAtual!==undefined)localStorage.setItem('orion_v7_hub',JSON.stringify({hubAtual:S.hubAtual,hubFiltro:S._hubFiltroAtual||null}));
+    if(S._turnosDecimais)localStorage.setItem('orion_v7_turnosdec',JSON.stringify(S._turnosDecimais));
   }catch(e){}
 }
 
@@ -1350,6 +1351,8 @@ function load(){
     const hubSalvo=localStorage.getItem('orion_v7_hub');
     if(hubSalvo){try{const hd=JSON.parse(hubSalvo);S.hubAtual=hd.hubAtual;S._hubFiltroAtual=hd.hubFiltro;}catch(e){}}
     try{ _inv12x36=parseInt(localStorage.getItem('orion_v7_inv12x36')||'0')||0; }catch(e){}
+    const td=localStorage.getItem('orion_v7_turnosdec');
+    if(td){try{S._turnosDecimais=JSON.parse(td);}catch(e){}}
   }catch(err){S.colabs=JSON.parse(JSON.stringify(COLAB_DEF));}
 }
 
@@ -3945,7 +3948,7 @@ function abrirPainelTurnos(){
   });
 
   // Para cada dia de cada colaborador, agrupa horas consecutivas em turnos
-  function agruparConsecutivos(horas){
+  function agruparConsecutivos(horas, nome, dia){
     if(!horas||!horas.length)return[];
     const sorted=[...horas].sort((a,b)=>a-b);
     const grupos=[];let g=[sorted[0]];
@@ -3954,7 +3957,18 @@ function abrirPainelTurnos(){
       else{grupos.push(g);g=[sorted[i]];}
     }
     grupos.push(g);
-    return grupos.map(gr=>({ini:gr[0],fim:gr[gr.length-1]+1,horas:gr.length}));
+    const blocos=grupos.map(gr=>({ini:gr[0],fim:gr[gr.length-1]+1,horas:gr.length}));
+    if(S._turnosDecimais&&nome&&dia){
+      const key=dia+'|'+nome;
+      const decimais=S._turnosDecimais[key];
+      if(decimais&&decimais.length){
+        return blocos.map(b=>{
+          const match=decimais.find(d=>Math.floor(d.ini)<=b.ini&&Math.ceil(d.fim)>=b.fim);
+          return match ? {ini:match.ini,fim:match.fim,horas:Math.round((match.fim-match.ini)*100)/100} : b;
+        });
+      }
+    }
+    return blocos;
   }
 
   // Gera data real de cada dia da semana projetada
@@ -3972,7 +3986,7 @@ function abrirPainelTurnos(){
     const diasTurno=diasO.filter(d=>turnos[nome][d]);
     let totalH=0;
     let diasHtml=diasTurno.map(dia=>{
-      const grupos=agruparConsecutivos(turnos[nome][dia]);
+      const grupos=agruparConsecutivos(turnos[nome][dia], nome, dia);
       return grupos.map(gr=>{
         totalH+=gr.horas;
         const dr=dataReal(dia);
@@ -4249,7 +4263,7 @@ function copiarTurno(nome){
   const diasO=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const {seg}=proximaSemana();
 
-  function agruparConsecutivos(horas){
+  function agruparConsecutivos(horas, nome, dia){
     if(!horas||!horas.length)return[];
     const sorted=[...horas].sort((a,b)=>a-b);
     const grupos=[];let g=[sorted[0]];
@@ -4258,7 +4272,18 @@ function copiarTurno(nome){
       else{grupos.push(g);g=[sorted[i]];}
     }
     grupos.push(g);
-    return grupos.map(gr=>({ini:gr[0],fim:gr[gr.length-1]+1,horas:gr.length}));
+    const blocos=grupos.map(gr=>({ini:gr[0],fim:gr[gr.length-1]+1,horas:gr.length}));
+    if(S._turnosDecimais&&nome&&dia){
+      const key=dia+'|'+nome;
+      const decimais=S._turnosDecimais[key];
+      if(decimais&&decimais.length){
+        return blocos.map(b=>{
+          const match=decimais.find(d=>Math.floor(d.ini)<=b.ini&&Math.ceil(d.fim)>=b.fim);
+          return match ? {ini:match.ini,fim:match.fim,horas:Math.round((match.fim-match.ini)*100)/100} : b;
+        });
+      }
+    }
+    return blocos;
   }
 
   const c=S.colabs.find(x=>x.nome===nome);
@@ -4277,7 +4302,7 @@ function copiarTurno(nome){
       if(cell&&cell.alocados.includes(nome))cell_horas.push(h);
     }
     if(!cell_horas.length)return;
-    const grupos=agruparConsecutivos(cell_horas);
+    const grupos=agruparConsecutivos(cell_horas, nome, dia);
     const d=new Date(seg);d.setDate(seg.getDate()+di);
     const dr=d.getDate().toString().padStart(2,'0')+'/'+(d.getMonth()+1).toString().padStart(2,'0');
     grupos.forEach(gr=>{
@@ -4382,11 +4407,27 @@ function publicarEscala(){
       }
       turnosDoColab.push({dia,ini:g[0],fim:g[g.length-1]+1,horas:g.length,faltou:false,horasAbatidas:0});
     });
+    // Sobrepor horários decimais (ex: lançados via "Lançar turno" com horário quebrado)
+    if(S._turnosDecimais){
+      turnosDoColab.forEach(t=>{
+        const key=t.dia+'|'+nome;
+        const decimais=S._turnosDecimais[key];
+        if(decimais&&decimais.length){
+          // Encontrar o turno decimal que sobrepõe esse bloco de horas inteiras
+          const match=decimais.find(d=>Math.floor(d.ini)<=t.ini&&Math.ceil(d.fim)>=t.fim);
+          if(match){
+            t.ini=match.ini;
+            t.fim=match.fim;
+            t.horas=Math.round((match.fim-match.ini)*100)/100;
+          }
+        }
+      });
+    }
     // Preservar dados de falta por turno (mas SEMPRE usar a lista de turnos atual da escala)
     const confExist=confirmacoesExist[nome];
     const turnosFinais=turnosDoColab.map(t=>{
       if(!confExist) return t;
-      const tExist=confExist.turnos?.find(e=>e.dia===t.dia&&e.ini===t.ini);
+      const tExist=confExist.turnos?.find(e=>e.dia===t.dia&&Math.abs(e.ini-t.ini)<0.6);
       if(tExist&&(tExist.faltou||tExist.horasAbatidas>0)){
         return {...t,faltou:tExist.faltou||false,horasAbatidas:tExist.horasAbatidas||0};
       }
@@ -4412,6 +4453,7 @@ function publicarEscala(){
     escala: JSON.parse(JSON.stringify(S.escala)),
     colabs: JSON.parse(JSON.stringify(S.colabs)),
     matrix: S.matrix ? JSON.parse(JSON.stringify(S.matrix)) : null,
+    turnosDecimais: S._turnosDecimais ? JSON.parse(JSON.stringify(S._turnosDecimais)) : {},
   };
 
   try{
@@ -4969,6 +5011,17 @@ function verEscalaHistorico(id){
       if(!alocado&&ini!==null){ blocos.push({ini,fim:h}); ini=null; }
     }
     if(ini!==null) blocos.push({ini,fim:hO+1});
+    // Sobrepor horários decimais persistidos (turnos com horário quebrado)
+    if(entrada.turnosDecimais){
+      const key=dia+'|'+nome;
+      const decimais=entrada.turnosDecimais[key];
+      if(decimais&&decimais.length){
+        return blocos.map(b=>{
+          const match=decimais.find(d=>Math.floor(d.ini)<=b.ini&&Math.ceil(d.fim)>=b.fim);
+          return match ? {ini:match.ini,fim:match.fim} : b;
+        });
+      }
+    }
     return blocos;
   }
 
