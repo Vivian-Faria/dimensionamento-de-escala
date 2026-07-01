@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260701135930">
+<meta name="version" content="v20260701141016">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1324,6 +1324,7 @@ function getFeriadoBH(data){
 
 // ── Bookmarklet com período seg-dom correto
 const BM_SCRIPT=`(()=>{const D=['Dom','Seg','Ter','Qua','Qui','Sex','Sab'];const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const mkMx=()=>{const m={};D.forEach(d=>{m[d]={};for(let h=0;h<30;h++)m[d][p(h)]=0;});return m;};const mx=mkMx();const mxPorHub={};const totalPorHub={};let tt=0;const rw=document.querySelectorAll('table tbody tr');rw.forEach(r=>{  const cs=r.querySelectorAll('td');  if(cs.length<10)return;  const cadastro=(cs[9]?.textContent?.trim()||'');  if(!cadastro||!cadastro.includes('/')||!cadastro.includes(' '))return;  const[dp,tp]=cadastro.split(' ');  const[dd,mm,yyyy]=dp.split('/');  const h=parseInt(tp.split(':')[0],10);  const di=D[new Date(+yyyy,+mm-1,+dd).getDay()];  const hk=p(h);  if(!mx[di]||mx[di][hk]===undefined)return;  const hubRaw=(cs[1]?.textContent?.trim()||'');  const estab=(cs[2]?.textContent?.trim()||'');  const isVarianda=estab.toLowerCase().includes('varanda');  // Classificar hub principal  let hubKey=null;  if(hubRaw==='DS Cidade Nova'){hubKey='Cidade Nova';}  else if(hubRaw==='DS Sion'||hubRaw==='-'||hubRaw===''){hubKey='Sion';}  if(!hubKey)return;  // Contabilizar no hub principal (Sion inclui Varanda)  mx[di][hk]++;tt++;  if(!mxPorHub[hubKey]){mxPorHub[hubKey]=mkMx();totalPorHub[hubKey]=0;}  mxPorHub[hubKey][di][hk]++;totalPorHub[hubKey]++;  // Contabilizar também em Varanda Sion (subconjunto separado)  if(isVarianda){    const vk='Varanda Sion';    if(!mxPorHub[vk]){mxPorHub[vk]=mkMx();totalPorHub[vk]=0;}    mxPorHub[vk][di][hk]++;totalPorHub[vk]++;  }});const url=window.location.href;const m=url.match(/start_date=([\d-]+).*end_date=([\d-]+)/);const de=m?m[1]:fi(new Date());const ate=m?m[2]:fi(new Date());const ds=new Date(de),da=new Date(ate);const pl={mx,total:tt,mxPorHub,totalPorHub,de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now()};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#dados='+b64,'_blank');})()`;
+const BM_LOADER="javascript:(()=>{fetch(\"https://raw.githubusercontent.com/Vivian-Faria/dimensionamento-de-escala/main/bookmarklet.js?t=\"+Date.now()).then(r=>r.text()).then(code=>eval(code)).catch(e=>alert(\"Erro ao carregar: \"+e.message));})();";
 
 // ── Bookmarklet de INDICADORES — roda no Orion, coleta vendas+cancelamentos+tempos, envia para a plataforma via hash
 const BM_SCRIPT_IND=`(async()=>{const p=v=>String(v).padStart(2,'0');const fi=d=>d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());const fb=d=>p(d.getDate())+'/'+p(d.getMonth()+1);const hj=new Date(),dw=hj.getDay(),n=dw===0?7:dw;const da=new Date(hj);da.setDate(hj.getDate()-n);const ds=new Date(da);ds.setDate(da.getDate()-6);const de=fi(ds),ate=fi(da);const pDt=s=>{if(!s||s==='-')return null;const[dp,tp]=s.split(' ');if(!dp||!tp)return null;const[d,m,y]=dp.split('/');return new Date(y+'-'+m+'-'+d+'T'+tp+':00').getTime();};const dMin=(a,b)=>{if(!a||!b)return null;const d=(b-a)/60000;return(d>=0&&d<480)?+d.toFixed(2):null;};const base='https://admin.orioncloudkitchens.com.br';try{const[rv,rc]=await Promise.all([fetch('/admin/reports/orders?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'}),fetch('/admin/reports/orders/cancellations?start_date='+de+'&start_time=00:00&end_date='+ate+'&end_time=23:59&business=',{credentials:'include'})]);const[hv,hc]=[await rv.text(),await rc.text()];const parse=(html,tipo)=>{const doc=new DOMParser().parseFromString(html,'text/html');return[...doc.querySelectorAll('table tbody tr')].map(r=>{const t=[...r.querySelectorAll('td')];if(t.length<5)return null;const hub=(t[1]?.textContent.trim()||'').replace('-','')||'Sem hub';if(tipo==='v'){if(t.length<14)return null;return{hub,cadastro:pDt(t[10]?.textContent.trim()),pronto:pDt(t[11]?.textContent.trim()),coleta:pDt(t[12]?.textContent.trim()),conclusao:pDt(t[14]?.textContent.trim())};}else{return{hub,motivo:t[4]?.textContent.trim()||''};} }).filter(Boolean);};const vendas=parse(hv,'v'),cancelamentos=parse(hc,'c');const hubs=[...new Set([...vendas,...cancelamentos].map(r=>r.hub).filter(Boolean))].sort();const pl={de,ate,deBR:fb(ds),ateBR:fb(da),ts:Date.now(),vendas,cancelamentos,hubs,semana:fb(ds)+'\u2013'+fb(da),semanaISO:de+'/'+ate};const b64=btoa(unescape(encodeURIComponent(JSON.stringify(pl))));window.open('https://orion-escala.netlify.app#ind_dados='+b64,'_blank');}catch(e){alert('Erro ao coletar: '+e.message);}})()`;
@@ -1523,7 +1524,7 @@ function verificarCache(){
 
 function mostrarBanner(){
   const cache=verificarCache();
-  const bm='javascript:'+encodeURIComponent(BM_SCRIPT);
+  const bm=BM_LOADER; // Loader dinâmico: busca bookmarklet.js do GitHub a cada clique
   const{segAnt,domAnt}=semanaAnterior();
   const per=`${fmtBR(segAnt)} (Seg) → ${fmtBR(domAnt)} (Dom)`;
   const banner=document.getElementById('esBanner');
@@ -1547,11 +1548,11 @@ function mostrarBanner(){
           <li>Se aparecer "allow pasting" → digite <code>allow pasting</code> e Enter</li>
           <li>Cole o script e pressione Enter</li>
         </ol>
-        <button onclick="copiarScript()" id="copyBtn" class="btn bs sm" style="width:100%">📋 Copiar script</button>
+        <button onclick="copiarScript()" id="copyBtn" class="btn bs sm" style="width:100%">📋 Copiar script (colar no console)</button>
       </div>
       <div style="background:rgba(255,255,255,.6);border-radius:8px;padding:12px">
         <div style="font-size:11px;font-weight:700;margin-bottom:6px">Método 2 — Favorito no Chrome</div>
-        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Arraste para a barra de favoritos. Basta clicar toda semana estando no Órion.</p>
+        <p style="font-size:11px;color:var(--mu);margin-bottom:8px;line-height:1.5">Arraste para a barra de favoritos. Basta clicar toda semana estando no Órion. <strong>Sempre busca a versão mais atualizada automaticamente.</strong></p>
         <a href="${bm}" style="display:block;background:var(--ac);color:#fff;border-radius:7px;padding:8px;text-align:center;text-decoration:none;font-size:12px;font-weight:600;cursor:grab" draggable="true">⭐ Coletar Dados Órion</a>
       </div>
     </div>
