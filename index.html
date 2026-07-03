@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260701191304">
+<meta name="version" content="v20260703204944">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3086,25 +3086,35 @@ function renderEscala(){
       const falta=cell.alocados.length<cell.pessoas&&cell.pessoas>0;
       const semPessoa=cell.alocados.length===0;
 
+      // Identificar quem está de almoço neste slot
+      const emAlmoco = cell.alocados.filter(n => {
+        const c = S.colabs.find(x => x.nome === n);
+        return c && c.almocoIn != null && c.almocoOut != null && h >= c.almocoIn && h < c.almocoOut;
+      });
+      const forcaEfetiva = cell.alocados.length - emAlmoco.length;
+
       const pills=cell.alocados.map(n=>{
         const isK=n==='Kayky';
-        return`<span class="wp ${isK?'wp-kayky':falta?'wp-warn':'wp-normal'}" onclick="rmA('${dia}',${h},'${n.replace(/'/g,"\\'")}')">
-          ${isK?'★ ':''}${n.split(' ')[0]}<span style="opacity:.5;font-size:9px;margin-left:3px">×</span></span>`;
+        const isAlmoco=emAlmoco.includes(n);
+        return`<span class="wp ${isAlmoco?'wp-almoco':isK?'wp-kayky':falta?'wp-warn':'wp-normal'}" onclick="rmA('${dia}',${h},'${n.replace(/'/g,"\\'")}')" title="${isAlmoco?'Horário de almoço':''}">
+          ${isAlmoco?'🍽 ':''}${isK?'★ ':''}${n.split(' ')[0]}<span style="opacity:.5;font-size:9px;margin-left:3px">×</span></span>`;
       }).join('');
 
+      const semPessoaEfetiva = forcaEfetiva === 0;
       tr.innerHTML+=`<td class="td-dia">
         <div class="dem-info">
           <span class="dm ${dc}" style="font-family:var(--mo);font-size:10px;font-weight:600">${cell.ped}</span>
-          <span style="font-family:var(--mo);font-size:10px;background:${semPessoa?'#fee2e2':cell.alocados.length>=cell.pessoas?'#dcfce7':'#fef3c7'};color:${semPessoa?'#dc2626':cell.alocados.length>=cell.pessoas?'#166534':'#92400e'};padding:1px 5px;border-radius:4px;font-weight:700">${cell.alocados.length}</span>
-          ${falta&&cell.alocados.length>0?'<span style="font-size:9px;color:#d97706">⚠</span>':''}
-          ${semPessoa?'<span style="font-size:9px;color:#dc2626;font-weight:700">SEM COBERTURA</span>':''}
+          <span style="font-family:var(--mo);font-size:10px;background:${semPessoaEfetiva?'#fee2e2':forcaEfetiva>=cell.pessoas?'#dcfce7':'#fef3c7'};color:${semPessoaEfetiva?'#dc2626':forcaEfetiva>=cell.pessoas?'#166534':'#92400e'};padding:1px 5px;border-radius:4px;font-weight:700">${forcaEfetiva}</span>
+          ${emAlmoco.length>0?`<span style="font-size:9px" title="${emAlmoco.map(n=>n.split(' ')[0]).join(', ')} em almoço">🍽</span>`:''}
+          ${forcaEfetiva<cell.pessoas&&forcaEfetiva>0?'<span style="font-size:9px;color:#d97706">⚠</span>':''}
+          ${semPessoaEfetiva?'<span style="font-size:9px;color:#dc2626;font-weight:700">SEM COBERTURA</span>':''}
         </div>
         <div class="slot">${pills}<span class="add-b" onclick="addM('${dia}',${h})">+</span></div>
       </td>`;
 
       volHora+=cell.ped;
       custoHora+=cell.custo||0;
-      forcaHora+=cell.alocados.length;
+      forcaHora+=forcaEfetiva;
     });
 
     // Métricas da hora
@@ -3919,23 +3929,32 @@ function renderEscalaFiltrada(dia){
       const dc=cell.ped===0?'vol-0':cell.ped<20?'vol-1':cell.ped<60?'vol-2':'vol-3';
       const falta=cell.alocados.length<cell.pessoas&&cell.pessoas>0;
       const semPessoa=cell.alocados.length===0;
+      // Almoço
+      const emAlmocoF = cell.alocados.filter(n => {
+        const c = S.colabs.find(x => x.nome === n);
+        return c && c.almocoIn != null && c.almocoOut != null && h >= c.almocoIn && h < c.almocoOut;
+      });
+      const forcaEfetivaF = cell.alocados.length - emAlmocoF.length;
       const pills=cell.alocados.map(n=>{
         const isK=n==='Kayky';
-        return`<span class="wp ${isK?'wp-kayky':falta?'wp-warn':'wp-normal'}" onclick="rmA('${d}',${h},'${n.replace(/'/g,"\'")}')">
-          ${isK?'★ ':''}${n.split(' ')[0]}<span style="opacity:.5;font-size:9px;margin-left:3px">×</span></span>`;
+        const isAlmF=emAlmocoF.includes(n);
+        return`<span class="wp ${isAlmF?'wp-almoco':isK?'wp-kayky':falta?'wp-warn':'wp-normal'}" onclick="rmA('${d}',${h},'${n.replace(/'/g,"\'")}')">
+          ${isAlmF?'🍽 ':''}${isK?'★ ':''}${n.split(' ')[0]}<span style="opacity:.5;font-size:9px;margin-left:3px">×</span></span>`;
       }).join('');
+      const semPessoaEfetivaF = forcaEfetivaF === 0;
       tr.innerHTML+=`<td class="td-dia">
         <div class="dem-info">
           <span class="dm ${dc}" style="font-family:var(--mo);font-size:10px;font-weight:600">${cell.ped}</span>
-          <span style="font-family:var(--mo);font-size:10px;background:${semPessoa?'#fee2e2':cell.alocados.length>=cell.pessoas?'#dcfce7':'#fef3c7'};color:${semPessoa?'#dc2626':cell.alocados.length>=cell.pessoas?'#166534':'#92400e'};padding:1px 5px;border-radius:4px;font-weight:700">${cell.alocados.length}</span>
-          ${falta&&cell.alocados.length>0?'<span style="font-size:9px;color:#d97706">⚠</span>':''}
-          ${semPessoa?'<span style="font-size:9px;color:#dc2626;font-weight:700">SEM COBERTURA</span>':''}
+          <span style="font-family:var(--mo);font-size:10px;background:${semPessoaEfetivaF?'#fee2e2':forcaEfetivaF>=cell.pessoas?'#dcfce7':'#fef3c7'};color:${semPessoaEfetivaF?'#dc2626':forcaEfetivaF>=cell.pessoas?'#166534':'#92400e'};padding:1px 5px;border-radius:4px;font-weight:700">${forcaEfetivaF}</span>
+          ${emAlmocoF.length>0?`<span style="font-size:9px" title="${emAlmocoF.map(n=>n.split(' ')[0]).join(', ')} em almoço">🍽</span>`:''}
+          ${forcaEfetivaF<cell.pessoas&&forcaEfetivaF>0?'<span style="font-size:9px;color:#d97706">⚠</span>':''}
+          ${semPessoaEfetivaF?'<span style="font-size:9px;color:#dc2626;font-weight:700">SEM COBERTURA</span>':''}
         </div>
         <div class="slot">${pills}<span class="add-b" onclick="addM('${d}',${h})">+</span></div>
       </td>`;
       volHora+=cell.ped;
       custoHora+=cell.custo||0;
-      forcaHora+=cell.alocados.length;
+      forcaHora+=forcaEfetivaF;
     });
 
     // Métricas recalculadas só com os dias visíveis
