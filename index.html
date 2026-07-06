@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260706200343">
+<meta name="version" content="v20260706214212">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -5272,7 +5272,10 @@ function restaurarEscalaHistorico(id){
     Object.entries(confs).forEach(([nome,conf])=>{
       (conf.turnos||[]).forEach(t=>{
         if(t.faltou) return;
-        for(let h=t.ini;h<t.fim;h++){
+        // Usar horas inteiras (floor/ceil) para compatibilidade com slots da grade
+        const hIni = Math.floor(t.ini);
+        const hFim = Math.ceil(t.fim);
+        for(let h=hIni;h<hFim;h++){
           if(!escalaBase[t.dia]) escalaBase[t.dia]={};
           if(!escalaBase[t.dia][h])
             escalaBase[t.dia][h]={alocados:[],ped:0,pessoas:1,custo:0};
@@ -5283,6 +5286,8 @@ function restaurarEscalaHistorico(id){
         }
       });
     });
+    // Restaurar turnosDecimais se disponível
+    if(entrada.turnosDecimais) S._turnosDecimais=JSON.parse(JSON.stringify(entrada.turnosDecimais));
   }
 
   S.escala=escalaBase;
@@ -5299,7 +5304,7 @@ function restaurarEscalaHistorico(id){
   if(entrada.hubFiltro!==undefined) S._hubFiltroAtual=entrada.hubFiltro;
   if(entrada.colabs?.length>0){
     S.colabs=JSON.parse(JSON.stringify(entrada.colabs));
-    saveC(); renderColabs();
+    save(); renderColabs();
   }
 
   // Restaurar params para navegação de semana funcionar
