@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260703204944">
+<meta name="version" content="v20260706200343">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1605,7 +1605,15 @@ async function iniciarColeta(){
 }
 
 // ── Mapa de nomes de hub (normalização)
-const HUB_NOMES = { 'Sem hub': 'Cozinhas Sion', '-': 'Cozinhas Sion' };
+const HUB_NOMES = {
+  'Sem hub': 'Cozinhas Sion',
+  '-': 'Cozinhas Sion',
+  'DS Sion': 'Cozinhas Sion',
+  'Cozinhas Sion + DS Sion': 'Cozinhas Sion',
+  'Sion': 'Cozinhas Sion',
+  'DS Cidade Nova': 'DS Cidade Nova',
+  'Cidade Nova': 'DS Cidade Nova',
+};
 const HUB_EXCLUIR = new Set(['DS Delivery Mall']); // hubs ocultos da plataforma
 function nomeHub(h){ return HUB_NOMES[h] || h; }
 function hubVisivel(h){ return !HUB_EXCLUIR.has(h); }
@@ -4881,9 +4889,12 @@ function renderHistorico(filtro){
   const meses={};
   filtrado.forEach(h=>{
     if(!h.segISO||!h.confirmacoes) return;
-    const mes=h.segISO.slice(0,7);
+    // Usar domISO (domingo) para determinar o mês — semana pertence ao mês em que termina
+    // Ex: semana 29/06-05/07 → Julho (não Junho)
+    const mesRef = h.domISO ? h.domISO.slice(0,7) : h.segISO.slice(0,7);
+    const mes = mesRef;
     if(!meses[mes]) meses[mes]={label:'',semanasSet:new Set(),colabSemSet:new Set(),colabsSet:new Set(),nColabs:0,turnos:0,faltas:0,horasFaltadas:0,coberturas:0,trocas:0,rupturas:0};
-    const d=new Date(h.segISO+'T12:00:00');
+    const d=new Date(mesRef+'-15T12:00:00');
     meses[mes].label=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
     meses[mes].semanasSet.add(h.segISO);
 
@@ -6470,9 +6481,11 @@ function _popularListaHub(){
   if(!lista)return;
   const HUBS_FIXOS_IND = ['Varanda Sion'];
   const hist=JSON.parse(localStorage.getItem(KIND)||'[]');
-  const hubsDosDados=[...new Set(hist.flatMap(h=>h.hubs||[]))].filter(hubVisivel).sort();
+  // Normalizar hub → nome de exibição para deduplicar (ex: 'Sion', 'DS Sion', 'Cozinhas Sion' → mesmo hub)
+  const hubsRaw=hist.flatMap(h=>h.hubs||[h.hub||'']).filter(Boolean).filter(hubVisivel);
+  const hubsNormalizados=[...new Set(hubsRaw.map(h=>nomeHub(h)))].sort();
   // Adicionar hubs fixos que não estejam nos dados
-  const todosHubs=[...new Set([...hubsDosDados, ...HUBS_FIXOS_IND])].filter(hubVisivel).sort();
+  const todosHubs=[...new Set([...hubsNormalizados, ...HUBS_FIXOS_IND.map(h=>nomeHub(h))])].filter(hubVisivel).sort();
   // Item "Todos"
   const todosMarcado=_hubsTemp.has('todos');
   lista.innerHTML=`<label style="display:flex;align-items:center;gap:10px;padding:7px 14px;cursor:pointer;font-size:12px;color:#f3f4f6;border-bottom:1px solid rgba(255,255,255,.06)"
