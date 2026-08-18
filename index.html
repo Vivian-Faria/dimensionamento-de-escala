@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260818151045">
+<meta name="version" content="v20260818151508">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -9834,7 +9834,7 @@ function exportarRelatorio(formato){
 }
 
 function _exportarRelatorioPDF(dados, de, ate, fmtBRL, fmtData){
-  const { porHub, colabsGlobal, semanas, filtradas } = dados;
+  const { porHub, colabsGlobal, totais, semanas, filtradas } = dados;
   const totalPed = Object.values(porHub).reduce((s,h)=>s+h.pedidos,0);
   const totalCusto = Object.values(porHub).reduce((s,h)=>s+h.custo,0);
   const totalHoras = Object.values(porHub).reduce((s,h)=>s+h.horas,0);
@@ -9927,7 +9927,7 @@ function _exportarRelatorioPDF(dados, de, ate, fmtBRL, fmtData){
 }
 
 function _exportarRelatorioXLSX(dados, de, ate, fmtBRL, fmtData){
-  const { porHub, colabsGlobal, semanas, filtradas } = dados;
+  const { porHub, colabsGlobal, totais, semanas, filtradas } = dados;
   const totalPed = Object.values(porHub).reduce((s,h)=>s+h.pedidos,0);
   const totalCusto = Object.values(porHub).reduce((s,h)=>s+h.custo,0);
   const totalHoras = Object.values(porHub).reduce((s,h)=>s+h.horas,0);
