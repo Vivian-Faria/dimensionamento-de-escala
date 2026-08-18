@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260818151508">
+<meta name="version" content="v20260818152218">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -9767,6 +9767,52 @@ function _calcDadosRelatorio(de, ate){
     });
   });
 
+  // Calcular força média por hub: soma de pessoas por slot / número de semanas do hub
+  // forcaMedia[hubNome][dia][hora] = média de pessoas escaladas naquele slot
+  const DIAS_REL = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const forcaMedia = {};
+  Object.entries(porHub).forEach(([hubNome, hubData])=>{
+    forcaMedia[hubNome] = {};
+    DIAS_REL.forEach(dia=>{
+      forcaMedia[hubNome][dia] = {};
+      for(let h=0;h<26;h++){
+        const hk = String(h).padStart(2,'0');
+        forcaMedia[hubNome][dia][hk] = 0;
+      }
+    });
+  });
+
+  // Somar pessoas por slot nas entradas filtradas
+  const semanasporHub = {}; // contar semanas reais por hub
+  filtradas.forEach(entrada=>{
+    let hubRaw2 = entrada.hub || '';
+    if(hubRaw2==='Todos os hubs'||hubRaw2===''||hubRaw2==='todos') hubRaw2='Geral';
+    const hubNome2 = HUB_NOMES[hubRaw2]||hubRaw2;
+    if(!forcaMedia[hubNome2]) return;
+    if(!semanasporHub[hubNome2]) semanasporHub[hubNome2]=0;
+    semanasporHub[hubNome2]++;
+
+    const escala = entrada.escala || {};
+    DIAS_REL.forEach(dia=>{
+      if(!escala[dia]) return;
+      for(let h=0;h<26;h++){
+        const hk=String(h).padStart(2,'0');
+        const cell=escala[dia][h];
+        if(cell&&cell.alocados) forcaMedia[hubNome2][dia][hk]+=(cell.alocados.length||0);
+      }
+    });
+  });
+
+  // Dividir pela quantidade de semanas para obter média
+  Object.entries(forcaMedia).forEach(([hub, dias])=>{
+    const nsem = semanasporHub[hub]||1;
+    Object.entries(dias).forEach(([dia, horas])=>{
+      Object.keys(horas).forEach(hk=>{
+        forcaMedia[hub][dia][hk] = Math.round((horas[hk]/nsem)*10)/10;
+      });
+    });
+  });
+
   // Calcular totais globais (soma de todos os hubs)
   const totais = {
     colabs: colabsGlobal,
@@ -9776,7 +9822,7 @@ function _calcDadosRelatorio(de, ate){
     faltas: Object.values(porHub).reduce((s,h)=>s+h.faltas,0),
   };
 
-  return { porHub, colabsGlobal, totais, semanas: filtradas.length, filtradas };
+  return { porHub, colabsGlobal, totais, forcaMedia, semanas: filtradas.length, filtradas };
 }
 
 function atualizarPreviewRelatorio(){
@@ -9834,7 +9880,7 @@ function exportarRelatorio(formato){
 }
 
 function _exportarRelatorioPDF(dados, de, ate, fmtBRL, fmtData){
-  const { porHub, colabsGlobal, totais, semanas, filtradas } = dados;
+  const { porHub, colabsGlobal, totais, forcaMedia, semanas, filtradas } = dados;
   const totalPed = Object.values(porHub).reduce((s,h)=>s+h.pedidos,0);
   const totalCusto = Object.values(porHub).reduce((s,h)=>s+h.custo,0);
   const totalHoras = Object.values(porHub).reduce((s,h)=>s+h.horas,0);
@@ -9916,6 +9962,31 @@ function _exportarRelatorioPDF(dados, de, ate, fmtBRL, fmtData){
   <h2>Detalhe por Semana</h2>
   <table><thead><tr><th>Semana</th><th>Hub</th><th>Colaboradores</th><th>Pedidos</th><th>Custo</th><th>CPP</th><th>Faltas</th></tr></thead>
   <tbody>${semanaRows}</tbody></table>
+
+  <h2>Volume Médio de Pessoas por Hora (por Hub)</h2>
+  ${Object.entries(porHub).map(([hub])=>{
+    const fm = forcaMedia[hub]||{};
+    const DIAS_T=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+    // Horas com pelo menos algum valor em algum dia
+    const horasAtivas=[];
+    for(let h=0;h<26;h++){
+      const hk=String(h).padStart(2,'0');
+      const temDados=DIAS_T.some(d=>(fm[d]?.[hk]||0)>0);
+      if(temDados) horasAtivas.push(hk);
+    }
+    if(!horasAtivas.length) return '';
+    const fmtH=hk=>{const n=parseInt(hk);return(n>=24?n-24:n)+'h'+(n>=24?' (+1d)':'');};
+    const bgC=v=>v===0?'#f9fafb':v<1?'#fef9c3':v<2?'#fef3c7':v<3?'#dbeafe':'#dcfce7';
+    return `<div style="margin-bottom:20px">
+      <h3 style="font-size:13px;color:#374151;margin-bottom:8px">${hub}</h3>
+      <table><thead><tr><th>Hora</th>${DIAS_T.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>
+      ${horasAtivas.map(hk=>`<tr>
+        <td style="font-weight:600;color:#374151">${fmtH(hk)}</td>
+        ${DIAS_T.map(d=>{const v=fm[d]?.[hk]||0;return`<td style="text-align:center;background:${bgC(v)}">${v>0?v:''}</td>`;}).join('')}
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }).join('')}
 
   <div class="footer">Órion · Escala — Relatório gerado automaticamente</div>
   </body></html>`;
