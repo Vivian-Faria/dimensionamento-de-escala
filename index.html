@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Órion · Escala</title>
-<meta name="version" content="v20260818143016">
+<meta name="version" content="v20260818145718">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -9727,7 +9727,14 @@ function _calcDadosRelatorio(de, ate){
   const colabsGlobal = new Set();
 
   filtradas.forEach(entrada=>{
-    const hubNome = HUB_NOMES[entrada.hub] || entrada.hub || 'Sem hub';
+    // Normalizar hub: 'Todos os hubs' e variantes antigas → usar hubFiltro se disponível, ou 'Geral'
+    let hubRaw = entrada.hub || '';
+    if(hubRaw === 'Todos os hubs' || hubRaw === '' || hubRaw === 'todos'){
+      // Entrada sem hub específico: agrupar separadamente como 'Geral'
+      hubRaw = 'Geral';
+    }
+    const hubNome = HUB_NOMES[hubRaw] || hubRaw;
+
     if(!porHub[hubNome]) porHub[hubNome] = {semanas:0, colabs:new Set(), pedidos:0, custo:0, horas:0, faltas:0};
     const h = porHub[hubNome];
     h.semanas++;
@@ -9741,7 +9748,7 @@ function _calcDadosRelatorio(de, ate){
     // Custo
     h.custo += entrada.resumo?.totalCusto || 0;
 
-    // Horas (turnos)
+    // Horas e faltas (turnos)
     Object.values(entrada.confirmacoes||{}).forEach(conf=>{
       (conf.turnos||[]).forEach(t=>{
         const hrs = t.horas || (t.fim - t.ini) || 0;
@@ -9751,7 +9758,16 @@ function _calcDadosRelatorio(de, ate){
     });
   });
 
-  return { porHub, colabsGlobal, semanas: filtradas.length, filtradas };
+  // Calcular totais globais (soma de todos os hubs)
+  const totais = {
+    colabs: colabsGlobal,
+    pedidos: Object.values(porHub).reduce((s,h)=>s+h.pedidos,0),
+    custo: Object.values(porHub).reduce((s,h)=>s+h.custo,0),
+    horas: Object.values(porHub).reduce((s,h)=>s+h.horas,0),
+    faltas: Object.values(porHub).reduce((s,h)=>s+h.faltas,0),
+  };
+
+  return { porHub, colabsGlobal, totais, semanas: filtradas.length, filtradas };
 }
 
 function atualizarPreviewRelatorio(){
@@ -9781,6 +9797,8 @@ function atualizarPreviewRelatorio(){
         <div style="font-size:11px;color:var(--tx)">⏱ ${Math.round(h.horas)}h trabalhadas</div>
       `).join('')}
       <div style="grid-column:1/-1;border-top:1px solid var(--brd);margin-top:8px;padding-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div style="font-size:11px;color:var(--tx)"><strong>Total pedidos:</strong> ${totalPed.toLocaleString('pt-BR')}</div>
+        <div style="font-size:11px;color:var(--tx)"><strong>Custo total:</strong> R$ ${totalCusto.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
         <div style="font-size:11px;color:var(--tx)"><strong>CPP total:</strong> R$ ${cpp}</div>
         <div style="font-size:11px;color:var(--tx)"><strong>Custo/hora:</strong> R$ ${custoHora}</div>
       </div>
@@ -9826,7 +9844,15 @@ function _exportarRelatorioPDF(dados, de, ate, fmtBRL, fmtData){
       <td>R$ ${cph}</td>
       <td>R$ ${ch}</td>
     </tr>`;
-  }).join('');
+  }).join('') + `<tr style="font-weight:700;background:#f3f4f6;border-top:2px solid #d1d5db">
+    <td>TOTAL</td>
+    <td>${totais.colabs.size}</td>
+    <td>${totais.pedidos.toLocaleString('pt-BR')}</td>
+    <td>${fmtBRL(totais.custo)}</td>
+    <td>${Math.round(totais.horas)}h</td>
+    <td>R$ ${totais.pedidos>0?(totais.custo/totais.pedidos).toFixed(2):'—'}</td>
+    <td>R$ ${totais.horas>0?(totais.custo/totais.horas).toFixed(2):'—'}</td>
+  </tr>`;
 
   // Detalhe por semana
   const semanaRows = filtradas.sort((a,b)=>a.segISO.localeCompare(b.segISO)).map(e=>{
@@ -9920,6 +9946,10 @@ function _exportarRelatorioXLSX(dados, de, ate, fmtBRL, fmtData){
     const ch = h.horas>0?(h.custo/h.horas):0;
     linhas.push([hub, h.colabs.size, h.pedidos, h.custo.toFixed(2).replace('.',','), Math.round(h.horas), cph.toFixed(2).replace('.',','), ch.toFixed(2).replace('.',',')]);
   });
+  // Linha de total
+  linhas.push(['TOTAL', totais.colabs.size, totais.pedidos, totais.custo.toFixed(2).replace('.',','), Math.round(totais.horas),
+    totais.pedidos>0?(totais.custo/totais.pedidos).toFixed(2).replace('.',','):'—',
+    totais.horas>0?(totais.custo/totais.horas).toFixed(2).replace('.',','):'—']);
   linhas.push([]);
   linhas.push(['DETALHE POR SEMANA']);
   linhas.push(['Semana','Hub','Colaboradores','Pedidos','Custo (R$)','CPP','Faltas']);
